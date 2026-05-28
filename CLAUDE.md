@@ -97,8 +97,8 @@ variable plans require dynamic `price_data` objects at checkout creation time.
 
 | Plan | Price | Billing | Stripe implementation |
 |------|-------|---------|----------------------|
-| Standard | £10/month | Monthly subscription | Fixed price ID: `price_test_monthly` |
-| Accelerator | £25/month | Monthly subscription | Fixed price ID: `price_test_accelerator` |
+| Standard | £10/month | Monthly subscription | Dynamic `price_data`, amount hardcoded £10 |
+| Accelerator | £25/month | Monthly subscription | Dynamic `price_data`, amount hardcoded £25 |
 | Custom Monthly | Min £30, £5 increments | Monthly subscription | Dynamic `price_data` (unit_amount set by user input) |
 | Custom Annual | Min £300, £10 increments | Annual subscription | Dynamic `price_data` (unit_amount set by user input) |
 | Lifetime | £5,000 one-off | Single payment | `mode: 'payment'`, dynamic `price_data` |
