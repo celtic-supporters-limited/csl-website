@@ -36,20 +36,36 @@ export async function POST(req: NextRequest) {
     let session;
 
     if (plan === "standard") {
-      const priceId = process.env.STRIPE_PRICE_MONTHLY;
-      if (!priceId) throw new Error("Missing env var: STRIPE_PRICE_MONTHLY");
       session = await stripe.checkout.sessions.create({
         mode: "subscription",
-        line_items: [{ price: priceId, quantity: 1 }],
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: "gbp",
+              unit_amount: 1000,
+              recurring: { interval: "month" },
+              product_data: { name: "CSL Standard Membership — £10/month" },
+            },
+          },
+        ],
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
     } else if (plan === "accelerator") {
-      const priceId = process.env.STRIPE_PRICE_ACCELERATOR;
-      if (!priceId) throw new Error("Missing env var: STRIPE_PRICE_ACCELERATOR");
       session = await stripe.checkout.sessions.create({
         mode: "subscription",
-        line_items: [{ price: priceId, quantity: 1 }],
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: "gbp",
+              unit_amount: 2500,
+              recurring: { interval: "month" },
+              product_data: { name: "CSL Accelerator Membership — £25/month" },
+            },
+          },
+        ],
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
