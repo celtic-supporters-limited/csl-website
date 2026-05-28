@@ -53,14 +53,6 @@ function SubNested({ number, children }: { number: string; children: React.React
   );
 }
 
-function SubDeep({ number, children }: { number: string; children: React.ReactNode }) {
-  return (
-    <div className="ml-12 mb-2 text-gray-700 leading-relaxed text-[0.95rem]">
-      <span className="font-semibold text-gray-900">{number}</span>{" "}
-      {children}
-    </div>
-  );
-}
 
 export default function ArticlesOfAssociation() {
   return (
