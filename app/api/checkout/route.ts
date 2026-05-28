@@ -49,7 +49,6 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
-        subscription_data: { description: "Monthly 10" },
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -67,7 +66,6 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
-        subscription_data: { description: "Monthly 25" },
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -85,7 +83,6 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
-        subscription_data: { description: "Custom Monthly" },
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -103,7 +100,6 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
-        subscription_data: { description: `£${amount} Annually` },
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -121,7 +117,6 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
-        payment_intent_data: { description: "Lifetime £5000" },
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
