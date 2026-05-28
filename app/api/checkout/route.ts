@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const stripe = getStripe();
-    let session;
+    let session: Awaited<ReturnType<typeof stripe.checkout.sessions.create>>;
 
     if (plan === "standard") {
       session = await stripe.checkout.sessions.create({
@@ -127,10 +127,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (!session.url) {
+      console.error("[checkout] Stripe returned a session with no URL:", session.id);
+      return NextResponse.json(
+        { error: "Failed to create checkout session. Please try again." },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({ url: session.url });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[checkout] Stripe error:", message);
+    // Log the full error object — Stripe errors carry .type, .code, .statusCode, .raw
+    console.error("[checkout] Error creating Stripe session:", err);
     return NextResponse.json(
       { error: "Failed to create checkout session. Please try again." },
       { status: 500 }
