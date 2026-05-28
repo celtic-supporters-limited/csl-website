@@ -3,7 +3,7 @@ import LoginForm from "./LoginForm";
 
 export const metadata: Metadata = {
   title: "Member Login | Celtic Supporters Limited",
-  description: "Sign in to the CSL member portal with a secure magic-link email.",
+  description: "Sign in to the CSL member portal.",
 };
 
 export default function LoginPage({
@@ -20,13 +20,13 @@ export default function LoginPage({
             Member Login
           </h1>
           <p className="text-gray-500 text-sm">
-            Enter your email address and we will send you a secure sign-in link.
+            Sign in to your CSL member account.
           </p>
         </div>
 
         {searchParams.error === "auth_failed" && (
           <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-            That sign-in link has expired or is invalid. Please request a new one.
+            That sign-in link has expired or is invalid. Please sign in again.
           </div>
         )}
 
