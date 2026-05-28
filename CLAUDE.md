@@ -231,3 +231,42 @@ To start a session:
 cd "C:\Claude Code Projects\Celtic Supporters Limited\csl-website"
 claude
 ```
+
+## Build Progress
+
+### Completed
+
+**Phase 1 — Scaffold**
+Next.js 14 (App Router, TypeScript, Tailwind), CSL brand colours in `tailwind.config.ts`,
+Inter font, shared `components/Nav.tsx` and `components/Footer.tsx`, full home page
+(`app/page.tsx`): Hero, Stats Bar, Service Cards, How We Work steps, Why It Matters, CTA.
+Deployed to Vercel; GitHub remote at `celtic-supporters-limited/csl-website` on `main`.
+
+**Phase 2 — Share Tracing** (`app/share-tracing/`)
+Full page matching demo. Client form with GDPR consent checkbox, inline success/error states.
+`POST /api/share-tracing` validates input, inserts to `shareholder_cases`
+(`case_type: 'Share Tracing'`), fire-and-forget Zoho stub. `lib/supabase.ts` lazy-initialised
+(throws at call time, not module load). `lib/zoho.ts` stub logs only, never throws.
+
+**Phase 3 — Membership + Stripe Checkout** (`app/membership/`)
+Five-tier plan grid (Standard £10/mo, Accelerator £25/mo, Custom Monthly min £30/£5 inc,
+Custom Annual min £300/£10 inc, Lifetime £5,000 one-off). All five use dynamic `price_data`
+- no pre-created Stripe price IDs needed. Client-side and server-side amount validation for
+custom tiers. Two-step UX: card select -> summary panel -> Stripe redirect.
+`POST /api/checkout` creates Stripe Checkout session; subscription plans use
+`subscription_data.description`, lifetime uses `payment_intent_data.description`.
+`product_data.name` values: "Monthly 10", "Monthly 25", "Custom Monthly",
+"£{amount} Annually", "Lifetime £5000". `/membership/success` confirmation page.
+`lib/stripe.ts` lazy-initialised with shared `validatePlan()`.
+Required env var: `STRIPE_SECRET_KEY` (test key only until Phase 7).
+
+**Phase 4 — Proxy Assignment** (`app/proxy/`)
+Full page matching demo: Hero, proxy explainer (2-col with stats panel), 4-step process,
+registration form. Client form with GDPR consent. `POST /api/proxy` inserts to
+`shareholder_cases` (`case_type: 'Proxy Assignment'`), fire-and-forget Zoho stub.
+
+### Next — Phase 5: Member Portal
+Authenticated area using Supabase Auth (magic-link login via `/login`).
+Dashboard: membership status, payment history, meeting recordings, enquiry tracking.
+Requires Supabase env vars: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+Also needs `NEXT_PUBLIC_SUPABASE_ANON_KEY` for the client-side Auth flow.
