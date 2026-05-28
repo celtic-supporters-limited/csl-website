@@ -265,8 +265,24 @@ Full page matching demo: Hero, proxy explainer (2-col with stats panel), 4-step 
 registration form. Client form with GDPR consent. `POST /api/proxy` inserts to
 `shareholder_cases` (`case_type: 'Proxy Assignment'`), fire-and-forget Zoho stub.
 
-### Next — Phase 5: Member Portal
-Authenticated area using Supabase Auth (magic-link login via `/login`).
-Dashboard: membership status, payment history, meeting recordings, enquiry tracking.
-Requires Supabase env vars: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
-Also needs `NEXT_PUBLIC_SUPABASE_ANON_KEY` for the client-side Auth flow.
+**Phase 5 — Member Portal**
+Magic-link auth via Supabase Auth. `middleware.ts` protects `/member-portal` and refreshes
+session tokens on every request. `/login` page with `LoginForm.tsx` client component calls
+`signInWithOtp`. `/auth/callback` route exchanges the PKCE code for a session cookie.
+`app/member-portal/page.tsx` is a server component: verifies auth, fetches member record,
+events, and shareholder_cases via service-role client, then passes data to
+`PortalClient.tsx` (client component). Portal has five tabs: Dashboard, Subscription,
+Recordings Library, My Enquiries, Account Settings. `PATCH /api/member/settings` updates
+member name (auth-verified server-side). `lib/supabase-browser.ts` exports
+`createBrowserSupabase()` (anon key, for client components); `lib/supabase.ts` gains
+`createServerSupabase()` (anon key + cookie adapter, for server components/route handlers).
+`sql/phase-5-schema.sql` contains CREATE TABLE for `members` and `events`, RLS policies,
+and indexes - run in Supabase Dashboard > SQL Editor before deploying.
+Required env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`.
+
+### Next — Phase 6: Stripe Webhook + Billing
+Stripe webhook handler (`POST /api/webhooks/stripe`) to enrol members in Supabase on
+`checkout.session.completed`, handle `invoice.payment_failed` and
+`customer.subscription.deleted`. Stripe Customer Portal link in the Subscription tab.
+Full payment history from Stripe Charges API.
