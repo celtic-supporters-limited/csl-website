@@ -448,6 +448,14 @@ function SubscriptionTab({
           </>
         )}
 
+        {!isLifetime && !stripeSub && (
+          <DetailRow label="Payment details">
+            <span className="text-gray-400 font-normal">
+              Payment details will appear after your next renewal.
+            </span>
+          </DetailRow>
+        )}
+
         {isLifetime && (
           <DetailRow label="Renewal">No renewal — lifetime membership</DetailRow>
         )}
