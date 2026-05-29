@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { createBrowserSupabase } from "@/lib/supabase-browser";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -12,6 +14,18 @@ const navLinks = [
 
 export default function Nav() {
   const pathname = usePathname();
+  const [authed, setAuthed] = useState(false);
+
+  useEffect(() => {
+    const supabase = createBrowserSupabase();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthed(!!session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthed(!!session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
@@ -43,10 +57,10 @@ export default function Nav() {
 
         <div className="flex items-center gap-2.5">
           <Link
-            href="/member-portal"
+            href={authed ? "/member-portal" : "/login"}
             className="hidden sm:inline-flex items-center px-5 py-2 rounded-lg text-[0.88rem] font-semibold border-[1.5px] border-csl-dark text-csl-dark hover:bg-csl-light transition-colors duration-200"
           >
-            Member Login
+            {authed ? "Member Portal" : "Member Login"}
           </Link>
           <Link
             href="/membership"

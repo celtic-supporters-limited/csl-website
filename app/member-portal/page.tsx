@@ -102,12 +102,24 @@ export default async function MemberPortalPage() {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const s = sub as any;
                 const card = s.default_payment_method?.card ?? null;
+                // In the dahlia API the period dates moved from the subscription
+                // root to the item's `period` object. Try both locations.
+                const item = s.items?.data?.[0];
+                const periodEnd: number | null =
+                  item?.period?.end ?? s.current_period_end ?? null;
+                if (!periodEnd) {
+                  console.warn(
+                    "[member-portal] current_period_end not found. item.period:",
+                    item?.period,
+                    "sub.current_period_end:",
+                    s.current_period_end
+                  );
+                }
                 return {
                   status: s.status,
-                  current_period_end: s.current_period_end,
-                  cancel_at_period_end: s.cancel_at_period_end,
-                  next_amount_pence:
-                    s.items?.data?.[0]?.price?.unit_amount ?? null,
+                  current_period_end: periodEnd,
+                  cancel_at_period_end: s.cancel_at_period_end ?? false,
+                  next_amount_pence: item?.price?.unit_amount ?? null,
                   card_brand: card?.brand ?? null,
                   card_last4: card?.last4 ?? null,
                   card_exp_month: card?.exp_month ?? null,
