@@ -105,14 +105,15 @@ export default async function MemberPortalPage() {
                 // In the dahlia API the period dates moved from the subscription
                 // root to the item's `period` object. Try both locations.
                 const item = s.items?.data?.[0];
+                // In the dahlia API current_period_end moved from the
+                // subscription root to the item level.
                 const periodEnd: number | null =
-                  item?.period?.end ?? s.current_period_end ?? null;
+                  item?.current_period_end ?? s.current_period_end ?? null;
                 if (!periodEnd) {
                   console.warn(
-                    "[member-portal] current_period_end not found. item.period:",
-                    item?.period,
-                    "sub.current_period_end:",
-                    s.current_period_end
+                    "[member-portal] current_period_end not found.",
+                    "item.current_period_end:", item?.current_period_end,
+                    "sub.current_period_end:", s.current_period_end
                   );
                 }
                 return {
