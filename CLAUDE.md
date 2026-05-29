@@ -81,7 +81,7 @@ The Celtic FC crest must NOT appear — CSL is a separate legal entity. Text-bas
 
 | Page | Route | Description |
 |------|-------|-------------|
-| Home | `/` | Hero, stats bar, service cards, how-we-work steps, membership growth panel, CTA |
+| Home | `/` | Hero, membership progress bar, financial transparency strip, service cards, Celtic Paradox teaser, how-we-work steps, membership growth panel, CTA |
 | Share Tracing | `/share-tracing` | Hero, explainer, 4-step process, intake form |
 | Proxy Assignment | `/proxy` | Hero, stats panel, 4-step process, registration form |
 | Membership | `/membership` | Pricing tiers, Stripe Checkout, benefit cards, FAQ |
@@ -89,6 +89,12 @@ The Celtic FC crest must NOT appear — CSL is a separate legal entity. Text-bas
 | Member Portal | `/member-portal` | Authenticated dashboard (see portal tabs below) |
 | Login | `/login` | Email + password primary; magic link fallback; forgot password |
 | Signup | `/signup` | Post-payment account activation; accepts `?email=` query param |
+| Our Team | `/our-team` | Board director cards (4 directors, initials avatar, dark green header) |
+| The Celtic Paradox | `/celtic-paradox` | Research page; 3 callout cards; 4 download links (PDF/XLSX); legal disclaimer |
+| FAQ | `/faq` | Accordion FAQ; 18 Q&As across 4 sections (client component) |
+| Privacy Policy | `/privacy` | 11 numbered GDPR sections |
+| Terms & Conditions | `/terms` | 7 numbered sections |
+| Membership Agreement | `/membership-agreement` | Member obligations + Volunteer Data Processing Contract |
 | Articles of Association | `/articles-of-association` | Full legal document |
 | Auth Callback | `/auth/callback` | Handles PKCE codes for magic link and password reset |
 | Update Password | `/auth/update-password` | Landed on after password reset email link |
@@ -290,7 +296,8 @@ use the "Forgot password" flow to set one — `signUp()` will reject already-reg
 ## Development Conventions
 
 - TypeScript throughout; strict mode on
-- Component files: `components/Nav.tsx`, `components/Footer.tsx`
+- Component files: `components/Nav.tsx`, `components/Footer.tsx`, `components/Container.tsx`
+  - `components/Container.tsx` — shared layout primitive: `max-w-7xl mx-auto px-6 lg:px-8`; accepts `className` prop. Used in Nav, Footer, and every public page. **All new sections must use Container — never hardcode `px-[5%]` or `max-w-[1100px]` on sections.**
 - API routes: `app/api/<resource>/route.ts`
 - Lib files: `lib/stripe.ts`, `lib/supabase.ts`, `lib/supabase-browser.ts`, `lib/zoho.ts`, `lib/resend.ts`
   - `lib/supabase.ts` — service-role client (`getSupabase()`) + server auth client (`createServerSupabase()`); server-side only
@@ -339,7 +346,6 @@ Events: `checkout.session.completed`, `customer.subscription.deleted`, `invoice.
   requires director sign-off to disable before go-live
 - **Pure Baltic webhooks** — live Stripe account still has webhook endpoints pointing to
   `dev.purebaltic.co.uk`; pending board review and cutover to new endpoint
-- **Privacy policy page** — required before Stripe live keys are switched on (GDPR)
 - **Zoho CRM** — integration is a stub (logs only); implement when `ZOHO_*` env vars are set
 - **Resend email** — welcome email and intake form notifications are placeholders;
   implement when `RESEND_API_KEY` is set
@@ -463,9 +469,42 @@ Meetings (backed by `events` table, with Minutes/Recording/Slides buttons) and D
 creates `documents` table with RLS; seeds 14th Members Meeting and The Celtic Paradox paper.
 Google Drive URLs are stubbed — replace with real Drive share links before go-live.
 
+**Phase 8 — Public Pages, Brand Refresh + Layout System**
+
+Six new public pages: `/our-team` (4 director cards, initials avatars, dark green header bands),
+`/celtic-paradox` (research page, 3 callout cards, 4 download links, legal disclaimer),
+`/faq` (client component accordion, 18 Q&As across 4 sections), `/privacy` (11 GDPR sections),
+`/terms` (7 sections), `/membership-agreement` (member obligations + volunteer data processing contract).
+
+Navigation: The Celtic Paradox added to main links. About hover-dropdown added (Our Team, FAQs,
+Articles of Association). Gold active-page indicator; inactive links white/80 + hover white.
+Mobile hamburger: animated 3-line → X toggle, full dropdown with all links, auto-closes on route
+change. Footer: all `#` placeholder links replaced; Terms & Conditions and Membership Agreement added.
+
+Brand palette (Option C — Deep Forest Green):
+- `csl-dark` #1B4D2E, `csl-mid` #246038, `csl-light` #F8F6F1, `csl-gold` #C8A951
+- Playfair Display added via `next/font` (variable `--font-playfair`); h1/h2/h3 globally
+  set to serif in `globals.css`; body remains Inter
+- Nav: `bg-csl-dark` sticky, white links, gold active state, gold "Join CSL" CTA (h-11 logo),
+  white ghost "Member Login" button
+
+CSL logo: downloaded from `celticsupporters.net` → `public/images/csl-logo.png`; rendered via
+`next/image` at `h-11 w-auto` in Nav.
+
+Homepage redesign:
+- Hero: "Own Your Club. Shape Its Future." (Playfair Display h1), gold CTAs
+- Membership progress bar: `CURRENT_MEMBERS = 487`, `MEMBER_TARGET = 5000`, gold bar on dark
+  green, hardcoded (will wire to Stripe later)
+- Financial transparency strip: Members 487 + Shares Held 15,000 (hardcoded; Invested deferred)
+- Services, How We Work (gold arrows), Celtic Paradox teaser, Why It Matters, CTA all updated
+
+Layout system — `components/Container.tsx` (`max-w-7xl mx-auto px-6 lg:px-8`):
+Applied to Nav inner bar, Nav mobile menu, Footer, and all 10 public pages. Hero sections keep
+full-width coloured background; `<Container className="relative z-10">` wraps content so nav logo,
+hero headlines, body headings, card grids and footer all share the same left edge.
+
 ### Next — Go-Live Checklist
 - Configure Stripe Billing Portal in Dashboard > Billing > Customer portal settings
-- Privacy policy page (GDPR requirement before live Stripe keys)
 - Board sign-off on Pure Baltic webhook cutover
 - Disable "Build a platform or marketplace" in live Stripe account (director sign-off)
 - Switch `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` to live values
