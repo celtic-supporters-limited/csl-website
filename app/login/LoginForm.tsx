@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 
 type View = "password" | "forgot" | "magic" | "reset-sent" | "magic-sent";
@@ -28,7 +27,6 @@ export default function LoginForm({ redirectTo }: { redirectTo?: string }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const router = useRouter();
 
   function switchTo(next: View) {
     setLoading(false);
@@ -54,8 +52,7 @@ export default function LoginForm({ redirectTo }: { redirectTo?: string }) {
       return;
     }
 
-    router.refresh();
-    router.push(redirectTo ?? "/member-portal");
+    window.location.href = redirectTo ?? "/member-portal";
   }
 
   // ── Forgot password ────────────────────────────────────────────────────────
