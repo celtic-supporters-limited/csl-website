@@ -12,11 +12,11 @@ const navLinks = [
   { href: "/share-tracing", label: "Share Tracing" },
   { href: "/proxy", label: "Proxy Assignment" },
   { href: "/membership", label: "Membership" },
+  { href: "/our-team", label: "Our Team" },
   { href: "/celtic-paradox", label: "The Celtic Paradox" },
 ];
 
 const aboutLinks = [
-  { href: "/our-team", label: "Our Team" },
   { href: "/faq", label: "FAQs" },
   { href: "/articles-of-association", label: "Articles of Association" },
 ];

@@ -257,9 +257,9 @@ export default function HomePage() {
       </section>
 
       {/* WHY IT MATTERS */}
-      <section className="py-[72px]">
+      <section className="py-[72px]" id="about">
         <Container>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-[60px] items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-[60px] items-start">
             <div>
               <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
                 Why Now
@@ -274,17 +274,27 @@ export default function HomePage() {
                 strategic decisions are made without the checks and transparency that
                 supporters deserve.
               </p>
-              <p className="text-csl-muted leading-[1.75] mb-7">
+              <p className="text-csl-muted leading-[1.75] mb-6">
                 CSL believes that organised, informed shareholder engagement is the
                 legitimate and sustainable route to the governance improvements Celtic
                 needs to grow.
               </p>
+
+              <blockquote className="border-l-4 border-csl-gold bg-[#F8F6F1] px-6 py-5 rounded-r-xl mb-7">
+                <p className="text-csl-dark leading-[1.75] font-medium text-[0.97rem]">
+                  &ldquo;We are not a protest group. We are not about noise or division. We focus on governance, accountability and the long-term protection of the club.&rdquo;
+                </p>
+              </blockquote>
+
               <Link
                 href="/membership"
                 className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold bg-csl-dark text-csl-gold hover:bg-csl-mid transition-colors duration-200"
               >
                 Be Part of the Change
               </Link>
+              <p className="text-[0.82rem] text-csl-muted mt-4 italic">
+                Duncan Smillie, Chairman, Celtic Supporters Limited
+              </p>
             </div>
 
             <div className="bg-csl-light rounded-2xl p-10">
@@ -315,6 +325,123 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
+          </div>
+        </Container>
+      </section>
+
+      {/* FERGUS McCANN QUOTE */}
+      <section className="bg-csl-dark text-white py-[72px]">
+        <Container>
+          <blockquote className="max-w-[760px] mx-auto text-center">
+            <p className="font-serif text-[clamp(1.25rem,2.5vw,1.85rem)] leading-[1.6] italic mb-7 text-white">
+              &ldquo;As Celtic fans, we can be proud of ourselves and what we have achieved in our life, because what we have achieved has been achieved on our own merits&rdquo;
+            </p>
+            <cite className="text-[0.8rem] font-semibold tracking-[0.12em] text-white/55 uppercase not-italic">
+              Fergus McCann
+            </cite>
+          </blockquote>
+        </Container>
+      </section>
+
+      {/* ACTIVATE. ACCUMULATE. AGGREGATE. */}
+      <section className="py-[72px] bg-csl-light">
+        <Container>
+          <div className="max-w-[800px] mx-auto">
+            <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-10 text-center">
+              Activate. Accumulate. Aggregate.
+            </h2>
+            <ul className="space-y-4 list-none">
+              {[
+                {
+                  word: "Activate",
+                  body: "supporters and shareholders who care deeply about Celtic but want a constructive, credible way to engage.",
+                },
+                {
+                  word: "Accumulate",
+                  body: "share ownership and reconnect untraced shares back to their rightful owners.",
+                },
+                {
+                  word: "Aggregate",
+                  body: "voting power so supporters can act together with legitimacy and purpose.",
+                },
+              ].map(({ word, body }) => (
+                <li
+                  key={word}
+                  className="flex gap-6 items-start bg-white rounded-2xl px-8 py-6 border border-gray-200 shadow-sm"
+                >
+                  <span className="flex-shrink-0 font-serif font-extrabold text-[1.05rem] text-csl-dark w-[120px] pt-0.5">
+                    {word}
+                  </span>
+                  <p className="text-[0.95rem] text-csl-muted leading-[1.7]">{body}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Container>
+      </section>
+
+      {/* JOCK STEIN QUOTE */}
+      <section className="bg-csl-dark text-white py-[72px]">
+        <Container>
+          <blockquote className="max-w-[760px] mx-auto text-center">
+            <p className="font-serif text-[clamp(1.25rem,2.5vw,1.85rem)] leading-[1.6] italic mb-7 text-white">
+              &ldquo;Without fans who pay at the turnstile, football is nothing. Sometimes we are inclined to forget that.&rdquo;
+            </p>
+            <cite className="text-[0.8rem] font-semibold tracking-[0.12em] text-white/55 uppercase not-italic">
+              Jock Stein
+            </cite>
+          </blockquote>
+        </Container>
+      </section>
+
+      {/* LATEST UPDATES */}
+      <section className="py-[72px]">
+        <Container>
+          <div className="text-center mb-[52px]">
+            <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
+              News
+            </span>
+            <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight">
+              Latest Updates
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                title: "CSL Reaches 487 Members",
+                date: "May 2026",
+                summary: "Membership continues to grow as awareness of CSL's governance mission spreads.",
+                href: "#",
+              },
+              {
+                title: "14th Members Meeting - Minutes Published",
+                date: "April 2026",
+                summary: "Read the latest minutes from our members meeting in the Members Library.",
+                href: "#",
+              },
+              {
+                title: "The Celtic Paradox - Read Our Case for Change",
+                date: "March 2026",
+                summary: "Our flagship paper on Celtic's governance constraints is now publicly available.",
+                href: "/celtic-paradox",
+              },
+            ].map(({ title, date, summary, href }) => (
+              <Link
+                key={title}
+                href={href}
+                className="block bg-white rounded-2xl p-7 border border-gray-200 shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all duration-200 group"
+              >
+                <div className="text-[0.78rem] text-csl-muted uppercase tracking-wider mb-2.5">{date}</div>
+                <h3 className="font-bold text-[1.02rem] mb-2.5 group-hover:text-csl-dark transition-colors duration-150">
+                  {title}
+                </h3>
+                <p className="text-[0.88rem] text-csl-muted leading-[1.65]">{summary}</p>
+                <span className="inline-flex items-center gap-1 mt-5 text-[0.85rem] font-semibold text-csl-dark group-hover:gap-2 transition-all duration-200">
+                  Read more &rarr;
+                </span>
+              </Link>
+            ))}
           </div>
         </Container>
       </section>

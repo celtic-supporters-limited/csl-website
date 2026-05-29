@@ -34,11 +34,17 @@ export default function Footer() {
             <div className="font-extrabold text-[1.1rem] text-white mb-2.5">
               &#9752; Celtic Supporters Limited
             </div>
-            <p className="text-[0.85rem] leading-[1.7] mb-4">
+            <p className="text-[0.85rem] leading-[1.7] mb-3">
               A not-for-profit organisation committed to governance-led change at
               Celtic FC, representing the collective voice of thousands of
               shareholders and supporters.
             </p>
+            <a
+              href="mailto:info@celticsupporterslimited.net"
+              className="text-[0.83rem] text-white/60 hover:text-white transition-colors duration-150 block mb-4"
+            >
+              info@celticsupporterslimited.net
+            </a>
             <div className="flex gap-4">
               <a
                 href="https://x.com/celticCSL"
@@ -122,7 +128,7 @@ export default function Footer() {
             </h4>
             <ul className="space-y-2">
               <li>
-                <Link href="/our-team" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                <Link href="/#about" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
                   About CSL
                 </Link>
               </li>
