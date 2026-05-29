@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import Stripe from "stripe";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import { getStripe } from "@/lib/stripe";
 import PortalClient from "./PortalClient";
