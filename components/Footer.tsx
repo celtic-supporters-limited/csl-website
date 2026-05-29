@@ -110,11 +110,6 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/member-portal" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
-                  Meeting Recordings
-                </Link>
-              </li>
-              <li>
                 <Link href="/membership" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
                   Upgrade Subscription
                 </Link>
