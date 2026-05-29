@@ -52,9 +52,9 @@ export default function Nav() {
           <Image
             src="/images/csl-logo.png"
             alt="Celtic Supporters Limited"
-            width={40}
-            height={40}
-            className="h-10 w-auto object-contain"
+            width={44}
+            height={44}
+            className="h-11 w-auto object-contain"
             priority
           />
           <span className="font-serif font-semibold text-[1.1rem] text-white leading-tight hidden sm:block">
@@ -71,7 +71,7 @@ export default function Nav() {
                 className={`block text-[0.9rem] font-medium px-4 py-2 transition-colors duration-150 ${
                   pathname === href
                     ? "text-csl-gold"
-                    : "text-white/80 hover:text-csl-gold"
+                    : "text-white/80 hover:text-white"
                 }`}
               >
                 {label}
@@ -87,7 +87,7 @@ export default function Nav() {
           >
             <button
               className={`text-[0.9rem] font-medium px-4 py-2 flex items-center gap-1 transition-colors duration-150 ${
-                aboutActive ? "text-csl-gold" : "text-white/80 hover:text-csl-gold"
+                aboutActive ? "text-csl-gold" : "text-white/80 hover:text-white"
               }`}
               aria-expanded={aboutOpen}
               aria-haspopup="true"
@@ -129,7 +129,7 @@ export default function Nav() {
         <div className="flex items-center gap-2">
           <Link
             href={authed ? "/member-portal" : "/login"}
-            className="hidden lg:inline-flex items-center px-4 py-2 rounded-lg text-[0.88rem] font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors duration-200"
+            className="hidden lg:inline-flex items-center px-4 py-2 rounded-lg text-[0.88rem] font-semibold border border-white text-white bg-transparent hover:bg-csl-mid transition-colors duration-200"
           >
             {authed ? "Member Portal" : "Member Login"}
           </Link>
@@ -203,7 +203,7 @@ export default function Nav() {
           <div className="mt-4 pt-3 border-t border-white/10 flex flex-col gap-2.5">
             <Link
               href={authed ? "/member-portal" : "/login"}
-              className="block text-center px-4 py-2.5 rounded-lg text-[0.92rem] font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors duration-200"
+              className="block text-center px-4 py-2.5 rounded-lg text-[0.92rem] font-semibold border border-white text-white bg-transparent hover:bg-csl-mid transition-colors duration-200"
             >
               {authed ? "Member Portal" : "Member Login"}
             </Link>
