@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
 
         const planName = derivePlanName(session);
 
-        const { data: memberData, error: upsertError } = await db
+        const { error: upsertError } = await db
           .from("members")
           .upsert(
             {
@@ -119,9 +119,7 @@ export async function POST(req: NextRequest) {
               status: "active",
             },
             { onConflict: "email" }
-          )
-          .select("id")
-          .single();
+          );
 
         if (upsertError) {
           console.error("[stripe-webhook] Supabase upsert error:", upsertError.message);
@@ -129,23 +127,6 @@ export async function POST(req: NextRequest) {
         }
 
         console.log(`[stripe-webhook] Member upserted: ${email} plan=${planName}`);
-
-        // Insert payment record
-        const paymentIntentId =
-          typeof session.payment_intent === "string" ? session.payment_intent : null;
-
-        const { error: paymentError } = await db.from("payments").insert({
-          member_id: memberData.id,
-          stripe_payment_intent_id: paymentIntentId,
-          amount_pence: session.amount_total ?? 0,
-          plan_name: planName,
-          paid_at: new Date().toISOString(),
-          status: "completed",
-        });
-
-        if (paymentError) {
-          console.error("[stripe-webhook] Payment insert error:", paymentError.message);
-        }
 
         break;
       }

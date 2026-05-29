@@ -78,16 +78,34 @@ export default async function MemberPortalPage() {
     events = eventsRes.data ?? [];
     cases = casesRes.data ?? [];
 
-    // Batch 2 — requires member.id and stripe_subscription_id from batch 1
+    // Batch 2 — requires stripe_customer_id and stripe_subscription_id from batch 1
     if (member) {
-      const [paymentsRes, subResult] = await Promise.all([
-        db
-          .from("payments")
-          .select(
-            "id, stripe_payment_intent_id, amount_pence, plan_name, paid_at, status"
-          )
-          .eq("member_id", member.id)
-          .order("paid_at", { ascending: false }),
+      const [chargesResult, subResult] = await Promise.all([
+        member.stripe_customer_id
+          ? getStripe()
+              .charges.list({ customer: member.stripe_customer_id, limit: 24 })
+              .then((list) =>
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (list.data as any[]).map((charge) => ({
+                  id: charge.id as string,
+                  stripe_payment_intent_id: charge.id as string,
+                  amount_pence: charge.amount as number,
+                  plan_name:
+                    (charge.description as string | null) ||
+                    (charge.metadata?.plan_name as string | undefined) ||
+                    "Membership",
+                  paid_at: new Date(
+                    (charge.created as number) * 1000
+                  ).toISOString(),
+                  status:
+                    charge.status === "succeeded" ? "completed" : (charge.status as string),
+                }))
+              )
+              .catch((err) => {
+                console.error("[member-portal] Stripe charges fetch error:", err);
+                return [];
+              })
+          : Promise.resolve([]),
 
         member.stripe_subscription_id
           ? getStripe()
@@ -137,7 +155,7 @@ export default async function MemberPortalPage() {
           : Promise.resolve(null),
       ]);
 
-      payments = paymentsRes.data ?? [];
+      payments = chargesResult;
       stripeSub = subResult;
     }
   } catch {
