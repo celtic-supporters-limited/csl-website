@@ -126,7 +126,7 @@ export default function Nav() {
         </ul>
 
         {/* RIGHT ACTIONS */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-center">
           <Link
             href={authed ? "/member-portal" : "/login"}
             className="hidden lg:inline-flex items-center px-4 py-2 rounded-lg text-[0.88rem] font-semibold border border-white text-white bg-transparent hover:bg-csl-mid transition-colors duration-200"

@@ -8,10 +8,11 @@ export default function HomePage() {
   return (
     <>
       {/* HERO */}
-      <section className="relative overflow-hidden bg-csl-dark text-white px-[5%] py-[90px] pb-20">
+      <section className="relative overflow-hidden bg-csl-dark text-white py-[90px] pb-20">
         <div className="absolute -top-[60px] -right-[60px] w-[500px] h-[500px] bg-white/[0.04] rounded-full" />
         <div className="absolute -bottom-[100px] left-[20%] w-[300px] h-[300px] bg-white/[0.03] rounded-full" />
-        <div className="relative z-10 max-w-[680px]">
+        <div className="max-w-[1100px] mx-auto px-5 relative z-10">
+        <div className="max-w-[680px]">
           <div className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 px-3.5 py-1.5 rounded-full text-[0.82rem] font-medium text-white/85 mb-5">
             Governance-Led Change at Celtic FC
           </div>
@@ -38,6 +39,7 @@ export default function HomePage() {
             </Link>
           </div>
         </div>
+        </div>
       </section>
 
       {/* MEMBERSHIP PROGRESS + FINANCIAL TRANSPARENCY */}
@@ -46,13 +48,13 @@ export default function HomePage() {
 
           {/* Progress bar */}
           <div className="mb-9 pb-9 border-b border-white/10">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+            <div className="flex flex-col sm:flex-row items-center gap-5 py-5">
               <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-baseline mb-2.5">
+                <div className="flex justify-between items-center mb-2.5">
                   <span className="text-white/85 text-[0.9rem]">
                     {CURRENT_MEMBERS} members and growing &mdash; help us reach 5,000
                   </span>
-                  <span className="text-csl-gold font-bold text-[0.85rem] tabular-nums ml-4 flex-shrink-0">
+                  <span className="text-gray-300 font-medium text-[0.85rem] tabular-nums ml-4 flex-shrink-0">
                     {CURRENT_MEMBERS.toLocaleString()} / {MEMBER_TARGET.toLocaleString()}
                   </span>
                 </div>
@@ -73,7 +75,7 @@ export default function HomePage() {
           </div>
 
           {/* Financial transparency stats */}
-          <div className="flex justify-center gap-12 sm:gap-16 flex-wrap">
+          <div className="w-full flex justify-center gap-16 flex-wrap">
             {[
               { number: "487",    label: "Members" },
               { number: "15,000", label: "Shares Held" },
