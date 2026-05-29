@@ -1,20 +1,25 @@
 import Link from "next/link";
 
+const CURRENT_MEMBERS = 47;
+const MEMBER_TARGET = 5000;
+// Minimum visual width so a tiny early-stage bar is still visible
+const progressPct = Math.max((CURRENT_MEMBERS / MEMBER_TARGET) * 100, 2).toFixed(2);
+
 export default function HomePage() {
   return (
     <>
       {/* HERO */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-csl-dark to-csl-mid text-white px-[5%] py-[90px] pb-20">
+      <section className="relative overflow-hidden bg-csl-dark text-white px-[5%] py-[90px] pb-20">
         <div className="absolute -top-[60px] -right-[60px] w-[500px] h-[500px] bg-white/[0.04] rounded-full" />
         <div className="absolute -bottom-[100px] left-[20%] w-[300px] h-[300px] bg-white/[0.03] rounded-full" />
         <div className="relative z-10 max-w-[680px]">
-          <div className="inline-flex items-center gap-1.5 bg-white/15 border border-white/25 px-3.5 py-1.5 rounded-full text-[0.82rem] font-medium text-white/90 mb-5 backdrop-blur-sm">
+          <div className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 px-3.5 py-1.5 rounded-full text-[0.82rem] font-medium text-white/85 mb-5">
             Governance-Led Change at Celtic FC
           </div>
-          <h1 className="text-[clamp(2rem,4vw,3.2rem)] font-extrabold leading-[1.15] tracking-tight mb-5">
-            Your Voice. Your Club.<br />Your Celtic.
+          <h1 className="text-[clamp(2rem,4vw,3.4rem)] font-extrabold leading-[1.12] tracking-tight mb-5">
+            Own Your Club.<br />Shape Its Future.
           </h1>
-          <p className="text-[1.1rem] text-white/85 mb-9 max-w-[540px] leading-[1.7]">
+          <p className="text-[1.1rem] text-white/80 mb-9 max-w-[540px] leading-[1.75]">
             Celtic Supporters Limited is a shareholder-led organisation committed to
             responsible ownership, transparent governance, and a Celtic FC that works
             for everyone who loves the club.
@@ -22,13 +27,13 @@ export default function HomePage() {
           <div className="flex flex-wrap gap-3.5">
             <Link
               href="/membership"
-              className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold bg-white text-csl-dark hover:bg-csl-light transition-colors duration-200"
+              className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold bg-csl-gold text-gray-900 hover:brightness-105 transition-all duration-200 shadow-sm"
             >
               Join from &pound;10/month
             </Link>
             <Link
               href="/share-tracing"
-              className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold border border-white/50 text-white hover:bg-white/10 transition-colors duration-200"
+              className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors duration-200"
             >
               Trace Your Shares
             </Link>
@@ -36,26 +41,57 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* STATS BAR */}
-      <div className="bg-white border-b border-gray-200 shadow-sm px-[5%] py-7">
-        <div className="max-w-[1100px] mx-auto flex justify-center gap-12 flex-wrap">
-          {[
-            { number: "484+", label: "Active Members" },
-            { number: "37,000", label: "Shareholders to Reach" },
-            { number: "128", label: "Engagement Cases Open" },
-            { number: "5,000", label: "Membership Target" },
-          ].map(({ number, label }) => (
-            <div key={label} className="text-center">
-              <div className="text-[2rem] font-extrabold text-csl-dark leading-none">
-                {number}
+      {/* MEMBERSHIP PROGRESS + FINANCIAL TRANSPARENCY */}
+      <section className="bg-csl-dark border-t border-white/10 px-[5%] py-10">
+        <div className="max-w-[1100px] mx-auto">
+
+          {/* Progress bar */}
+          <div className="mb-9 pb-9 border-b border-white/10">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-baseline mb-2.5">
+                  <span className="text-white/85 text-[0.9rem]">
+                    {CURRENT_MEMBERS} members and growing &mdash; help us reach 5,000
+                  </span>
+                  <span className="text-csl-gold font-bold text-[0.85rem] tabular-nums ml-4 flex-shrink-0">
+                    {CURRENT_MEMBERS.toLocaleString()} / {MEMBER_TARGET.toLocaleString()}
+                  </span>
+                </div>
+                <div className="bg-white/10 rounded-full h-2.5 w-full overflow-hidden">
+                  <div
+                    className="bg-csl-gold h-full rounded-full transition-all duration-700"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
               </div>
-              <div className="text-[0.8rem] text-gray-500 mt-1 uppercase tracking-wider font-medium">
-                {label}
-              </div>
+              <Link
+                href="/membership"
+                className="flex-shrink-0 inline-flex items-center px-6 py-2.5 rounded-lg text-[0.88rem] font-semibold bg-csl-gold text-gray-900 hover:brightness-105 transition-all duration-200"
+              >
+                Become a Member
+              </Link>
             </div>
-          ))}
+          </div>
+
+          {/* Financial transparency stats */}
+          <div className="flex justify-center gap-12 sm:gap-16 flex-wrap">
+            {[
+              { number: "1,247", label: "Shares Held" },
+              { number: "47",    label: "Members" },
+              { number: "£12,470", label: "Invested" },
+            ].map(({ number, label }) => (
+              <div key={label} className="text-center">
+                <div className="text-[2rem] font-extrabold text-csl-gold leading-none">
+                  {number}
+                </div>
+                <div className="text-[0.78rem] text-white/55 mt-1.5 uppercase tracking-widest font-medium">
+                  {label}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* SERVICES */}
       <section className="px-[5%] py-[72px]">
@@ -67,7 +103,7 @@ export default function HomePage() {
             <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-3.5">
               Three Ways CSL Drives Change
             </h2>
-            <p className="text-[1.05rem] text-gray-500 max-w-[600px] mx-auto">
+            <p className="text-[1.05rem] text-csl-muted max-w-[600px] mx-auto">
               We work on behalf of Celtic shareholders and supporters to bring about
               genuine governance reform at Celtic FC.
             </p>
@@ -78,7 +114,7 @@ export default function HomePage() {
               {
                 icon: "🔍",
                 title: "Share Tracing",
-                body: "Thousands of Celtic shares are untraceable - certificates lost, estates unsettled, addresses changed. We help shareholders reunite with their shares and decide what to do with them.",
+                body: "Thousands of Celtic shares are untraceable — certificates lost, estates unsettled, addresses changed. We help shareholders reunite with their shares and decide what to do with them.",
                 link: "/share-tracing",
                 cta: "Start Tracing",
               },
@@ -92,7 +128,7 @@ export default function HomePage() {
               {
                 icon: "☘",
                 title: "CSL Membership",
-                body: "Join thousands of supporters funding CSL's work. Monthly, annual, or lifetime membership. Your subscription directly funds share acquisition and our governance campaign.",
+                body: "Join supporters funding CSL's work. Monthly, annual, or lifetime membership. Your subscription directly funds share acquisition and our governance campaign.",
                 link: "/membership",
                 cta: "Join from £10/month",
               },
@@ -105,7 +141,7 @@ export default function HomePage() {
                   {icon}
                 </div>
                 <h3 className="text-[1.1rem] font-bold mb-2.5">{title}</h3>
-                <p className="text-[0.92rem] text-gray-500 leading-[1.65]">{body}</p>
+                <p className="text-[0.92rem] text-csl-muted leading-[1.65]">{body}</p>
                 <Link
                   href={link}
                   className="inline-flex items-center gap-1.5 mt-5 text-[0.88rem] font-semibold text-csl-dark hover:gap-2.5 transition-all duration-200"
@@ -119,16 +155,16 @@ export default function HomePage() {
       </section>
 
       {/* HOW WE WORK */}
-      <section className="bg-gray-50 px-[5%] py-[72px]">
+      <section className="bg-csl-light px-[5%] py-[72px]">
         <div className="max-w-[1100px] mx-auto">
           <div className="text-center mb-[52px]">
-            <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
+            <span className="inline-block bg-white text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3 border border-gray-200">
               Our Approach
             </span>
             <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-3.5">
               Shareholder Influence Through Collective Action
             </h2>
-            <p className="text-[1.05rem] text-gray-500 max-w-[600px] mx-auto">
+            <p className="text-[1.05rem] text-csl-muted max-w-[600px] mx-auto">
               Celtic PLC has over 37,000 registered shareholders. CSL coordinates their
               voice to create real governance accountability.
             </p>
@@ -162,14 +198,60 @@ export default function HomePage() {
                   {num}
                 </div>
                 <h4 className="text-base font-bold mb-2">{title}</h4>
-                <p className="text-[0.88rem] text-gray-500">{body}</p>
+                <p className="text-[0.88rem] text-csl-muted">{body}</p>
                 {i < arr.length - 1 && (
-                  <span className="hidden lg:block absolute right-[-12px] top-1/2 -translate-y-1/2 text-csl-dark text-[1.4rem] font-bold">
+                  <span className="hidden lg:block absolute right-[-12px] top-1/2 -translate-y-1/2 text-csl-gold text-[1.4rem] font-bold">
                     &rarr;
                   </span>
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* THE CELTIC PARADOX TEASER */}
+      <section className="bg-csl-dark text-white px-[5%] py-[72px]">
+        <div className="max-w-[1100px] mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 items-center">
+            <div className="lg:col-span-3">
+              <span className="inline-block border border-csl-gold/40 text-csl-gold text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-5">
+                New Research
+              </span>
+              <h2 className="text-[clamp(1.6rem,3vw,2.4rem)] font-extrabold tracking-tight mb-5">
+                The Celtic Paradox
+              </h2>
+              <p className="text-white/80 text-[1.05rem] leading-[1.8] mb-7 max-w-[520px]">
+                65 pages of shareholder analysis built on Celtic PLC&apos;s own audited accounts
+                and public regulatory records. A governance case for a better-run Celtic &mdash;
+                not a takeover bid, not regime change.
+              </p>
+              <Link
+                href="/celtic-paradox"
+                className="inline-flex items-center gap-2 text-csl-gold font-semibold text-[0.97rem] hover:gap-3.5 transition-all duration-200 group"
+              >
+                Read the Research
+                <span className="transition-transform duration-200 group-hover:translate-x-1">&rarr;</span>
+              </Link>
+            </div>
+
+            <div className="lg:col-span-2 grid grid-cols-1 gap-3">
+              {[
+                { num: "65",  label: "Pages of Analysis" },
+                { num: "5",   label: "Financial Years Reviewed" },
+                { num: "4",   label: "Downloads Available" },
+              ].map(({ num, label }) => (
+                <div
+                  key={label}
+                  className="bg-white/5 border border-white/10 rounded-xl px-6 py-4 flex items-center gap-5"
+                >
+                  <div className="text-csl-gold font-extrabold text-[1.9rem] leading-none w-14 flex-shrink-0">
+                    {num}
+                  </div>
+                  <div className="text-white/70 text-[0.9rem]">{label}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -184,21 +266,21 @@ export default function HomePage() {
             <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mt-3 mb-4">
               Celtic is Constrained by Its Own Governance Model
             </h2>
-            <p className="text-gray-500 leading-[1.75] mb-4">
+            <p className="text-csl-muted leading-[1.75] mb-4">
               Celtic FC is one of the world&apos;s most iconic clubs, yet its operating model
               is constrained by a governance structure that limits its ability to compete
               at the highest level. Without meaningful shareholder accountability,
               strategic decisions are made without the checks and transparency that
               supporters deserve.
             </p>
-            <p className="text-gray-500 leading-[1.75] mb-7">
+            <p className="text-csl-muted leading-[1.75] mb-7">
               CSL believes that organised, informed shareholder engagement is the
               legitimate and sustainable route to the governance improvements Celtic
               needs to grow.
             </p>
             <Link
               href="/membership"
-              className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200"
+              className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold bg-csl-dark text-csl-gold hover:bg-csl-mid transition-colors duration-200"
             >
               Be Part of the Change
             </Link>
@@ -209,16 +291,16 @@ export default function HomePage() {
               Membership Growth
             </h3>
             {[
-              { month: "March 2026", count: "398 active", pct: "80%" },
-              { month: "April 2026", count: "444 active", pct: "88%" },
-              { month: "May 2026", count: "484 active", pct: "97%" },
+              { month: "March 2026",  count: "398 active", pct: "80%" },
+              { month: "April 2026",  count: "444 active", pct: "88%" },
+              { month: "May 2026",    count: "484 active", pct: "97%" },
             ].map(({ month, count, pct }) => (
               <div key={month} className="mb-4">
                 <div className="flex justify-between text-[0.85rem] mb-1.5">
                   <span>{month}</span>
                   <span className="font-bold">{count}</span>
                 </div>
-                <div className="bg-csl-dark/15 rounded-md h-2.5">
+                <div className="bg-csl-dark/10 rounded-md h-2.5">
                   <div
                     className="bg-csl-dark h-full rounded-md"
                     style={{ width: pct }}
@@ -226,12 +308,12 @@ export default function HomePage() {
                 </div>
               </div>
             ))}
-            <div className="mt-6 pt-5 border-t border-csl-dark/20">
+            <div className="mt-6 pt-5 border-t border-csl-dark/15">
               <div className="text-[0.85rem] text-csl-dark font-semibold mb-1">
                 Target: 5,000 Members
               </div>
-              <div className="text-[0.8rem] text-gray-500">
-                Help us get there - every subscription funds share acquisition.
+              <div className="text-[0.8rem] text-csl-muted">
+                Help us get there &mdash; every subscription funds share acquisition.
               </div>
             </div>
           </div>
@@ -241,22 +323,22 @@ export default function HomePage() {
       {/* CTA */}
       <div className="bg-gradient-to-br from-csl-dark to-csl-mid text-white text-center px-[5%] py-20">
         <h2 className="text-[clamp(1.6rem,3vw,2.4rem)] font-extrabold mb-4">
-          Join 484 Supporters Already Making a Difference
+          Join the Movement for a Better-Governed Celtic
         </h2>
-        <p className="text-[1.05rem] text-white/85 mb-9 max-w-[560px] mx-auto">
+        <p className="text-[1.05rem] text-white/80 mb-9 max-w-[560px] mx-auto">
           For less than the price of a match-day programme each month, you can be part
           of a movement that gives Celtic fans a genuine voice in how their club is run.
         </p>
         <div className="flex flex-wrap gap-3.5 justify-center">
           <Link
             href="/membership"
-            className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold bg-white text-csl-dark hover:bg-csl-light transition-colors duration-200"
+            className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold bg-csl-gold text-gray-900 hover:brightness-105 transition-all duration-200 shadow-sm"
           >
             Join CSL Today
           </Link>
           <Link
             href="/share-tracing"
-            className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold border border-white/50 text-white hover:bg-white/10 transition-colors duration-200"
+            className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors duration-200"
           >
             Trace Your Shares
           </Link>

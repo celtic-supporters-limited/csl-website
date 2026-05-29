@@ -38,11 +38,11 @@ export default function Nav() {
   const aboutActive = aboutLinks.some((l) => pathname === l.href);
 
   return (
-    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+    <nav className="sticky top-0 z-50 bg-csl-dark border-b border-white/10 shadow-md">
       <div className="max-w-[1100px] mx-auto px-5 h-[68px] flex items-center justify-between">
         <Link
           href="/"
-          className="flex items-center gap-2.5 font-extrabold text-xl text-csl-dark"
+          className="flex items-center gap-2.5 font-extrabold text-xl text-white"
         >
           <span className="text-2xl">&#9752;</span>
           Celtic Supporters Limited
@@ -55,8 +55,8 @@ export default function Nav() {
                 href={href}
                 className={`text-[0.85rem] font-medium pb-1 border-b-2 transition-colors duration-200 ${
                   pathname === href
-                    ? "text-csl-dark border-csl-dark"
-                    : "text-gray-600 border-transparent hover:text-csl-dark hover:border-csl-dark"
+                    ? "text-white border-csl-gold"
+                    : "text-white/75 border-transparent hover:text-white hover:border-white/40"
                 }`}
               >
                 {label}
@@ -73,8 +73,8 @@ export default function Nav() {
             <button
               className={`text-[0.85rem] font-medium pb-1 border-b-2 transition-colors duration-200 flex items-center gap-1 ${
                 aboutActive
-                  ? "text-csl-dark border-csl-dark"
-                  : "text-gray-600 border-transparent hover:text-csl-dark hover:border-csl-dark"
+                  ? "text-white border-csl-gold"
+                  : "text-white/75 border-transparent hover:text-white hover:border-white/40"
               }`}
               aria-expanded={aboutOpen}
               aria-haspopup="true"
@@ -100,7 +100,7 @@ export default function Nav() {
                       className={`block px-4 py-2.5 text-[0.85rem] transition-colors duration-150 ${
                         pathname === href
                           ? "text-csl-dark font-semibold bg-csl-light"
-                          : "text-gray-600 hover:text-csl-dark hover:bg-gray-50"
+                          : "text-gray-700 hover:text-csl-dark hover:bg-gray-50"
                       }`}
                     >
                       {label}
@@ -115,13 +115,13 @@ export default function Nav() {
         <div className="flex items-center gap-2.5">
           <Link
             href={authed ? "/member-portal" : "/login"}
-            className="hidden sm:inline-flex items-center px-5 py-2 rounded-lg text-[0.88rem] font-semibold border-[1.5px] border-csl-dark text-csl-dark hover:bg-csl-light transition-colors duration-200"
+            className="hidden sm:inline-flex items-center px-5 py-2 rounded-lg text-[0.88rem] font-semibold border-[1.5px] border-white/50 text-white hover:bg-white/10 transition-colors duration-200"
           >
             {authed ? "Member Portal" : "Member Login"}
           </Link>
           <Link
             href="/membership"
-            className="inline-flex items-center px-5 py-2 rounded-lg text-[0.88rem] font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-all duration-200 hover:-translate-y-px shadow-sm hover:shadow-md"
+            className="inline-flex items-center px-5 py-2 rounded-lg text-[0.88rem] font-semibold bg-csl-gold text-gray-900 hover:brightness-105 transition-all duration-200 shadow-sm"
           >
             Join CSL
           </Link>

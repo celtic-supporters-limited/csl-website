@@ -9,9 +9,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        "csl-dark": "#1D6130",
-        "csl-mid": "#2E7D4F",
-        "csl-light": "#E8F5EE",
+        "csl-dark":    "#1B4D2E",
+        "csl-mid":     "#246038",
+        "csl-light":   "#F8F6F1",
+        "csl-gold":    "#C8A951",
+        "csl-surface": "#F8F6F1",
+        "csl-text":    "#1A1A1A",
+        "csl-muted":   "#6B7280",
+      },
+      fontFamily: {
+        serif: ["var(--font-playfair)", "Georgia", "Times New Roman", "serif"],
       },
     },
   },
