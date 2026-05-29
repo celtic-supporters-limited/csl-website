@@ -93,7 +93,7 @@ The Celtic FC crest must NOT appear — CSL is a separate legal entity. Text-bas
 | Auth Callback | `/auth/callback` | Handles PKCE codes for magic link and password reset |
 | Update Password | `/auth/update-password` | Landed on after password reset email link |
 
-**Member portal tabs:** Dashboard, Subscription, Payments, Recordings Library,
+**Member portal tabs:** Dashboard, Subscription, Payments, Members Library (sub-tabs: Meetings, Documents),
 My Enquiries, Edit Profile.
 
 ## Stripe Membership Tiers
@@ -180,13 +180,33 @@ shareholder_cases (
 )
 
 -- Meeting recordings and governance briefings
+-- Migration: sql/add-members-library.sql adds minutes_url TEXT, description TEXT
 events (
   id            uuid primary key default gen_random_uuid(),
   title         text,
   event_date    date,
+  description   text,
   recording_url text,
   slides_url    text,
+  minutes_url   text,
   members_only  boolean default true
+)
+
+-- Member-only governance documents (papers, reports, meeting minutes, notices)
+-- Migration: sql/add-members-library.sql
+-- File storage: Google Drive URLs in file_url — currently stubbed (STUB_ prefix)
+--   CSL Google Drive account to be created before go-live; replace stub URLs with real ones
+-- To publish a new document: INSERT with is_published=true and real Google Drive URL
+-- Admin self-service UI for Martin: future phase
+documents (
+  id            uuid primary key default gen_random_uuid(),
+  title         text not null,
+  description   text,
+  document_type text not null default 'paper',  -- 'paper' | 'minutes' | 'report' | 'notice'
+  published_at  timestamptz not null default now(),
+  file_url      text not null,
+  is_published  boolean not null default false,
+  created_at    timestamptz not null default now()
 )
 ```
 
@@ -383,9 +403,11 @@ Auth: email + password primary (`signInWithPassword`), magic link fallback (`sig
 `/auth/update-password` — `updateUser({ password })` after clicking reset link.
 `/auth/callback` handles PKCE codes for magic link and password reset via same route.
 `middleware.ts` protects `/member-portal`, refreshes session tokens on every request.
-Portal (`app/member-portal/`) — server component fetches member + events + cases + payments +
-live Stripe subscription data (two-batch fetch); passes to `PortalClient.tsx`. Portal has
-six tabs: Dashboard, Subscription, Payments, Recordings Library, My Enquiries, Edit Profile.
+Portal (`app/member-portal/`) — server component fetches member + events + cases + documents +
+live Stripe subscription data; passes to `PortalClient.tsx`. Portal has
+six tabs: Dashboard, Subscription, Payments, Members Library (Meetings + Documents sub-tabs),
+My Enquiries, Edit Profile. Payments sourced from `stripe.charges.list`; Supabase payments
+table no longer used by the portal.
 `lib/supabase-browser.ts` exports `createBrowserSupabase()` (anon key, client components).
 `lib/supabase.ts` gains `createServerSupabase()` (anon key + cookie adapter, server only).
 `sql/phase-5-schema.sql` — `members`, `events` tables + RLS.
@@ -409,12 +431,26 @@ Payments tab: table of paid_at, plan_name, amount, payment intent ref (last 8 ch
 `POST /api/webhooks/stripe` verifies Stripe signature (returns 400 on failure).
 `checkout.session.completed`: retrieves full session with expanded line_items + customer;
 derives `membership_tier` and `plan_name` from mode/interval/unit_amount; upserts `members`
-row (including `stripe_subscription_id`, `amount_pence`); inserts row into `payments` table.
+row (including `stripe_subscription_id`, `amount_pence`). Payments table INSERT removed —
+portal now reads payment history directly from `stripe.charges.list`.
 `customer.subscription.deleted`: sets `status = 'cancelled'` by `stripe_customer_id`.
 `invoice.payment_failed`: sets `status = 'payment_failed'` by `stripe_customer_id`.
 Handler errors return 200 to prevent Stripe retrying transient failures.
 Required env var: `STRIPE_WEBHOOK_SECRET`.
 Webhook endpoint: `https://csl-website-ten.vercel.app/api/webhooks/stripe`.
+
+**Phase 7 — Members Library + portal fixes**
+Nav button swaps "Member Login" / "Member Portal" based on live Supabase session
+(`onAuthStateChange` in `Nav.tsx`). Post-auth redirect uses `window.location.href` to
+ensure middleware sees the session cookie before navigation. Stripe `current_period_end`
+field corrected for dahlia API (moved to `items[0].current_period_end`). Payments tab
+now reads from `stripe.charges.list`; generic Stripe descriptions fall back to
+`member.plan_name`. Recordings Library replaced by Members Library with two sub-tabs:
+Meetings (backed by `events` table, with Minutes/Recording/Slides buttons) and Documents
+(backed by new `documents` table). STUB_ URLs render as disabled "Coming soon" buttons.
+`sql/add-members-library.sql` extends `events` with `minutes_url` and `description`;
+creates `documents` table with RLS; seeds 14th Members Meeting and The Celtic Paradox paper.
+Google Drive URLs are stubbed — replace with real Drive share links before go-live.
 
 ### Next — Go-Live Checklist
 - Configure Stripe Billing Portal in Dashboard > Billing > Customer portal settings
