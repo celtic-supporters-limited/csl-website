@@ -1,9 +1,8 @@
 import Link from "next/link";
 
-const CURRENT_MEMBERS = 47;
+const CURRENT_MEMBERS = 487;
 const MEMBER_TARGET = 5000;
-// Minimum visual width so a tiny early-stage bar is still visible
-const progressPct = Math.max((CURRENT_MEMBERS / MEMBER_TARGET) * 100, 2).toFixed(2);
+const progressPct = ((CURRENT_MEMBERS / MEMBER_TARGET) * 100).toFixed(2);
 
 export default function HomePage() {
   return (
@@ -76,9 +75,8 @@ export default function HomePage() {
           {/* Financial transparency stats */}
           <div className="flex justify-center gap-12 sm:gap-16 flex-wrap">
             {[
-              { number: "1,247", label: "Shares Held" },
-              { number: "47",    label: "Members" },
-              { number: "£12,470", label: "Invested" },
+              { number: "487",    label: "Members" },
+              { number: "15,000", label: "Shares Held" },
             ].map(({ number, label }) => (
               <div key={label} className="text-center">
                 <div className="text-[2rem] font-extrabold text-csl-gold leading-none">
