@@ -1,8 +1,16 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import Stripe from "stripe";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
+import { getStripe } from "@/lib/stripe";
 import PortalClient from "./PortalClient";
-import type { Member, PortalEvent, PortalCase } from "./PortalClient";
+import type {
+  Member,
+  PortalEvent,
+  PortalCase,
+  PortalPayment,
+  StripeSubData,
+} from "./PortalClient";
 
 export const metadata: Metadata = {
   title: "Member Portal | Celtic Supporters Limited",
@@ -10,7 +18,6 @@ export const metadata: Metadata = {
 };
 
 export default async function MemberPortalPage() {
-  // Check Supabase is configured
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
     !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -23,16 +30,19 @@ export default async function MemberPortalPage() {
             Supabase not configured
           </h1>
           <p className="text-gray-500 text-sm">
-            Set <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-            <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in
-            your environment to enable the member portal.
+            Set{" "}
+            <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_SUPABASE_URL</code>{" "}
+            and{" "}
+            <code className="bg-gray-100 px-1 rounded">
+              NEXT_PUBLIC_SUPABASE_ANON_KEY
+            </code>{" "}
+            in your environment to enable the member portal.
           </p>
         </div>
       </main>
     );
   }
 
-  // Verify authentication (middleware also guards this route)
   const authClient = createServerSupabase();
   const {
     data: { user },
@@ -42,13 +52,16 @@ export default async function MemberPortalPage() {
     redirect("/login?redirectTo=/member-portal");
   }
 
-  // Fetch portal data using service role (server-side, trusted)
   let member: Member | null = null;
   let events: PortalEvent[] = [];
   let cases: PortalCase[] = [];
+  let payments: PortalPayment[] = [];
+  let stripeSub: StripeSubData | null = null;
 
   try {
     const db = getSupabase();
+
+    // Batch 1 — member record, events, cases (parallel, independent)
     const [memberRes, eventsRes, casesRes] = await Promise.all([
       db.from("members").select("*").eq("email", user.email).maybeSingle(),
       db
@@ -61,11 +74,62 @@ export default async function MemberPortalPage() {
         .eq("email", user.email)
         .order("created_at", { ascending: false }),
     ]);
+
     member = memberRes.data ?? null;
     events = eventsRes.data ?? [];
     cases = casesRes.data ?? [];
+
+    // Batch 2 — requires member.id and stripe_subscription_id from batch 1
+    if (member) {
+      const [paymentsRes, subResult] = await Promise.all([
+        db
+          .from("payments")
+          .select(
+            "id, stripe_payment_intent_id, amount_pence, plan_name, paid_at, status"
+          )
+          .eq("member_id", member.id)
+          .order("paid_at", { ascending: false }),
+
+        member.stripe_subscription_id
+          ? getStripe()
+              .subscriptions.retrieve(member.stripe_subscription_id, {
+                expand: ["default_payment_method"],
+              })
+              .then((sub): StripeSubData => {
+                // The Stripe SDK v22 with the dahlia API version wraps responses
+                // in Response<T> and has restructured some subscription fields.
+                // Using any here preserves runtime correctness while avoiding
+                // SDK type-version drift. The return type is still strict.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const s = sub as any;
+                const card = s.default_payment_method?.card ?? null;
+                return {
+                  status: s.status,
+                  current_period_end: s.current_period_end,
+                  cancel_at_period_end: s.cancel_at_period_end,
+                  next_amount_pence:
+                    s.items?.data?.[0]?.price?.unit_amount ?? null,
+                  card_brand: card?.brand ?? null,
+                  card_last4: card?.last4 ?? null,
+                  card_exp_month: card?.exp_month ?? null,
+                  card_exp_year: card?.exp_year ?? null,
+                };
+              })
+              .catch((err) => {
+                console.error(
+                  "[member-portal] Stripe subscription fetch error:",
+                  err
+                );
+                return null;
+              })
+          : Promise.resolve(null),
+      ]);
+
+      payments = paymentsRes.data ?? [];
+      stripeSub = subResult;
+    }
   } catch {
-    // Supabase service role env var missing — show data-unavailable state
+    // Service role env var missing or Supabase unreachable — render with null data
   }
 
   return (
@@ -74,6 +138,8 @@ export default async function MemberPortalPage() {
       member={member}
       events={events}
       cases={cases}
+      payments={payments}
+      stripeSub={stripeSub}
     />
   );
 }

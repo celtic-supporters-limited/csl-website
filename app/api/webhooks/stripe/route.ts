@@ -3,20 +3,43 @@ import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
 
-// Derive membership_tier from a retrieved (expanded) checkout session.
+// ── Derivation helpers ────────────────────────────────────────────────────────
+
 function deriveTier(session: Stripe.Checkout.Session): string {
   if (session.mode === "payment") return "lifetime";
   const interval = session.line_items?.data[0]?.price?.recurring?.interval;
   return interval === "year" ? "annual" : "monthly";
 }
 
-// Normalise any Stripe customer field (string | Customer | DeletedCustomer | null) to an ID.
+function derivePlanName(session: Stripe.Checkout.Session): string {
+  if (session.mode === "payment") return "Lifetime Member";
+
+  const item = session.line_items?.data[0];
+  const unitAmount = item?.price?.unit_amount ?? 0;
+  const amountPounds = Math.round(unitAmount / 100);
+  const interval = item?.price?.recurring?.interval;
+
+  if (interval === "year") return `Annual ${amountPounds}`;
+  if (unitAmount === 1000) return "Monthly 10";
+  if (unitAmount === 2500) return "Monthly 25";
+  return `Monthly ${amountPounds}`;
+}
+
 function customerId(
   customer: string | Stripe.Customer | Stripe.DeletedCustomer | null | undefined
 ): string | null {
   if (!customer) return null;
   return typeof customer === "string" ? customer : customer.id;
 }
+
+function subscriptionId(
+  sub: string | Stripe.Subscription | null | undefined
+): string | null {
+  if (!sub) return null;
+  return typeof sub === "string" ? sub : sub.id;
+}
+
+// ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   // ── 1. Pre-flight checks ──────────────────────────────────────────────────
@@ -80,24 +103,50 @@ export async function POST(req: NextRequest) {
           break;
         }
 
-        const { error } = await db.from("members").upsert(
-          {
-            email,
-            name: session.customer_details?.name ?? null,
-            stripe_customer_id: customerId(session.customer),
-            membership_tier: deriveTier(session),
-            status: "active",
-          },
-          { onConflict: "email" }
-        );
+        const planName = derivePlanName(session);
 
-        if (error) {
-          console.error("[stripe-webhook] Supabase upsert error:", error.message);
-        } else {
-          console.log(
-            `[stripe-webhook] Member upserted: ${email} tier=${deriveTier(session)}`
-          );
+        const { data: memberData, error: upsertError } = await db
+          .from("members")
+          .upsert(
+            {
+              email,
+              name: session.customer_details?.name ?? null,
+              stripe_customer_id: customerId(session.customer),
+              stripe_subscription_id: subscriptionId(session.subscription),
+              membership_tier: deriveTier(session),
+              plan_name: planName,
+              amount_pence: session.amount_total ?? 0,
+              status: "active",
+            },
+            { onConflict: "email" }
+          )
+          .select("id")
+          .single();
+
+        if (upsertError) {
+          console.error("[stripe-webhook] Supabase upsert error:", upsertError.message);
+          break;
         }
+
+        console.log(`[stripe-webhook] Member upserted: ${email} plan=${planName}`);
+
+        // Insert payment record
+        const paymentIntentId =
+          typeof session.payment_intent === "string" ? session.payment_intent : null;
+
+        const { error: paymentError } = await db.from("payments").insert({
+          member_id: memberData.id,
+          stripe_payment_intent_id: paymentIntentId,
+          amount_pence: session.amount_total ?? 0,
+          plan_name: planName,
+          paid_at: new Date().toISOString(),
+          status: "completed",
+        });
+
+        if (paymentError) {
+          console.error("[stripe-webhook] Payment insert error:", paymentError.message);
+        }
+
         break;
       }
 
@@ -152,12 +201,9 @@ export async function POST(req: NextRequest) {
       }
 
       default:
-        // Unhandled event type — acknowledge receipt and move on.
         break;
     }
   } catch (err) {
-    // Log handler errors but still return 200 — prevents Stripe from retrying
-    // an event that failed due to a transient internal error.
     console.error(
       "[stripe-webhook] Handler error for event",
       event.type,

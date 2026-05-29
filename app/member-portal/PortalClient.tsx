@@ -5,16 +5,26 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 
-// ── Types (exported so page.tsx can reference them) ──────────────────────────
+// ── Exported types (imported by page.tsx) ────────────────────────────────────
 
 export type Member = {
   id: string;
   email: string;
   name: string | null;
   stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
   membership_tier: string | null;
+  plan_name: string | null;
+  amount_pence: number | null;
   status: string | null;
   created_at: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  fan_status: string | null;
+  contact_email: boolean | null;
+  contact_sms: boolean | null;
+  contact_telephone: boolean | null;
 };
 
 export type PortalEvent = {
@@ -35,16 +45,50 @@ export type PortalCase = {
   created_at: string;
 };
 
+export type PortalPayment = {
+  id: string;
+  stripe_payment_intent_id: string | null;
+  amount_pence: number;
+  plan_name: string | null;
+  paid_at: string;
+  status: string;
+};
+
+export type StripeSubData = {
+  status: string;
+  current_period_end: number;
+  cancel_at_period_end: boolean;
+  next_amount_pence: number | null;
+  card_brand: string | null;
+  card_last4: string | null;
+  card_exp_month: number | null;
+  card_exp_year: number | null;
+};
+
+// ── Props ─────────────────────────────────────────────────────────────────────
+
 type Props = {
   user: { email: string; id: string };
   member: Member | null;
   events: PortalEvent[];
   cases: PortalCase[];
+  payments: PortalPayment[];
+  stripeSub: StripeSubData | null;
 };
 
-type Tab = "dashboard" | "subscription" | "recordings" | "enquiries" | "settings";
+type Tab =
+  | "dashboard"
+  | "subscription"
+  | "payments"
+  | "recordings"
+  | "enquiries"
+  | "profile";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Utility helpers ───────────────────────────────────────────────────────────
+
+function planDisplay(member: Member): string {
+  return member.plan_name ?? tierLabel(member.membership_tier);
+}
 
 function tierLabel(tier: string | null): string {
   if (tier === "monthly") return "Monthly Member";
@@ -53,29 +97,81 @@ function tierLabel(tier: string | null): string {
   return "No active membership";
 }
 
-function formatDate(iso: string | null): string {
+function displayName(member: Member | null, email: string): string {
+  if (member?.first_name && member.last_name)
+    return `${member.first_name} ${member.last_name}`;
+  if (member?.first_name) return member.first_name;
+  if (member?.name) return member.name;
+  return email.split("@")[0];
+}
+
+function formatDate(iso: string | null | number): string {
   if (!iso) return "-";
-  return new Date(iso).toLocaleDateString("en-GB", {
+  const d = typeof iso === "number" ? new Date(iso * 1000) : new Date(iso);
+  return d.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
     year: "numeric",
   });
 }
 
+function formatPence(p: number | null): string {
+  if (p == null) return "-";
+  return `£${(p / 100).toFixed(2).replace(/\.00$/, "")}`;
+}
+
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// ── Shared UI primitives ──────────────────────────────────────────────────────
+
+const inputCls =
+  "w-full border border-gray-300 rounded-lg px-4 py-2.5 text-[0.95rem] focus:outline-none focus:ring-2 focus:ring-csl-dark focus:border-transparent disabled:opacity-60";
+
+function Card({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`bg-white rounded-xl border border-gray-200 p-6 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 gap-4">
+      <span className="text-sm text-gray-500 flex-shrink-0">{label}</span>
+      <span className="text-sm font-medium text-gray-900 text-right">{children}</span>
+    </div>
+  );
+}
+
 function StatusPill({ status }: { status: string | null }) {
-  if (status === "active")
+  if (status === "active" || status === "trialing")
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
         &#9679; Active
       </span>
     );
-  if (status === "payment_failed")
+  if (status === "past_due" || status === "payment_failed")
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
         &#9679; Payment Failed
       </span>
     );
-  if (status === "cancelled")
+  if (status === "cancelled" || status === "canceled")
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
         &#9679; Cancelled
@@ -96,30 +192,15 @@ function CaseStatusBadge({ status }: { status: string | null }) {
   };
   const cls = map[status ?? ""] ?? "bg-gray-100 text-gray-600 border-gray-200";
   return (
-    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cls}`}>
+    <span
+      className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cls}`}
+    >
       {status ?? "Unknown"}
     </span>
   );
 }
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`bg-white rounded-xl border border-gray-200 p-6 ${className}`}>
-      {children}
-    </div>
-  );
-}
-
-function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 gap-4">
-      <span className="text-sm text-gray-500 flex-shrink-0">{label}</span>
-      <span className="text-sm font-medium text-gray-900 text-right">{children}</span>
-    </div>
-  );
-}
-
-// ── Tab components ────────────────────────────────────────────────────────────
+// ── Dashboard tab ─────────────────────────────────────────────────────────────
 
 function DashboardTab({
   member,
@@ -139,7 +220,7 @@ function DashboardTab({
           <div className="text-4xl mb-3">&#9752;</div>
           <h3 className="font-bold text-gray-900 mb-2">No active membership found</h3>
           <p className="text-gray-500 text-sm mb-5">
-            Your email is verified but no membership record was found. If you have
+            Your email is verified but no membership record was found. If you
             recently joined, it may take a few minutes to appear.
           </p>
           <Link
@@ -152,8 +233,6 @@ function DashboardTab({
       </Card>
     );
   }
-
-  const recentEvents = events.slice(0, 2);
 
   return (
     <div className="space-y-5">
@@ -178,18 +257,11 @@ function DashboardTab({
         <DetailRow label="Status">
           <StatusPill status={member.status} />
         </DetailRow>
-        <DetailRow label="Plan">{tierLabel(member.membership_tier)}</DetailRow>
+        <DetailRow label="Plan">{planDisplay(member)}</DetailRow>
         <DetailRow label="Member since">{formatDate(member.created_at)}</DetailRow>
-        {member.stripe_customer_id && (
-          <DetailRow label="Stripe Customer ID">
-            <span className="font-mono text-xs text-gray-500">
-              {member.stripe_customer_id}
-            </span>
-          </DetailRow>
-        )}
       </Card>
 
-      {recentEvents.length > 0 && (
+      {events.slice(0, 2).length > 0 && (
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-gray-900">Recent Content</h3>
@@ -200,15 +272,19 @@ function DashboardTab({
               View all
             </button>
           </div>
-          <div className="space-y-3">
-            {recentEvents.map((ev) => (
+          <div className="space-y-0">
+            {events.slice(0, 2).map((ev) => (
               <div
                 key={ev.id}
                 className="flex items-start justify-between gap-4 py-2.5 border-b border-gray-100 last:border-0"
               >
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{ev.title ?? "Untitled"}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{formatDate(ev.event_date)}</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {ev.title ?? "Untitled"}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {formatDate(ev.event_date)}
+                  </p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
                   {ev.recording_url && (
@@ -260,11 +336,11 @@ function DashboardTab({
             </div>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-0">
             {cases.slice(0, 3).map((c) => (
               <div
                 key={c.id}
-                className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0 gap-3"
+                className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 gap-3"
               >
                 <div>
                   <p className="text-sm font-medium text-gray-900">{c.case_type}</p>
@@ -276,7 +352,7 @@ function DashboardTab({
             {cases.length > 3 && (
               <button
                 onClick={() => onTabChange("enquiries")}
-                className="mt-1 text-xs font-semibold text-csl-dark hover:underline"
+                className="mt-2 text-xs font-semibold text-csl-dark hover:underline"
               >
                 View all {cases.length} enquiries
               </button>
@@ -288,7 +364,36 @@ function DashboardTab({
   );
 }
 
-function SubscriptionTab({ member }: { member: Member | null }) {
+// ── Subscription tab ──────────────────────────────────────────────────────────
+
+function SubscriptionTab({
+  member,
+  stripeSub,
+}: {
+  member: Member | null;
+  stripeSub: StripeSubData | null;
+}) {
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState("");
+
+  async function openBillingPortal() {
+    setPortalLoading(true);
+    setPortalError("");
+    try {
+      const res = await fetch("/api/billing-portal", { method: "POST" });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setPortalLoading(false);
+        setPortalError(data.error ?? "Could not open billing portal.");
+      }
+    } catch {
+      setPortalLoading(false);
+      setPortalError("Network error. Please try again.");
+    }
+  }
+
   if (!member) {
     return (
       <Card>
@@ -305,47 +410,99 @@ function SubscriptionTab({ member }: { member: Member | null }) {
     );
   }
 
+  const isLifetime = member.membership_tier === "lifetime";
+  const statusToShow = stripeSub?.status ?? member.status;
+
+  // Format card expiry
+  const cardExpiry =
+    stripeSub?.card_exp_month != null && stripeSub?.card_exp_year != null
+      ? `${String(stripeSub.card_exp_month).padStart(2, "0")}/${String(
+          stripeSub.card_exp_year
+        ).slice(-2)}`
+      : null;
+
   return (
     <div className="space-y-5">
       <Card>
         <h3 className="font-bold text-gray-900 mb-4">Current Subscription</h3>
-        <DetailRow label="Plan">{tierLabel(member.membership_tier)}</DetailRow>
+
+        <DetailRow label="Plan">{planDisplay(member)}</DetailRow>
         <DetailRow label="Status">
-          <StatusPill status={member.status} />
+          <StatusPill status={statusToShow} />
         </DetailRow>
         <DetailRow label="Member since">{formatDate(member.created_at)}</DetailRow>
-        {member.membership_tier === "lifetime" && (
-          <DetailRow label="Renewal">Lifetime - no renewal required</DetailRow>
+
+        {!isLifetime && stripeSub && (
+          <>
+            <DetailRow label="Next payment">
+              {formatPence(stripeSub.next_amount_pence)} on{" "}
+              {formatDate(stripeSub.current_period_end)}
+            </DetailRow>
+            {stripeSub.cancel_at_period_end && (
+              <DetailRow label="Cancellation">
+                <span className="text-amber-600 font-semibold">
+                  Cancels {formatDate(stripeSub.current_period_end)}
+                </span>
+              </DetailRow>
+            )}
+          </>
         )}
-        <div className="mt-5 pt-4 border-t border-gray-100 text-sm text-gray-500">
-          <p>
-            To cancel or update your payment method, contact{" "}
-            <a
-              href="mailto:membership@celticsupporterslimited.net"
-              className="text-csl-dark hover:underline font-medium"
-            >
-              membership@celticsupporterslimited.net
-            </a>
-            . Direct Stripe billing management will be available in an upcoming update.
+
+        {isLifetime && (
+          <DetailRow label="Renewal">No renewal — lifetime membership</DetailRow>
+        )}
+      </Card>
+
+      {!isLifetime && stripeSub && (
+        <Card>
+          <h3 className="font-bold text-gray-900 mb-4">Payment Method</h3>
+
+          {stripeSub.card_brand && stripeSub.card_last4 ? (
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-7 rounded bg-gray-100 border border-gray-200 flex items-center justify-center text-[0.65rem] font-bold text-gray-600 uppercase tracking-wide">
+                {stripeSub.card_brand.slice(0, 4)}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">
+                  {capitalise(stripeSub.card_brand)} &bull;&bull;&bull;&bull;{" "}
+                  {stripeSub.card_last4}
+                </p>
+                {cardExpiry && (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Expires {cardExpiry}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 mb-5">No card on file.</p>
+          )}
+
+          {portalError && (
+            <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+              {portalError}
+            </p>
+          )}
+
+          <button
+            onClick={openBillingPortal}
+            disabled={portalLoading}
+            className="inline-block bg-csl-dark text-white font-semibold px-5 py-2.5 rounded-lg text-sm hover:bg-csl-mid transition-colors disabled:opacity-60"
+          >
+            {portalLoading ? "Opening..." : "Update payment method"}
+          </button>
+          <p className="text-xs text-gray-400 mt-2">
+            Secured by Stripe &mdash; you will be taken to a Stripe-hosted page.
           </p>
-        </div>
-      </Card>
+        </Card>
+      )}
 
-      <Card>
-        <h3 className="font-bold text-gray-900 mb-2">Payment History</h3>
-        <p className="text-sm text-gray-400 mb-4">
-          Full payment history from Stripe will be shown here once billing webhooks are configured (Phase 6).
-        </p>
-        <DetailRow label={formatDate(member.created_at)}>
-          Membership activated - {tierLabel(member.membership_tier)}
-        </DetailRow>
-      </Card>
-
-      {member.membership_tier !== "lifetime" && (
+      {!isLifetime && (
         <Card>
           <h3 className="font-bold text-gray-900 mb-2">Upgrade</h3>
           <p className="text-sm text-gray-500 mb-4">
-            Upgrade to Lifetime membership for a single one-off payment of &pound;5,000.
+            Upgrade to Lifetime membership for a single one-off payment of
+            &pound;5,000.
           </p>
           <Link
             href="/membership"
@@ -358,6 +515,77 @@ function SubscriptionTab({ member }: { member: Member | null }) {
     </div>
   );
 }
+
+// ── Payments tab ──────────────────────────────────────────────────────────────
+
+function PaymentsTab({ payments }: { payments: PortalPayment[] }) {
+  return (
+    <Card>
+      <h3 className="font-bold text-gray-900 mb-1">Payment History</h3>
+      <p className="text-sm text-gray-400 mb-5">
+        All charges recorded against your membership.
+      </p>
+
+      {payments.length === 0 ? (
+        <div className="text-center py-10">
+          <div className="text-3xl mb-3">&#128196;</div>
+          <p className="text-gray-500 text-sm">No payments recorded yet.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Date
+                </th>
+                <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Plan
+                </th>
+                <th className="text-right py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Amount
+                </th>
+                <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">
+                  Ref
+                </th>
+                <th className="text-left py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.map((p) => (
+                <tr key={p.id} className="border-b border-gray-100 last:border-0">
+                  <td className="py-3 pr-4 text-gray-700 whitespace-nowrap">
+                    {formatDate(p.paid_at)}
+                  </td>
+                  <td className="py-3 pr-4 text-gray-700">
+                    {p.plan_name ?? "-"}
+                  </td>
+                  <td className="py-3 pr-4 text-gray-900 font-semibold text-right whitespace-nowrap">
+                    {formatPence(p.amount_pence)}
+                  </td>
+                  <td className="py-3 pr-4 text-gray-400 font-mono text-xs hidden sm:table-cell">
+                    {p.stripe_payment_intent_id
+                      ? `...${p.stripe_payment_intent_id.slice(-8)}`
+                      : "-"}
+                  </td>
+                  <td className="py-3">
+                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+                      {p.status === "completed" ? "Paid" : p.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── Recordings tab ────────────────────────────────────────────────────────────
 
 function RecordingsTab({ events }: { events: PortalEvent[] }) {
   return (
@@ -422,12 +650,15 @@ function RecordingsTab({ events }: { events: PortalEvent[] }) {
   );
 }
 
+// ── Enquiries tab ─────────────────────────────────────────────────────────────
+
 function EnquiriesTab({ cases }: { cases: PortalCase[] }) {
   return (
     <Card>
       <h3 className="font-bold text-gray-900 mb-1">My Share Enquiries</h3>
       <p className="text-sm text-gray-400 mb-5">
-        Track the progress of any share tracing or proxy assignment enquiries you have submitted.
+        Track the progress of any share tracing or proxy assignment enquiries you
+        have submitted.
       </p>
 
       {cases.length === 0 ? (
@@ -455,7 +686,10 @@ function EnquiriesTab({ cases }: { cases: PortalCase[] }) {
       ) : (
         <div className="divide-y divide-gray-100">
           {cases.map((c) => (
-            <div key={c.id} className="flex items-center justify-between gap-4 py-4">
+            <div
+              key={c.id}
+              className="flex items-center justify-between gap-4 py-4"
+            >
               <div>
                 <p className="text-sm font-semibold text-gray-900">{c.case_type}</p>
                 <p className="text-xs text-gray-400 mt-0.5">
@@ -471,7 +705,16 @@ function EnquiriesTab({ cases }: { cases: PortalCase[] }) {
   );
 }
 
-function SettingsTab({
+// ── Edit Profile tab ──────────────────────────────────────────────────────────
+
+const FAN_STATUS_OPTIONS = [
+  "Season Ticket",
+  "Away Member",
+  "Home Only",
+  "Supporter (no match)",
+] as const;
+
+function EditProfileTab({
   member,
   userEmail,
 }: {
@@ -479,58 +722,96 @@ function SettingsTab({
   userEmail: string;
 }) {
   const router = useRouter();
-  const [name, setName] = useState(member?.name ?? "");
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
-    "idle"
+  const [firstName, setFirstName] = useState(member?.first_name ?? "");
+  const [lastName, setLastName] = useState(member?.last_name ?? "");
+  const [phone, setPhone] = useState(member?.phone ?? "");
+  const [fanStatus, setFanStatus] = useState(member?.fan_status ?? "");
+  const [contactEmail, setContactEmail] = useState(
+    member?.contact_email ?? true
   );
+  const [contactSms, setContactSms] = useState(member?.contact_sms ?? false);
+  const [contactTelephone, setContactTelephone] = useState(
+    member?.contact_telephone ?? false
+  );
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
-    setStatus("saving");
+    setSaving(true);
     setErrorMsg("");
+    setSavedMsg("");
 
-    const res = await fetch("/api/member/settings", {
+    const res = await fetch("/api/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim() }),
+      body: JSON.stringify({
+        first_name: firstName.trim() || null,
+        last_name: lastName.trim() || null,
+        phone: phone.trim() || null,
+        fan_status: fanStatus || null,
+        contact_email: contactEmail,
+        contact_sms: contactSms,
+        contact_telephone: contactTelephone,
+      }),
     });
+
+    setSaving(false);
 
     if (!res.ok) {
       const data = await res.json();
-      setStatus("error");
       setErrorMsg(data.error ?? "Failed to save changes.");
       return;
     }
 
-    setStatus("saved");
+    setSavedMsg("Profile updated.");
     router.refresh();
-    setTimeout(() => setStatus("idle"), 2000);
+    setTimeout(() => setSavedMsg(""), 3000);
   }
 
   return (
     <div className="space-y-5">
       <Card>
-        <h3 className="font-bold text-gray-900 mb-4">Account Details</h3>
+        <h3 className="font-bold text-gray-900 mb-5">Edit Profile</h3>
         <form onSubmit={handleSave} className="space-y-4">
-          <div>
-            <label
-              htmlFor="settings-name"
-              className="block text-sm font-semibold text-gray-700 mb-1.5"
-            >
-              Full name
-            </label>
-            <input
-              id="settings-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={status === "saving"}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-[0.95rem] focus:outline-none focus:ring-2 focus:ring-csl-dark focus:border-transparent disabled:opacity-60"
-              placeholder="Your full name"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="first-name"
+                className="block text-sm font-semibold text-gray-700 mb-1.5"
+              >
+                First name
+              </label>
+              <input
+                id="first-name"
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                disabled={saving}
+                className={inputCls}
+                placeholder="First name"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="last-name"
+                className="block text-sm font-semibold text-gray-700 mb-1.5"
+              >
+                Last name
+              </label>
+              <input
+                id="last-name"
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                disabled={saving}
+                className={inputCls}
+                placeholder="Last name"
+              />
+            </div>
           </div>
+
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
               Email address
@@ -539,69 +820,151 @@ function SettingsTab({
               {userEmail}
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              Email is tied to your login and cannot be changed here.
+              Email cannot be changed here. Contact{" "}
+              <a
+                href="mailto:membership@celticsupporterslimited.net"
+                className="text-csl-dark hover:underline"
+              >
+                membership@celticsupporterslimited.net
+              </a>{" "}
+              if you need to update it.
             </p>
           </div>
 
-          {status === "error" && (
+          <div>
+            <label
+              htmlFor="phone"
+              className="block text-sm font-semibold text-gray-700 mb-1.5"
+            >
+              Phone (optional)
+            </label>
+            <input
+              id="phone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              disabled={saving}
+              className={inputCls}
+              placeholder="+44 7xxx xxxxxx"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="fan-status"
+              className="block text-sm font-semibold text-gray-700 mb-1.5"
+            >
+              Fan status
+            </label>
+            <select
+              id="fan-status"
+              value={fanStatus}
+              onChange={(e) => setFanStatus(e.target.value)}
+              disabled={saving}
+              className={inputCls}
+            >
+              <option value="">Select...</option>
+              {FAN_STATUS_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-2">
+              Contact preferences
+            </p>
+            <div className="space-y-2.5">
+              {(
+                [
+                  { id: "contact-email",     label: "Email",     checked: contactEmail,     setter: setContactEmail,     locked: true  },
+                  { id: "contact-sms",        label: "SMS",       checked: contactSms,        setter: setContactSms,        locked: false },
+                  { id: "contact-telephone",  label: "Telephone", checked: contactTelephone,  setter: setContactTelephone,  locked: false },
+                ] as { id: string; label: string; checked: boolean; setter: (v: boolean) => void; locked: boolean }[]
+              ).map(({ id, label, checked, setter, locked }) => (
+                <label
+                  key={id}
+                  htmlFor={id}
+                  className="flex items-center gap-3 cursor-pointer"
+                >
+                  <input
+                    id={id}
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => !locked && setter(e.target.checked)}
+                    disabled={saving || locked}
+                    className="w-4 h-4 accent-csl-dark"
+                  />
+                  <span className="text-sm text-gray-700">
+                    {label}
+                    {locked && (
+                      <span className="ml-1.5 text-xs text-gray-400">
+                        (required for membership communications)
+                      </span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {errorMsg && (
             <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
               {errorMsg}
             </p>
           )}
-          {status === "saved" && (
+          {savedMsg && (
             <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-2.5">
-              Changes saved.
+              {savedMsg}
             </p>
           )}
 
           <button
             type="submit"
-            disabled={status === "saving" || !name.trim()}
+            disabled={saving}
             className="bg-csl-dark text-white font-semibold px-6 py-2.5 rounded-lg text-sm hover:bg-csl-mid transition-colors disabled:opacity-60"
           >
-            {status === "saving" ? "Saving..." : "Save changes"}
+            {saving ? "Saving..." : "Save changes"}
           </button>
         </form>
-      </Card>
-
-      <Card>
-        <h3 className="font-bold text-gray-900 mb-2">Contact</h3>
-        <p className="text-sm text-gray-500">
-          For membership queries email{" "}
-          <a
-            href="mailto:membership@celticsupporterslimited.net"
-            className="text-csl-dark hover:underline font-medium"
-          >
-            membership@celticsupporterslimited.net
-          </a>
-          .
-        </p>
       </Card>
     </div>
   );
 }
 
-// ── Main portal component ─────────────────────────────────────────────────────
+// ── Nav config ────────────────────────────────────────────────────────────────
 
 const NAV_ITEMS: { tab: Tab; label: string; icon: string }[] = [
   { tab: "dashboard", label: "Dashboard", icon: "&#9776;" },
   { tab: "subscription", label: "Subscription", icon: "&#128179;" },
+  { tab: "payments", label: "Payments", icon: "&#128196;" },
   { tab: "recordings", label: "Recordings Library", icon: "&#127909;" },
   { tab: "enquiries", label: "My Enquiries", icon: "&#128269;" },
-  { tab: "settings", label: "Account Settings", icon: "&#9881;" },
+  { tab: "profile", label: "Edit Profile", icon: "&#9998;" },
 ];
 
-export default function PortalClient({ user, member, events, cases }: Props) {
+// ── Main portal component ─────────────────────────────────────────────────────
+
+export default function PortalClient({
+  user,
+  member,
+  events,
+  cases,
+  payments,
+  stripeSub,
+}: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [signingOut, setSigningOut] = useState(false);
   const router = useRouter();
 
-  const displayName = member?.name ?? user.email.split("@")[0];
+  const name = displayName(member, user.email);
+  const tierDisplay = member?.plan_name ?? tierLabel(member?.membership_tier ?? null);
 
   async function handleSignOut() {
     setSigningOut(true);
-    const supabase = createBrowserSupabase();
-    await supabase.auth.signOut();
+    await createBrowserSupabase().auth.signOut();
     router.push("/");
     router.refresh();
   }
@@ -616,7 +979,7 @@ export default function PortalClient({ user, member, events, cases }: Props) {
               Member Portal
             </p>
             <h1 className="text-xl font-extrabold mt-0.5">
-              Welcome back, {displayName}
+              Welcome back, {name}
             </h1>
           </div>
           <StatusPill status={member?.status ?? null} />
@@ -651,16 +1014,14 @@ export default function PortalClient({ user, member, events, cases }: Props) {
 
               {/* Desktop sidebar card */}
               <div className="hidden lg:block bg-white rounded-xl border border-gray-200 p-5">
-                {/* Avatar + identity */}
                 <div className="text-center mb-5 pb-5 border-b border-gray-100">
                   <div className="w-14 h-14 rounded-full bg-csl-light flex items-center justify-center text-2xl mx-auto mb-3">
                     &#9752;
                   </div>
-                  <p className="font-bold text-gray-900 text-sm">{displayName}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{tierLabel(member?.membership_tier ?? null)}</p>
+                  <p className="font-bold text-gray-900 text-sm">{name}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{tierDisplay}</p>
                 </div>
 
-                {/* Nav */}
                 <nav>
                   <ul className="space-y-0.5">
                     {NAV_ITEMS.map(({ tab, label, icon }) => (
@@ -721,7 +1082,10 @@ export default function PortalClient({ user, member, events, cases }: Props) {
                 />
               )}
               {activeTab === "subscription" && (
-                <SubscriptionTab member={member} />
+                <SubscriptionTab member={member} stripeSub={stripeSub} />
+              )}
+              {activeTab === "payments" && (
+                <PaymentsTab payments={payments} />
               )}
               {activeTab === "recordings" && (
                 <RecordingsTab events={events} />
@@ -729,8 +1093,8 @@ export default function PortalClient({ user, member, events, cases }: Props) {
               {activeTab === "enquiries" && (
                 <EnquiriesTab cases={cases} />
               )}
-              {activeTab === "settings" && (
-                <SettingsTab member={member} userEmail={user.email} />
+              {activeTab === "profile" && (
+                <EditProfileTab member={member} userEmail={user.email} />
               )}
             </div>
           </div>
