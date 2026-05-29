@@ -121,18 +121,28 @@ export default function Footer() {
             </h4>
             <ul className="space-y-2">
               <li>
-                <Link href="#" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                <Link href="/our-team" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
                   About CSL
                 </Link>
               </li>
               <li>
-                <Link href="#" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                <a href="mailto:info@celticsupporterslimited.net" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
                   Contact Us
+                </a>
+              </li>
+              <li>
+                <Link href="/privacy" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                  Privacy Policy
                 </Link>
               </li>
               <li>
-                <Link href="#" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
-                  Privacy Policy
+                <Link href="/terms" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                  Terms &amp; Conditions
+                </Link>
+              </li>
+              <li>
+                <Link href="/membership-agreement" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                  Membership Agreement
                 </Link>
               </li>
               <li>
