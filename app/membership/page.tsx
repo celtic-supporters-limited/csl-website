@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import MembershipPlans from "./MembershipPlans";
+import { Container } from "@/components/Container";
 
 export const metadata: Metadata = {
   title: "Join CSL - Celtic Supporters Limited",
@@ -30,34 +31,36 @@ export default function MembershipPage() {
   return (
     <>
       {/* HERO */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-csl-dark to-csl-mid text-white px-[5%] py-[64px]">
+      <section className="relative overflow-hidden bg-gradient-to-br from-csl-dark to-csl-mid text-white py-[64px]">
         <div className="absolute -top-[60px] -right-[60px] w-[500px] h-[500px] bg-white/[0.04] rounded-full" />
         <div className="absolute -bottom-[100px] left-[20%] w-[300px] h-[300px] bg-white/[0.03] rounded-full" />
-        <div className="relative z-10 max-w-[680px]">
-          <div className="inline-flex items-center gap-1.5 bg-white/15 border border-white/25 px-3.5 py-1.5 rounded-full text-[0.82rem] font-medium text-white/90 mb-5 backdrop-blur-sm">
-            Choose from the available options below
+        <Container className="relative z-10">
+          <div className="max-w-[680px]">
+            <div className="inline-flex items-center gap-1.5 bg-white/15 border border-white/25 px-3.5 py-1.5 rounded-full text-[0.82rem] font-medium text-white/90 mb-5 backdrop-blur-sm">
+              Choose from the available options below
+            </div>
+            <h1 className="text-[clamp(2rem,4vw,3.2rem)] font-extrabold leading-[1.15] tracking-tight mb-5">
+              Join CSL. Fund<br />Real Change.
+            </h1>
+            <p className="text-[1.1rem] text-white/85 max-w-[540px] leading-[1.7]">
+              Your subscription goes directly toward acquiring Celtic PLC shares and
+              funding our governance campaign. To discuss other membership options,
+              email{" "}
+              <a
+                href="mailto:info@celticsupporterslimited.net"
+                className="underline underline-offset-2 hover:text-white"
+              >
+                info@celticsupporterslimited.net
+              </a>
+              .
+            </p>
           </div>
-          <h1 className="text-[clamp(2rem,4vw,3.2rem)] font-extrabold leading-[1.15] tracking-tight mb-5">
-            Join CSL. Fund<br />Real Change.
-          </h1>
-          <p className="text-[1.1rem] text-white/85 max-w-[540px] leading-[1.7]">
-            Your subscription goes directly toward acquiring Celtic PLC shares and
-            funding our governance campaign. To discuss other membership options,
-            email{" "}
-            <a
-              href="mailto:info@celticsupporterslimited.net"
-              className="underline underline-offset-2 hover:text-white"
-            >
-              info@celticsupporterslimited.net
-            </a>
-            .
-          </p>
-        </div>
+        </Container>
       </section>
 
       {/* PLANS */}
-      <section className="px-[5%] py-[72px]">
-        <div className="max-w-[1100px] mx-auto">
+      <section className="py-[72px]">
+        <Container>
           <div className="text-center mb-[52px]">
             <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
               Membership Plans
@@ -71,12 +74,12 @@ export default function MembershipPage() {
             </p>
           </div>
           <MembershipPlans />
-        </div>
+        </Container>
       </section>
 
       {/* WHAT YOUR MEMBERSHIP FUNDS */}
-      <section className="bg-gray-50 px-[5%] py-[72px]">
-        <div className="max-w-[1100px] mx-auto">
+      <section className="bg-gray-50 py-[72px]">
+        <Container>
           <div className="text-center mb-[52px]">
             <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
               Member Benefits
@@ -115,12 +118,12 @@ export default function MembershipPage() {
               </div>
             ))}
           </div>
-        </div>
+        </Container>
       </section>
 
       {/* FAQ */}
-      <section className="px-[5%] py-[72px]">
-        <div className="max-w-[1100px] mx-auto">
+      <section className="py-[72px]">
+        <Container>
           <div className="text-center mb-[52px]">
             <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
               FAQ
@@ -146,7 +149,7 @@ export default function MembershipPage() {
               </details>
             ))}
           </div>
-        </div>
+        </Container>
       </section>
     </>
   );

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Container } from "@/components/Container";
 
 export const metadata: Metadata = {
   title: "Articles of Association | Celtic Supporters Limited",
@@ -59,7 +60,7 @@ export default function ArticlesOfAssociation() {
     <main>
       {/* Hero */}
       <section className="bg-csl-dark text-white py-14">
-        <div className="max-w-[800px] mx-auto px-5">
+        <Container><div className="max-w-[800px]">
           <p className="text-csl-light/80 text-xs font-bold uppercase tracking-[0.15em] mb-3">
             Legal Document
           </p>
@@ -70,12 +71,12 @@ export default function ArticlesOfAssociation() {
           <p className="text-white/55 text-sm">
             Companies Act 2006 &middot; Private Company Limited by Guarantee &middot; Company Number SC862186 &middot; Adopted 13 October 2025
           </p>
-        </div>
+        </div></Container>
       </section>
 
       {/* Document body */}
       <section className="py-12 bg-white">
-        <div className="max-w-[800px] mx-auto px-5">
+        <Container><div className="max-w-[800px]">
           <p className="text-[0.8rem] text-gray-500 uppercase tracking-widest font-semibold mb-8 pb-4 border-b border-gray-100">
             Articles of the Companies Act 2006 &mdash; Private Company Limited by Guarantee
           </p>
@@ -504,7 +505,7 @@ export default function ArticlesOfAssociation() {
               </div>
             </dl>
           </div>
-        </div>
+        </div></Container>
       </section>
     </main>
   );

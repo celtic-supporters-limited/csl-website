@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Container } from "@/components/Container";
 
 function XIcon() {
   return (
@@ -27,7 +28,7 @@ function LinkedInIcon() {
 export default function Footer() {
   return (
     <footer className="bg-gray-900 text-white/70">
-      <div className="max-w-[1100px] mx-auto px-5 pt-12 pb-7">
+      <Container className="pt-12 pb-7">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-10">
           <div>
             <div className="font-extrabold text-[1.1rem] text-white mb-2.5">
@@ -163,7 +164,7 @@ export default function Footer() {
             Registered Office: 56 Ashton Lane, Glasgow G12&nbsp;8SJ &middot; Company No. SC862186 &middot; ICO Registration ZB985030 &middot; LEI 984500CDVAFEBEF83781
           </p>
         </div>
-      </div>
+      </Container>
     </footer>
   );
 }

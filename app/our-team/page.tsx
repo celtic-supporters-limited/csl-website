@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Container } from "@/components/Container";
 
 export const metadata: Metadata = {
   title: "Our Team | Celtic Supporters Limited",
@@ -36,22 +37,24 @@ export default function OurTeamPage() {
   return (
     <>
       {/* HERO */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-csl-dark to-csl-mid text-white px-[5%] py-[60px]">
+      <section className="relative overflow-hidden bg-gradient-to-br from-csl-dark to-csl-mid text-white py-[60px]">
         <div className="absolute -top-[60px] -right-[60px] w-[500px] h-[500px] bg-white/[0.04] rounded-full" />
         <div className="absolute -bottom-[100px] left-[20%] w-[300px] h-[300px] bg-white/[0.03] rounded-full" />
-        <div className="relative z-10 max-w-[680px]">
-          <h1 className="text-[clamp(2rem,4vw,3.2rem)] font-extrabold leading-[1.15] tracking-tight mb-5">
-            Our Team
-          </h1>
-          <p className="text-[1.1rem] text-white/85 max-w-[540px] leading-[1.7]">
-            Current CSL Board
-          </p>
-        </div>
+        <Container className="relative z-10">
+          <div className="max-w-[680px]">
+            <h1 className="text-[clamp(2rem,4vw,3.2rem)] font-extrabold leading-[1.15] tracking-tight mb-5">
+              Our Team
+            </h1>
+            <p className="text-[1.1rem] text-white/85 max-w-[540px] leading-[1.7]">
+              Current CSL Board
+            </p>
+          </div>
+        </Container>
       </section>
 
       {/* DIRECTOR CARDS */}
-      <section className="px-[5%] py-[72px]">
-        <div className="max-w-[1100px] mx-auto">
+      <section className="py-[72px]">
+        <Container>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {directors.map(({ initials, name, role, bio }) => (
               <div
@@ -73,7 +76,7 @@ export default function OurTeamPage() {
               </div>
             ))}
           </div>
-        </div>
+        </Container>
       </section>
     </>
   );
