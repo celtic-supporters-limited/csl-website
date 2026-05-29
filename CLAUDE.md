@@ -82,77 +82,106 @@ The Celtic FC crest must NOT appear — CSL is a separate legal entity. Text-bas
 | Page | Route | Description |
 |------|-------|-------------|
 | Home | `/` | Hero, stats bar, service cards, how-we-work steps, membership growth panel, CTA |
-| Share Tracing | `/share-tracing` | Hero, explainer, 4-step process, intake form → Supabase + Zoho |
-| Proxy Assignment | `/proxy` | Hero, stats panel, 4-step process, registration form → Supabase + Zoho |
+| Share Tracing | `/share-tracing` | Hero, explainer, 4-step process, intake form |
+| Proxy Assignment | `/proxy` | Hero, stats panel, 4-step process, registration form |
 | Membership | `/membership` | Pricing tiers, Stripe Checkout, benefit cards, FAQ |
-| Member Portal | `/member-portal` | Authenticated: dashboard, subscription, recordings, enquiries, settings |
-| Login | `/login` | Magic-link login via Supabase Auth |
-| Membership Success | `/membership/success` | Post-payment confirmation, Supabase enrolment, welcome email |
+| Membership Success | `/membership/success` | Post-payment confirmation; links to `/signup` |
+| Member Portal | `/member-portal` | Authenticated dashboard (see portal tabs below) |
+| Login | `/login` | Email + password primary; magic link fallback; forgot password |
+| Signup | `/signup` | Post-payment account activation; accepts `?email=` query param |
+| Articles of Association | `/articles-of-association` | Full legal document |
+| Auth Callback | `/auth/callback` | Handles PKCE codes for magic link and password reset |
+| Update Password | `/auth/update-password` | Landed on after password reset email link |
+
+**Member portal tabs:** Dashboard, Subscription, Payments, Recordings Library,
+My Enquiries, Edit Profile.
 
 ## Stripe Membership Tiers
 
-These are the live tiers from celticsupporters.net/member-plans/ — **do not change without
-board approval.** The two fixed-price plans use pre-created Stripe price IDs. The three
-variable plans require dynamic `price_data` objects at checkout creation time.
+These are the live tiers — **do not change without board approval.**
+All five plans use dynamic `price_data`; no pre-created Stripe Price IDs are needed.
 
-| Plan | Price | Billing | Stripe implementation |
-|------|-------|---------|----------------------|
-| Standard | £10/month | Monthly subscription | Dynamic `price_data`, amount hardcoded £10 |
-| Accelerator | £25/month | Monthly subscription | Dynamic `price_data`, amount hardcoded £25 |
-| Custom Monthly | Min £30, £5 increments | Monthly subscription | Dynamic `price_data` (unit_amount set by user input) |
-| Custom Annual | Min £300, £10 increments | Annual subscription | Dynamic `price_data` (unit_amount set by user input) |
-| Lifetime | £5,000 one-off | Single payment | `mode: 'payment'`, dynamic `price_data` |
+| Plan | Price | Billing | `plan_name` stored | `membership_tier` |
+|------|-------|---------|-------------------|------------------|
+| Standard | £10/month | Monthly subscription | `"Monthly 10"` | `"monthly"` |
+| Accelerator | £25/month | Monthly subscription | `"Monthly 25"` | `"monthly"` |
+| Custom Monthly | Min £30, £5 inc | Monthly subscription | `"Monthly {N}"` | `"monthly"` |
+| Custom Annual | Min £300, £10 inc | Annual subscription | `"Annual {N}"` | `"annual"` |
+| Lifetime | £5,000 one-off | Single payment | `"Lifetime Member"` | `"lifetime"` |
 
-**Plan descriptions (from live site — use this copy verbatim):**
-- **Standard £10/month**: "Help activate the supporter base and fund the work needed to trace
-  shares, build membership and establish CSL as a credible shareholder organisation."
-- **Accelerator £25/month**: "Accelerate CSL's work. Your support helps fund share purchases,
-  professional advice and the infrastructure needed to build real voting strength."
-- **Custom Monthly / Annual**: "For supporters who want to contribute more, in a way that
-  reflects their means and commitment."
-- **Lifetime £5,000**: "For supporters who want to contribute a one-time fee, reflecting their
-  means and commitment for life."
+**`plan_name` derivation (webhook `derivePlanName()`):**
+- `mode === "payment"` → `"Lifetime Member"`
+- `interval === "year"` → `"Annual {poundsAmount}"`
+- `unit_amount === 1000` → `"Monthly 10"`
+- `unit_amount === 2500` → `"Monthly 25"`
+- any other monthly → `"Monthly {poundsAmount}"`
 
-**Custom plan validation rules (enforce client-side AND server-side):**
+**Custom plan validation (enforce client-side AND server-side via `validatePlan()`):**
 - Custom Monthly: minimum £30, must be divisible by £5
 - Custom Annual: minimum £300, must be divisible by £10
-- Reject any amount below the minimum; reject any amount not on the correct increment
 
-All Phase 3 work uses Stripe test keys only.
-Test card: `4242 4242 4242 4242`, any future expiry, any CVC.
-Do not switch to live keys until Phase 7 (go-live).
+**Important:** `subscription_data` and `payment_intent_data` description fields were removed
+from checkout session creation — they caused silent Stripe rejections.
 
-## Supabase Schema
+All work uses Stripe test keys only. Test card: `4242 4242 4242 4242`, any future expiry, any CVC.
+Do not switch to live keys until go-live sign-off.
+
+## Database Schema
+
+Run migrations in Supabase Dashboard > SQL Editor. Files in `sql/` directory.
 
 ```sql
 -- Members enrolled after successful Stripe payment
+-- Migration: sql/phase-5-schema.sql + sql/phase-5b-schema.sql
 members (
-  id               uuid primary key,
-  email            text unique not null,
-  name             text,
-  stripe_customer_id text,
-  membership_tier  text,           -- 'monthly' | 'annual' | 'lifetime'
-  status           text,           -- 'active' | 'payment_failed' | 'cancelled'
-  created_at       timestamptz default now()
+  id                     uuid primary key default gen_random_uuid(),
+  email                  text unique not null,
+  name                   text,
+  stripe_customer_id     text,
+  stripe_subscription_id text,
+  membership_tier        text,      -- 'monthly' | 'annual' | 'lifetime'
+  plan_name              text,      -- 'Monthly 10' | 'Monthly 25' | 'Monthly N' | 'Annual N' | 'Lifetime Member'
+  amount_pence           integer,
+  status                 text,      -- 'active' | 'payment_failed' | 'cancelled'
+  created_at             timestamptz default now(),
+  first_name             text,
+  last_name              text,
+  phone                  text,
+  fan_status             text,      -- 'Season Ticket' | 'Away Member' | 'Home Only' | 'Supporter (no match)'
+  contact_email          boolean default true,
+  contact_sms            boolean default false,
+  contact_telephone      boolean default false
+)
+
+-- Payments logged on checkout.session.completed
+-- Migration: sql/phase-5b-schema.sql
+payments (
+  id                       uuid primary key default gen_random_uuid(),
+  member_id                uuid references members(id),
+  stripe_payment_intent_id text,
+  amount_pence             integer not null,
+  plan_name                text,
+  paid_at                  timestamptz not null,
+  status                   text not null default 'completed'
 )
 
 -- Share tracing and proxy enquiries from public forms
 shareholder_cases (
-  id            uuid primary key,
-  contact_name  text,
-  email         text,
-  phone         text,
-  case_type     text,    -- 'Share Tracing' | 'Proxy Assignment'
+  id             uuid primary key,
+  contact_name   text,
+  email          text,
+  phone          text,
+  case_type      text,      -- 'Share Tracing' | 'Proxy Assignment'
   enquiry_source text,
-  notes         text,
-  status        text default 'New',  -- 'New' | 'In Progress' | 'Resolved'
-  assigned_to   text,
-  created_at    timestamptz default now()
+  notes          text,
+  status         text default 'New',  -- 'New' | 'In Progress' | 'Resolved'
+  assigned_to    text,
+  created_at     timestamptz default now()
 )
 
--- Meeting recordings and events shown in member portal
+-- Meeting recordings and governance briefings
 events (
-  id            uuid primary key,
+  id            uuid primary key default gen_random_uuid(),
   title         text,
   event_date    date,
   recording_url text,
@@ -161,6 +190,37 @@ events (
 )
 ```
 
+## Authentication
+
+- **Primary:** email + password via `supabase.auth.signInWithPassword()`
+- **Fallback:** magic link via `signInWithOtp()` — accessible via "Send me a login link instead"
+- **New member flow:** `/membership/success` → `/signup?email=xxx` → `signUp()` → portal
+- **Password reset:** `/login` "Forgot password" → `POST /api/auth/reset-password`
+  → Supabase emails link → `/auth/callback?redirectTo=/auth/update-password`
+  → `updateUser({ password })` → portal
+- **Auth callback** (`/auth/callback`): handles PKCE codes for both magic links and
+  password resets via the same `code` + `redirectTo` pattern — no separate handling needed
+
+**IMPORTANT:** Users who first authenticated via magic link have no password set. They must
+use the "Forgot password" flow to set one — `signUp()` will reject already-registered emails.
+
+**Supabase Auth settings required:**
+- Email provider: enabled
+- Confirm email: **OFF** (members have already verified intent via Stripe payment)
+- Site URL: set to production domain in Supabase Dashboard > Authentication > URL Configuration
+
+## Key API Routes
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| `POST` | `/api/checkout` | Creates Stripe Checkout session; all plans use dynamic `price_data` |
+| `POST` | `/api/webhooks/stripe` | Handles `checkout.session.completed`, `customer.subscription.deleted`, `invoice.payment_failed` |
+| `POST` | `/api/billing-portal` | Creates Stripe Billing Portal session (requires portal config in Stripe Dashboard) |
+| `PATCH` | `/api/profile` | Updates member profile fields (auth-verified) |
+| `POST` | `/api/auth/reset-password` | Triggers Supabase password reset email; always returns 200 |
+| `POST` | `/api/share-tracing` | Validates + inserts share tracing enquiry into `shareholder_cases` |
+| `POST` | `/api/proxy` | Validates + inserts proxy assignment enquiry into `shareholder_cases` |
+
 ## Zoho CRM Integration
 
 - API base: `https://www.zohoapis.eu/crm/v2` — **EU data centre only, never `.com`**
@@ -168,7 +228,7 @@ events (
 - Case types: `Share Tracing` | `Proxy Assignment`
 - Zoho calls must be **non-blocking** (fire-and-forget, catch errors, never throw)
 - Env vars: `ZOHO_ACCESS_TOKEN`, `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`
-- Refresh token automatically if 401 returned
+- **Currently a stub** — logs only, no real API calls. Implement when Zoho env vars are set.
 
 ## Email (Resend)
 
@@ -177,6 +237,7 @@ events (
 - Member welcome email: sent from `membership@celticsupporterslimited.net` after Stripe success
 - Env var: `RESEND_API_KEY`
 - All Resend calls wrapped in try/catch — email failure must never block a form submission
+- **Currently not implemented** — placeholder only. Implement when `RESEND_API_KEY` is set.
 
 ## Key Role-Based Contacts (never use personal addresses externally)
 
@@ -206,11 +267,58 @@ events (
 - TypeScript throughout; strict mode on
 - Component files: `components/Nav.tsx`, `components/Footer.tsx`
 - API routes: `app/api/<resource>/route.ts`
-- Lib files: `lib/stripe.ts`, `lib/supabase.ts`, `lib/zoho.ts`, `lib/resend.ts`
+- Lib files: `lib/stripe.ts`, `lib/supabase.ts`, `lib/supabase-browser.ts`, `lib/zoho.ts`, `lib/resend.ts`
+  - `lib/supabase.ts` — service-role client (`getSupabase()`) + server auth client (`createServerSupabase()`); server-side only
+  - `lib/supabase-browser.ts` — anon key browser client (`createBrowserSupabase()`); client components only
 - File naming: lowercase, hyphenated
 - Commit messages: imperative present tense ("Add hero section to home page")
-- Run `npm run dev` to confirm render at `localhost:3000` after each session
-- Git: `git add . && git commit -m 'Session summary: <what was built>'` at end of every session
+
+## Environment Variables
+
+Required in Vercel (Project Settings > Environment Variables) and `.env.local` for local dev:
+
+| Variable | Purpose | Status |
+|----------|---------|--------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | Required |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase public anon key | Required |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for API routes (never expose to browser) | Required |
+| `STRIPE_SECRET_KEY` | Stripe API key — test key until go-live | Required |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret | Required |
+| `NEXT_PUBLIC_SITE_URL` | Production URL — used as fallback for redirect URLs | Recommended |
+| `RESEND_API_KEY` | Resend email API key | When email enabled |
+| `ZOHO_ACCESS_TOKEN` | Zoho CRM access token | When CRM enabled |
+| `ZOHO_CLIENT_ID` | Zoho CRM client ID | When CRM enabled |
+| `ZOHO_CLIENT_SECRET` | Zoho CRM client secret | When CRM enabled |
+
+## Deployment
+
+- **Hosting:** Vercel — auto-deploys on push to `main`
+- **Production URL:** https://csl-website-ten.vercel.app
+- **GitHub repo:** `celtic-supporters-limited/csl-website` (`main` branch)
+- **Supabase project:** EU West (Ireland) — EU data residency confirmed
+
+**SQL migrations to run before using the portal:**
+1. `sql/phase-5-schema.sql` — creates `members`, `events` tables + RLS policies
+2. `sql/phase-5b-schema.sql` — adds new `members` columns, creates `payments` table + RLS
+
+**Stripe webhook registration:**
+URL: `https://csl-website-ten.vercel.app/api/webhooks/stripe`
+Events: `checkout.session.completed`, `customer.subscription.deleted`, `invoice.payment_failed`
+
+## Known Issues / Pending
+
+- **Stripe billing portal** — requires one-time configuration in Stripe Dashboard >
+  Billing > Customer portal settings before `billingPortal.sessions.create` will work
+- **Live Stripe account** — "Build a platform or marketplace" setting is enabled;
+  requires director sign-off to disable before go-live
+- **Pure Baltic webhooks** — live Stripe account still has webhook endpoints pointing to
+  `dev.purebaltic.co.uk`; pending board review and cutover to new endpoint
+- **Privacy policy page** — required before Stripe live keys are switched on (GDPR)
+- **Zoho CRM** — integration is a stub (logs only); implement when `ZOHO_*` env vars are set
+- **Resend email** — welcome email and intake form notifications are placeholders;
+  implement when `RESEND_API_KEY` is set
+- **`SUPABASE_SERVICE_ROLE_KEY`** not listed in the minimum env vars above — must be set
+  or all Supabase API route calls will throw at runtime
 
 ## Session Start Prompt (copy-paste to begin each Claude Code session)
 
@@ -253,49 +361,67 @@ Five-tier plan grid (Standard £10/mo, Accelerator £25/mo, Custom Monthly min �
 Custom Annual min £300/£10 inc, Lifetime £5,000 one-off). All five use dynamic `price_data`
 - no pre-created Stripe price IDs needed. Client-side and server-side amount validation for
 custom tiers. Two-step UX: card select -> summary panel -> Stripe redirect.
-`POST /api/checkout` creates Stripe Checkout session.
-`product_data.name` values: "Monthly 10", "Monthly 25", "Custom Monthly",
-"£{amount} Annually", "Lifetime £5000". No `subscription_data` or `payment_intent_data`
-fields — these were found to cause silent Stripe rejections and were removed.
-`/membership/success` confirmation page. `lib/stripe.ts` lazy-initialised with shared
-`validatePlan()`. Required env var: `STRIPE_SECRET_KEY` (test key only until Phase 7).
+`POST /api/checkout` creates Stripe Checkout session. No `subscription_data` or
+`payment_intent_data` fields (removed — caused silent Stripe rejections).
+`/membership/success` links to `/signup`. `lib/stripe.ts` lazy-initialised with shared
+`validatePlan()`. Required env var: `STRIPE_SECRET_KEY`.
 
 **Phase 4 — Proxy Assignment** (`app/proxy/`)
 Full page matching demo: Hero, proxy explainer (2-col with stats panel), 4-step process,
 registration form. Client form with GDPR consent. `POST /api/proxy` inserts to
 `shareholder_cases` (`case_type: 'Proxy Assignment'`), fire-and-forget Zoho stub.
 
-**Phase 5 — Member Portal**
-Magic-link auth via Supabase Auth. `middleware.ts` protects `/member-portal` and refreshes
-session tokens on every request. `/login` page with `LoginForm.tsx` client component calls
-`signInWithOtp`. `/auth/callback` route exchanges the PKCE code for a session cookie.
-`app/member-portal/page.tsx` is a server component: verifies auth, fetches member record,
-events, and shareholder_cases via service-role client, then passes data to
-`PortalClient.tsx` (client component). Portal has five tabs: Dashboard, Subscription,
-Recordings Library, My Enquiries, Account Settings. `PATCH /api/member/settings` updates
-member name (auth-verified server-side). `lib/supabase-browser.ts` exports
-`createBrowserSupabase()` (anon key, for client components); `lib/supabase.ts` gains
-`createServerSupabase()` (anon key + cookie adapter, for server components/route handlers).
-`sql/phase-5-schema.sql` contains CREATE TABLE for `members` and `events`, RLS policies,
-and indexes - run in Supabase Dashboard > SQL Editor before deploying.
+Also: `app/articles-of-association/` — full Articles of Association page; linked from footer.
+Footer updated with X, Bluesky, LinkedIn social links and legal details (registered office,
+Company No. SC862186, ICO ZB985030, LEI 984500CDVAFEBEF83781).
+
+**Phase 5 — Authentication + Member Portal**
+Auth: email + password primary (`signInWithPassword`), magic link fallback (`signInWithOtp`).
+`/login` page with `LoginForm.tsx` client component (4 views: password, forgot, magic, sent).
+`/signup` page for post-payment account activation (`signUp()`).
+`POST /api/auth/reset-password` triggers Supabase password reset; always returns 200.
+`/auth/update-password` — `updateUser({ password })` after clicking reset link.
+`/auth/callback` handles PKCE codes for magic link and password reset via same route.
+`middleware.ts` protects `/member-portal`, refreshes session tokens on every request.
+Portal (`app/member-portal/`) — server component fetches member + events + cases + payments +
+live Stripe subscription data (two-batch fetch); passes to `PortalClient.tsx`. Portal has
+six tabs: Dashboard, Subscription, Payments, Recordings Library, My Enquiries, Edit Profile.
+`lib/supabase-browser.ts` exports `createBrowserSupabase()` (anon key, client components).
+`lib/supabase.ts` gains `createServerSupabase()` (anon key + cookie adapter, server only).
+`sql/phase-5-schema.sql` — `members`, `events` tables + RLS.
 Required env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`.
 
-**Phase 6 — Stripe Webhook** (`app/api/webhooks/stripe/`)
-`POST /api/webhooks/stripe` verifies the Stripe signature using `STRIPE_WEBHOOK_SECRET`
-(returns 400 on failure). Handles three events:
-- `checkout.session.completed`: retrieves full session with `line_items` + `customer`
-  expanded, derives `membership_tier` from mode/recurring interval (payment=lifetime,
-  subscription/year=annual, subscription/month=monthly), upserts row in `members`.
-- `customer.subscription.deleted`: sets `status = 'cancelled'` by `stripe_customer_id`.
-- `invoice.payment_failed`: sets `status = 'payment_failed'` by `stripe_customer_id`.
-Handler errors return 200 (prevents Stripe retrying transient failures). Unhandled event
-types are acknowledged with 200 and ignored.
-Required env var: `STRIPE_WEBHOOK_SECRET` (from Stripe Dashboard > Developers > Webhooks).
-Register endpoint URL: `https://<domain>/api/webhooks/stripe`.
+**Phase 5b — Portal Expansion**
+`sql/phase-5b-schema.sql` adds 10 new columns to `members` (plan_name, amount_pence,
+stripe_subscription_id, first_name, last_name, phone, fan_status, contact_email/sms/telephone)
+and creates the `payments` table with RLS.
+Portal Subscription tab: shows live Stripe subscription data (next payment date/amount, card
+brand/last4/expiry) fetched via `subscriptions.retrieve` with expanded payment method; falls
+back to "Payment details will appear after your next renewal" when no subscription ID.
+`POST /api/billing-portal` creates Stripe Billing Portal session for card updates.
+`PATCH /api/profile` validates and updates profile fields (fan_status constrained to allowed
+values). Edit Profile tab: first/last name, phone, fan status dropdown, contact preference
+checkboxes (email required, SMS + telephone optional).
+Payments tab: table of paid_at, plan_name, amount, payment intent ref (last 8 chars), status.
 
-### Next — Phase 7: Billing Portal + Payment History
-Stripe Customer Portal link in the member portal Subscription tab (lets members cancel or
-update their card without contacting CSL). Full payment history pulled from Stripe Charges
-or Invoices API and displayed in the portal. Switch `STRIPE_SECRET_KEY` to live key and
-`STRIPE_WEBHOOK_SECRET` to the live webhook secret once testing is complete.
+**Phase 6 — Stripe Webhook** (`app/api/webhooks/stripe/`)
+`POST /api/webhooks/stripe` verifies Stripe signature (returns 400 on failure).
+`checkout.session.completed`: retrieves full session with expanded line_items + customer;
+derives `membership_tier` and `plan_name` from mode/interval/unit_amount; upserts `members`
+row (including `stripe_subscription_id`, `amount_pence`); inserts row into `payments` table.
+`customer.subscription.deleted`: sets `status = 'cancelled'` by `stripe_customer_id`.
+`invoice.payment_failed`: sets `status = 'payment_failed'` by `stripe_customer_id`.
+Handler errors return 200 to prevent Stripe retrying transient failures.
+Required env var: `STRIPE_WEBHOOK_SECRET`.
+Webhook endpoint: `https://csl-website-ten.vercel.app/api/webhooks/stripe`.
+
+### Next — Go-Live Checklist
+- Configure Stripe Billing Portal in Dashboard > Billing > Customer portal settings
+- Privacy policy page (GDPR requirement before live Stripe keys)
+- Board sign-off on Pure Baltic webhook cutover
+- Disable "Build a platform or marketplace" in live Stripe account (director sign-off)
+- Switch `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` to live values
+- Implement Resend welcome email on `checkout.session.completed`
+- Implement Zoho CRM integration (replace stubs in `lib/zoho.ts`)
+- Confirm `SUPABASE_SERVICE_ROLE_KEY` is set in Vercel production environment
