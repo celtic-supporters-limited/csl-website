@@ -54,8 +54,8 @@ export default function LoginForm({ redirectTo }: { redirectTo?: string }) {
       return;
     }
 
-    router.push(redirectTo ?? "/member-portal");
     router.refresh();
+    router.push(redirectTo ?? "/member-portal");
   }
 
   // ── Forgot password ────────────────────────────────────────────────────────

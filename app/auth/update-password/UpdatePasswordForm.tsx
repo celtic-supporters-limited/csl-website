@@ -52,8 +52,8 @@ export default function UpdatePasswordForm() {
       return;
     }
 
-    router.push("/member-portal");
     router.refresh();
+    router.push("/member-portal");
   }
 
   if (!ready) {
