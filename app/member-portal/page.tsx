@@ -86,19 +86,28 @@ export default async function MemberPortalPage() {
               .charges.list({ customer: member.stripe_customer_id, limit: 24 })
               .then((list) =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (list.data as any[]).map((charge) => ({
+                (list.data as any[]).map((charge) => {
+                  const desc = charge.description as string | null;
+                  const isGeneric =
+                    !desc ||
+                    desc.toLowerCase().includes("subscription creation") ||
+                    desc.toLowerCase().includes("invoice");
+                  const planName = isGeneric
+                    ? (charge.metadata?.plan_name as string | undefined) ??
+                      member!.plan_name ??
+                      "Membership"
+                    : desc;
+                  return {
                   id: charge.id as string,
                   stripe_payment_intent_id: charge.id as string,
                   amount_pence: charge.amount as number,
-                  plan_name:
-                    (charge.description as string | null) ||
-                    (charge.metadata?.plan_name as string | undefined) ||
-                    "Membership",
+                  plan_name: planName,
                   paid_at: new Date(
                     (charge.created as number) * 1000
                   ).toISOString(),
                   status:
                     charge.status === "succeeded" ? "completed" : (charge.status as string),
+                  };
                 }))
               )
               .catch((err) => {
