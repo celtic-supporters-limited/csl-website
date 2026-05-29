@@ -38,7 +38,7 @@ each as a Next.js + Tailwind component.
 3. **Proxy assignment** — separate page for shareholders who want to assign their AGM proxy
    vote to CSL without necessarily going through share tracing.
 4. **Member portal** — authenticated area for active members: membership status, payment
-   history, meeting recordings, and enquiry tracking.
+   history, Members Library (meeting minutes, recordings, governance documents), and enquiry tracking.
 5. **Trust and credibility** — the site must convey governance seriousness to Celtic PLC,
    institutional shareholders, and media. It is not a fan site.
 
@@ -153,8 +153,9 @@ members (
   contact_telephone      boolean default false
 )
 
--- Payments logged on checkout.session.completed
--- Migration: sql/phase-5b-schema.sql
+-- Payments table (legacy — no longer written to or queried by the portal)
+-- Migration: sql/phase-5b-schema.sql created it; webhook INSERT was later removed.
+-- Portal Payments tab now reads directly from stripe.charges.list. Table can be dropped.
 payments (
   id                       uuid primary key default gen_random_uuid(),
   member_id                uuid references members(id),
@@ -220,6 +221,10 @@ documents (
   → `updateUser({ password })` → portal
 - **Auth callback** (`/auth/callback`): handles PKCE codes for both magic links and
   password resets via the same `code` + `redirectTo` pattern — no separate handling needed
+- **Post-auth redirect:** uses `window.location.href = '/member-portal'` (not `router.push`)
+  so the browser sends the new Supabase session cookie with the request and the middleware
+  sees the session immediately. `router.push` without a prior `router.refresh()` races the
+  cookie and causes the middleware to redirect back to login.
 
 **IMPORTANT:** Users who first authenticated via magic link have no password set. They must
 use the "Forgot password" flow to set one — `signUp()` will reject already-registered emails.
@@ -317,9 +322,10 @@ Required in Vercel (Project Settings > Environment Variables) and `.env.local` f
 - **GitHub repo:** `celtic-supporters-limited/csl-website` (`main` branch)
 - **Supabase project:** EU West (Ireland) — EU data residency confirmed
 
-**SQL migrations to run before using the portal:**
+**SQL migrations — run in order in Supabase Dashboard > SQL Editor:**
 1. `sql/phase-5-schema.sql` — creates `members`, `events` tables + RLS policies
 2. `sql/phase-5b-schema.sql` — adds new `members` columns, creates `payments` table + RLS
+3. `sql/add-members-library.sql` — extends `events` with `minutes_url`/`description`; creates `documents` table + RLS; seeds 14th Members Meeting and The Celtic Paradox paper
 
 **Stripe webhook registration:**
 URL: `https://csl-website-ten.vercel.app/api/webhooks/stripe`
@@ -337,8 +343,12 @@ Events: `checkout.session.completed`, `customer.subscription.deleted`, `invoice.
 - **Zoho CRM** — integration is a stub (logs only); implement when `ZOHO_*` env vars are set
 - **Resend email** — welcome email and intake form notifications are placeholders;
   implement when `RESEND_API_KEY` is set
-- **`SUPABASE_SERVICE_ROLE_KEY`** not listed in the minimum env vars above — must be set
-  or all Supabase API route calls will throw at runtime
+- **Members Library Google Drive URLs** — all `file_url`, `minutes_url`, `recording_url`,
+  and `slides_url` values are currently stubbed (`STUB_` prefix). Create CSL Google Drive
+  account, upload documents, set share permissions to "anyone with link can view", and
+  replace stub URLs in the database before go-live
+- **`sql/add-members-library.sql`** — must be run in Supabase before Members Library tab
+  shows any data (events description/minutes_url columns + documents table)
 
 ## Session Start Prompt (copy-paste to begin each Claude Code session)
 
@@ -425,7 +435,8 @@ back to "Payment details will appear after your next renewal" when no subscripti
 `PATCH /api/profile` validates and updates profile fields (fan_status constrained to allowed
 values). Edit Profile tab: first/last name, phone, fan status dropdown, contact preference
 checkboxes (email required, SMS + telephone optional).
-Payments tab: table of paid_at, plan_name, amount, payment intent ref (last 8 chars), status.
+Payments tab: initially read from Supabase payments table — superseded in Phase 7 by
+`stripe.charges.list` (see Phase 7 for current behaviour).
 
 **Phase 6 — Stripe Webhook** (`app/api/webhooks/stripe/`)
 `POST /api/webhooks/stripe` verifies Stripe signature (returns 400 on failure).
