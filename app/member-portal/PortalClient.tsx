@@ -56,7 +56,7 @@ export type PortalPayment = {
 
 export type StripeSubData = {
   status: string;
-  current_period_end: number;
+  current_period_end: number | null;
   cancel_at_period_end: boolean;
   next_amount_pence: number | null;
   card_brand: string | null;
