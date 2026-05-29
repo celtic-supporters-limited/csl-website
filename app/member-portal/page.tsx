@@ -108,7 +108,7 @@ export default async function MemberPortalPage() {
                   status:
                     charge.status === "succeeded" ? "completed" : (charge.status as string),
                   };
-                }))
+                })
               )
               .catch((err) => {
                 console.error("[member-portal] Stripe charges fetch error:", err);
