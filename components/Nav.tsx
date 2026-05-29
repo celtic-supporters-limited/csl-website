@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
@@ -23,40 +24,54 @@ export default function Nav() {
   const pathname = usePathname();
   const [authed, setAuthed] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const supabase = createBrowserSupabase();
     supabase.auth.getSession().then(({ data: { session } }) => {
       setAuthed(!!session);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthed(!!session);
-    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => setAuthed(!!session)
+    );
     return () => subscription.unsubscribe();
   }, []);
+
+  // Close mobile menu on route change
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   const aboutActive = aboutLinks.some((l) => pathname === l.href);
 
   return (
-    <nav className="sticky top-0 z-50 bg-csl-dark border-b border-white/10 shadow-md">
-      <div className="max-w-[1100px] mx-auto px-5 h-[68px] flex items-center justify-between">
-        <Link
-          href="/"
-          className="flex items-center gap-2.5 font-extrabold text-xl text-white"
-        >
-          <span className="text-2xl">&#9752;</span>
-          Celtic Supporters Limited
+    <nav className="sticky top-0 z-50 bg-csl-dark shadow-md">
+      {/* MAIN BAR — 64 px tall */}
+      <div className="max-w-[1100px] mx-auto px-5 h-16 flex items-center justify-between">
+
+        {/* LOGO */}
+        <Link href="/" className="flex items-center gap-3 flex-shrink-0">
+          <Image
+            src="/images/csl-logo.png"
+            alt="Celtic Supporters Limited"
+            width={40}
+            height={40}
+            className="h-10 w-auto object-contain"
+            priority
+          />
+          <span className="font-serif font-semibold text-[1.1rem] text-white leading-tight hidden sm:block">
+            Celtic Supporters Limited
+          </span>
         </Link>
 
-        <ul className="hidden md:flex items-center gap-5 list-none">
+        {/* DESKTOP LINKS */}
+        <ul className="hidden md:flex items-center list-none">
           {navLinks.map(({ href, label }) => (
             <li key={href}>
               <Link
                 href={href}
-                className={`text-[0.85rem] font-medium pb-1 border-b-2 transition-colors duration-200 ${
+                className={`block text-[0.9rem] font-medium px-4 py-2 transition-colors duration-150 ${
                   pathname === href
-                    ? "text-white border-csl-gold"
-                    : "text-white/75 border-transparent hover:text-white hover:border-white/40"
+                    ? "text-csl-gold"
+                    : "text-white/80 hover:text-csl-gold"
                 }`}
               >
                 {label}
@@ -71,10 +86,8 @@ export default function Nav() {
             onMouseLeave={() => setAboutOpen(false)}
           >
             <button
-              className={`text-[0.85rem] font-medium pb-1 border-b-2 transition-colors duration-200 flex items-center gap-1 ${
-                aboutActive
-                  ? "text-white border-csl-gold"
-                  : "text-white/75 border-transparent hover:text-white hover:border-white/40"
+              className={`text-[0.9rem] font-medium px-4 py-2 flex items-center gap-1 transition-colors duration-150 ${
+                aboutActive ? "text-csl-gold" : "text-white/80 hover:text-csl-gold"
               }`}
               aria-expanded={aboutOpen}
               aria-haspopup="true"
@@ -92,12 +105,12 @@ export default function Nav() {
             </button>
 
             {aboutOpen && (
-              <ul className="absolute top-full left-0 mt-1.5 w-56 bg-white border border-gray-200 rounded-xl shadow-lg py-2 z-50 list-none">
+              <ul className="absolute top-full left-0 mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-lg py-2 z-50 list-none">
                 {aboutLinks.map(({ href, label }) => (
                   <li key={href}>
                     <Link
                       href={href}
-                      className={`block px-4 py-2.5 text-[0.85rem] transition-colors duration-150 ${
+                      className={`block px-4 py-2.5 text-[0.88rem] transition-colors duration-150 ${
                         pathname === href
                           ? "text-csl-dark font-semibold bg-csl-light"
                           : "text-gray-700 hover:text-csl-dark hover:bg-gray-50"
@@ -112,21 +125,97 @@ export default function Nav() {
           </li>
         </ul>
 
-        <div className="flex items-center gap-2.5">
+        {/* RIGHT ACTIONS */}
+        <div className="flex items-center gap-2">
           <Link
             href={authed ? "/member-portal" : "/login"}
-            className="hidden sm:inline-flex items-center px-5 py-2 rounded-lg text-[0.88rem] font-semibold border-[1.5px] border-white/50 text-white hover:bg-white/10 transition-colors duration-200"
+            className="hidden lg:inline-flex items-center px-4 py-2 rounded-lg text-[0.88rem] font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors duration-200"
           >
             {authed ? "Member Portal" : "Member Login"}
           </Link>
           <Link
             href="/membership"
-            className="inline-flex items-center px-5 py-2 rounded-lg text-[0.88rem] font-semibold bg-csl-gold text-gray-900 hover:brightness-105 transition-all duration-200 shadow-sm"
+            className="hidden sm:inline-flex items-center px-4 py-2 rounded-lg text-[0.88rem] font-semibold bg-csl-gold text-gray-900 hover:brightness-105 transition-all duration-200"
           >
             Join CSL
           </Link>
+
+          {/* Hamburger (mobile only) */}
+          <button
+            className="md:hidden p-2 flex flex-col justify-center items-center gap-[5px]"
+            onClick={() => setMobileOpen((o) => !o)}
+            aria-label="Toggle navigation menu"
+            aria-expanded={mobileOpen}
+          >
+            <span
+              className={`block w-5 h-0.5 bg-white origin-center transition-transform duration-200 ${
+                mobileOpen ? "translate-y-[7px] rotate-45" : ""
+              }`}
+            />
+            <span
+              className={`block w-5 h-0.5 bg-white transition-opacity duration-200 ${
+                mobileOpen ? "opacity-0" : ""
+              }`}
+            />
+            <span
+              className={`block w-5 h-0.5 bg-white origin-center transition-transform duration-200 ${
+                mobileOpen ? "-translate-y-[7px] -rotate-45" : ""
+              }`}
+            />
+          </button>
         </div>
       </div>
+
+      {/* MOBILE MENU */}
+      {mobileOpen && (
+        <div className="md:hidden bg-csl-dark border-t border-white/10 px-5 py-4">
+          <div className="space-y-0.5">
+            {navLinks.map(({ href, label }) => (
+              <Link
+                key={href}
+                href={href}
+                className={`block px-3 py-2.5 rounded text-[0.92rem] font-medium transition-colors duration-150 ${
+                  pathname === href ? "text-csl-gold" : "text-white/80 hover:text-white"
+                }`}
+              >
+                {label}
+              </Link>
+            ))}
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-white/10 space-y-0.5">
+            <p className="px-3 pb-1 text-[0.72rem] text-white/40 uppercase tracking-widest font-medium">
+              About
+            </p>
+            {aboutLinks.map(({ href, label }) => (
+              <Link
+                key={href}
+                href={href}
+                className={`block px-3 py-2.5 rounded text-[0.92rem] font-medium transition-colors duration-150 ${
+                  pathname === href ? "text-csl-gold" : "text-white/80 hover:text-white"
+                }`}
+              >
+                {label}
+              </Link>
+            ))}
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-white/10 flex flex-col gap-2.5">
+            <Link
+              href={authed ? "/member-portal" : "/login"}
+              className="block text-center px-4 py-2.5 rounded-lg text-[0.92rem] font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors duration-200"
+            >
+              {authed ? "Member Portal" : "Member Login"}
+            </Link>
+            <Link
+              href="/membership"
+              className="block text-center px-4 py-2.5 rounded-lg text-[0.92rem] font-semibold bg-csl-gold text-gray-900 hover:brightness-105 transition-all duration-200"
+            >
+              Join CSL
+            </Link>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
