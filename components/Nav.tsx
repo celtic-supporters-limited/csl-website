@@ -7,25 +7,44 @@ import { useEffect, useState } from "react";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 import { Container } from "@/components/Container";
 
-const navLinks = [
-  { href: "/", label: "Home" },
+const takeActionLinks = [
   { href: "/share-tracing", label: "Share Tracing" },
   { href: "/proxy", label: "Proxy Assignment" },
-  { href: "/membership", label: "Membership" },
-  { href: "/our-team", label: "Our Team" },
-  { href: "/celtic-paradox", label: "The Celtic Paradox" },
 ];
 
 const aboutLinks = [
+  { href: "/our-team", label: "Our Team" },
+  { href: "/celtic-paradox", label: "The Celtic Paradox" },
   { href: "/faq", label: "FAQs" },
-  { href: "/articles-of-association", label: "Articles of Association" },
 ];
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`w-3 h-3 transition-transform duration-150 flex-shrink-0 ${open ? "rotate-180" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+    </svg>
+  );
+}
+
+const dropdownItemClass = (active: boolean) =>
+  `block px-4 py-2.5 text-[0.88rem] transition-colors duration-150 ${
+    active ? "text-csl-gold font-semibold" : "text-white hover:text-csl-gold"
+  }`;
 
 export default function Nav() {
   const pathname = usePathname();
   const [authed, setAuthed] = useState(false);
+  const [takeActionOpen, setTakeActionOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileTakeActionOpen, setMobileTakeActionOpen] = useState(false);
+  const [mobileAboutOpen, setMobileAboutOpen] = useState(false);
 
   useEffect(() => {
     const supabase = createBrowserSupabase();
@@ -40,12 +59,18 @@ export default function Nav() {
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
+  const takeActionActive = takeActionLinks.some((l) => pathname === l.href);
   const aboutActive = aboutLinks.some((l) => pathname === l.href);
+
+  const topLinkClass = (active: boolean) =>
+    `text-[0.9rem] font-medium transition-colors duration-150 ${
+      active ? "text-csl-gold" : "text-white/85 hover:text-white"
+    }`;
 
   return (
     <nav className="sticky top-0 z-50 bg-csl-dark shadow-md">
       {/* MAIN BAR */}
-      <Container className="h-16 flex items-center justify-between">
+      <Container className="h-14 flex items-center justify-between">
         {/* LOGO */}
         <Link href="/" className="flex items-center gap-3 flex-shrink-0">
           <Image
@@ -62,19 +87,53 @@ export default function Nav() {
         </Link>
 
         {/* DESKTOP LINKS */}
-        <ul className="hidden md:flex items-center list-none">
-          {navLinks.map(({ href, label }) => (
-            <li key={href}>
-              <Link
-                href={href}
-                className={`block text-[0.9rem] font-medium px-4 py-2 transition-colors duration-150 ${
-                  pathname === href ? "text-csl-gold" : "text-white/80 hover:text-white"
-                }`}
-              >
-                {label}
-              </Link>
-            </li>
-          ))}
+        <ul className="hidden md:flex items-center gap-0.5 list-none">
+          {/* Home */}
+          <li>
+            <Link
+              href="/"
+              className={`block px-3.5 py-2 ${topLinkClass(pathname === "/")}`}
+            >
+              Home
+            </Link>
+          </li>
+
+          {/* Take Action dropdown */}
+          <li
+            className="relative"
+            onMouseEnter={() => setTakeActionOpen(true)}
+            onMouseLeave={() => setTakeActionOpen(false)}
+          >
+            <button
+              className={`px-3.5 py-2 flex items-center gap-1.5 ${topLinkClass(takeActionActive)}`}
+              aria-expanded={takeActionOpen}
+              aria-haspopup="true"
+            >
+              Take Action
+              <Chevron open={takeActionOpen} />
+            </button>
+            {takeActionOpen && (
+              <ul className="absolute top-full left-0 mt-0.5 min-w-[180px] bg-csl-dark border border-white/20 rounded-[6px] shadow-2xl py-1.5 z-50 list-none">
+                {takeActionLinks.map(({ href, label }) => (
+                  <li key={href}>
+                    <Link href={href} className={dropdownItemClass(pathname === href)}>
+                      {label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+
+          {/* Membership */}
+          <li>
+            <Link
+              href="/membership"
+              className={`block px-3.5 py-2 ${topLinkClass(pathname === "/membership")}`}
+            >
+              Membership
+            </Link>
+          </li>
 
           {/* About dropdown */}
           <li
@@ -83,36 +142,18 @@ export default function Nav() {
             onMouseLeave={() => setAboutOpen(false)}
           >
             <button
-              className={`text-[0.9rem] font-medium px-4 py-2 flex items-center gap-1 transition-colors duration-150 ${
-                aboutActive ? "text-csl-gold" : "text-white/80 hover:text-white"
-              }`}
+              className={`px-3.5 py-2 flex items-center gap-1.5 ${topLinkClass(aboutActive)}`}
               aria-expanded={aboutOpen}
               aria-haspopup="true"
             >
               About
-              <svg
-                className={`w-3 h-3 transition-transform duration-150 ${aboutOpen ? "rotate-180" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-              </svg>
+              <Chevron open={aboutOpen} />
             </button>
-
             {aboutOpen && (
-              <ul className="absolute top-full left-0 mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-lg py-2 z-50 list-none">
+              <ul className="absolute top-full left-0 mt-0.5 min-w-[180px] bg-csl-dark border border-white/20 rounded-[6px] shadow-2xl py-1.5 z-50 list-none">
                 {aboutLinks.map(({ href, label }) => (
                   <li key={href}>
-                    <Link
-                      href={href}
-                      className={`block px-4 py-2.5 text-[0.88rem] transition-colors duration-150 ${
-                        pathname === href
-                          ? "text-csl-dark font-semibold bg-csl-light"
-                          : "text-gray-700 hover:text-csl-dark hover:bg-gray-50"
-                      }`}
-                    >
+                    <Link href={href} className={dropdownItemClass(pathname === href)}>
                       {label}
                     </Link>
                   </li>
@@ -123,7 +164,7 @@ export default function Nav() {
         </ul>
 
         {/* RIGHT ACTIONS */}
-        <div className="flex items-center gap-2 self-center">
+        <div className="flex items-center gap-2">
           <Link
             href={authed ? "/member-portal" : "/login"}
             className="hidden lg:inline-flex items-center px-4 py-2 rounded-lg text-[0.88rem] font-semibold border border-white text-white bg-transparent hover:bg-csl-mid transition-colors duration-200"
@@ -132,7 +173,7 @@ export default function Nav() {
           </Link>
           <Link
             href="/membership"
-            className="hidden sm:inline-flex items-center px-4 py-2 rounded-lg text-[0.88rem] font-semibold bg-csl-gold text-gray-900 hover:brightness-105 transition-all duration-200"
+            className="hidden sm:inline-flex items-center px-4 py-2 rounded-lg text-[0.88rem] font-semibold bg-csl-gold text-csl-dark hover:brightness-105 transition-all duration-200"
           >
             Join CSL
           </Link>
@@ -154,39 +195,89 @@ export default function Nav() {
       {/* MOBILE MENU */}
       {mobileOpen && (
         <div className="md:hidden bg-csl-dark border-t border-white/10">
-          <Container className="py-4">
-            <div className="space-y-0.5">
-              {navLinks.map(({ href, label }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`block px-3 py-2.5 rounded text-[0.92rem] font-medium transition-colors duration-150 ${
-                    pathname === href ? "text-csl-gold" : "text-white/80 hover:text-white"
-                  }`}
-                >
-                  {label}
-                </Link>
-              ))}
+          <Container className="py-3">
+            {/* Home */}
+            <Link
+              href="/"
+              className={`block px-3 py-2.5 rounded text-[0.92rem] font-medium transition-colors duration-150 ${
+                pathname === "/" ? "text-csl-gold" : "text-white/85 hover:text-white"
+              }`}
+            >
+              Home
+            </Link>
+
+            {/* Take Action accordion */}
+            <div className="border-t border-white/10 mt-1 pt-1">
+              <button
+                className={`w-full flex items-center justify-between px-3 py-2.5 text-[0.92rem] font-medium transition-colors duration-150 ${
+                  takeActionActive ? "text-csl-gold" : "text-white/85 hover:text-white"
+                }`}
+                onClick={() => setMobileTakeActionOpen((o) => !o)}
+                aria-expanded={mobileTakeActionOpen}
+              >
+                Take Action
+                <Chevron open={mobileTakeActionOpen} />
+              </button>
+              {mobileTakeActionOpen && (
+                <div className="pl-5 pb-1 space-y-0.5">
+                  {takeActionLinks.map(({ href, label }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      className={`block px-3 py-2 rounded text-[0.9rem] transition-colors duration-150 ${
+                        pathname === href ? "text-csl-gold font-semibold" : "text-white/70 hover:text-white"
+                      }`}
+                    >
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div className="mt-3 pt-3 border-t border-white/10 space-y-0.5">
-              <p className="px-3 pb-1 text-[0.72rem] text-white/40 uppercase tracking-widest font-medium">
+            {/* Membership */}
+            <div className="border-t border-white/10 mt-1 pt-1">
+              <Link
+                href="/membership"
+                className={`block px-3 py-2.5 rounded text-[0.92rem] font-medium transition-colors duration-150 ${
+                  pathname === "/membership" ? "text-csl-gold" : "text-white/85 hover:text-white"
+                }`}
+              >
+                Membership
+              </Link>
+            </div>
+
+            {/* About accordion */}
+            <div className="border-t border-white/10 mt-1 pt-1">
+              <button
+                className={`w-full flex items-center justify-between px-3 py-2.5 text-[0.92rem] font-medium transition-colors duration-150 ${
+                  aboutActive ? "text-csl-gold" : "text-white/85 hover:text-white"
+                }`}
+                onClick={() => setMobileAboutOpen((o) => !o)}
+                aria-expanded={mobileAboutOpen}
+              >
                 About
-              </p>
-              {aboutLinks.map(({ href, label }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`block px-3 py-2.5 rounded text-[0.92rem] font-medium transition-colors duration-150 ${
-                    pathname === href ? "text-csl-gold" : "text-white/80 hover:text-white"
-                  }`}
-                >
-                  {label}
-                </Link>
-              ))}
+                <Chevron open={mobileAboutOpen} />
+              </button>
+              {mobileAboutOpen && (
+                <div className="pl-5 pb-1 space-y-0.5">
+                  {aboutLinks.map(({ href, label }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      className={`block px-3 py-2 rounded text-[0.9rem] transition-colors duration-150 ${
+                        pathname === href ? "text-csl-gold font-semibold" : "text-white/70 hover:text-white"
+                      }`}
+                    >
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div className="mt-4 pt-3 border-t border-white/10 flex flex-col gap-2.5">
+            {/* CTA buttons */}
+            <div className="mt-3 pt-3 border-t border-white/10 flex flex-col gap-2.5">
               <Link
                 href={authed ? "/member-portal" : "/login"}
                 className="block text-center px-4 py-2.5 rounded-lg text-[0.92rem] font-semibold border border-white text-white bg-transparent hover:bg-csl-mid transition-colors duration-200"
@@ -195,7 +286,7 @@ export default function Nav() {
               </Link>
               <Link
                 href="/membership"
-                className="block text-center px-4 py-2.5 rounded-lg text-[0.92rem] font-semibold bg-csl-gold text-gray-900 hover:brightness-105 transition-all duration-200"
+                className="block text-center px-4 py-2.5 rounded-lg text-[0.92rem] font-semibold bg-csl-gold text-csl-dark hover:brightness-105 transition-all duration-200"
               >
                 Join CSL
               </Link>
