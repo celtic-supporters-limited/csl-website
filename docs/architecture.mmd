@@ -1,0 +1,78 @@
+flowchart TD
+    User(["User (Browser)"])
+    GH["GitHub\ncelticsupporters-limited/csl-website\nmain branch"]
+
+    subgraph VCL["Vercel — Next.js 14 App Router — csl-website-ten.vercel.app"]
+        direction TB
+        PUB["Public Pages\n/ · /membership · /share-tracing · /proxy\n/our-team · /faq · /celtic-paradox\n/privacy · /terms · /articles-of-association"]
+        AUTHPG["Auth Pages\n/login · /signup\n/auth/callback · /auth/update-password"]
+        PORTAL["Member Portal — /member-portal\nDashboard · Subscription · Payments\nMembers Library · Enquiries · Edit Profile"]
+        MW["middleware.ts\nSession protection + cookie refresh\n(guards /member-portal)"]
+
+        subgraph VAPI["API Routes — app/api/"]
+            ACHK["POST /api/checkout\nCreate Stripe Checkout session\n(5 plans, dynamic price_data)"]
+            AWBHK["POST /api/webhooks/stripe\ncheckout.session.completed\ncustomer.subscription.deleted\ninvoice.payment_failed"]
+            ABILL["POST /api/billing-portal\nCreate Billing Portal session"]
+            APROF["PATCH /api/profile\nUpdate member profile fields"]
+            AST["POST /api/share-tracing\nValidate + insert enquiry"]
+            APX["POST /api/proxy\nValidate + insert enquiry"]
+            ARST["POST /api/auth/reset-password\nTrigger Supabase reset email"]
+        end
+    end
+
+    subgraph SUPA["Supabase — EU West (Ireland)"]
+        SAUTH["Auth Service\nEmail+Password · Magic Link\nPKCE · JWT session cookies"]
+        subgraph SUPDB["PostgreSQL — Row Level Security"]
+            TM["members\nemail · stripe_customer_id\nmembership_tier · plan_name\nstatus · profile fields"]
+            TSC["shareholder_cases\ncontact_name · email\ncase_type: Share Tracing / Proxy\nstatus: New / In Progress / Resolved"]
+            TEV["events\ntitle · event_date\nrecording_url · minutes_url · slides_url"]
+            TDC["documents\ntitle · document_type\nfile_url · is_published"]
+        end
+    end
+
+    subgraph STR["Stripe — Test Mode"]
+        STRCHK["Checkout\n5 plans via dynamic price_data\nMonthly £10/£25/custom · Annual · Lifetime £5k"]
+        STRWBHK["Webhook Events\nfired to /api/webhooks/stripe\n(STRIPE_WEBHOOK_SECRET verified)"]
+        STRBILL["Billing Portal\nCard + subscription management"]
+        STRDATA["charges.list\nsubscriptions.retrieve\n(live payment data for portal)"]
+    end
+
+    subgraph STUB["Stubbed — Future Integrations"]
+        RESEND["Resend\nWelcome email on checkout.session.completed\nForm notifications to role mailboxes"]
+        ZOHO["Zoho CRM EU\nfindOrCreateZohoContact\ncreateZohoCase\n(zohoapis.eu — never .com)"]
+        GDRIVE["Google Drive\nDocument + recording file storage\n(STUB_ prefix URLs in DB)"]
+    end
+
+    %% Deployment pipeline
+    GH -->|"push to main triggers auto-deploy"| VCL
+
+    %% User flows
+    User -->|"browse public site"| PUB
+    User -->|"sign in / sign up / reset"| AUTHPG
+    User -->|"authenticated session"| PORTAL
+
+    %% Auth interactions
+    AUTHPG -->|"signInWithPassword\nsignInWithOtp\nsignUp · updateUser"| SAUTH
+    MW -->|"getSession\nrefreshSession"| SAUTH
+    ARST -->|"resetPasswordForEmail"| SAUTH
+
+    %% API routes to Supabase DB
+    ACHK -->|"read member by email"| TM
+    AWBHK -->|"upsert member\nset status on event"| TM
+    APROF -->|"update profile fields"| TM
+    AST -->|"insert case"| TSC
+    APX -->|"insert case"| TSC
+    PORTAL -->|"read member · events\ndocuments · shareholder_cases"| SUPDB
+
+    %% API routes to Stripe
+    ACHK -->|"sessions.create"| STRCHK
+    STRWBHK -->|"POST — signature verified"| AWBHK
+    ABILL -->|"billingPortal.sessions.create"| STRBILL
+    PORTAL -->|"charges.list\nsubscriptions.retrieve"| STRDATA
+
+    %% Stubbed integrations (dashed)
+    AST -.->|"fire-and-forget stub\n(lib/zoho.ts)"| ZOHO
+    APX -.->|"fire-and-forget stub\n(lib/zoho.ts)"| ZOHO
+    AWBHK -.->|"welcome email stub\n(lib/resend.ts)"| RESEND
+    TEV -.->|"STUB_ file URLs\n(replace before go-live)"| GDRIVE
+    TDC -.->|"STUB_ file URLs\n(replace before go-live)"| GDRIVE
