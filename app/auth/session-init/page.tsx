@@ -10,8 +10,9 @@ import { useEffect } from "react";
 
 export default function SessionInitPage() {
   useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("next") ?? "";
     const next =
-      new URLSearchParams(window.location.search).get("next") ?? "/member-portal";
+      raw.startsWith("/") && !raw.startsWith("//") ? raw : "/member-portal";
     sessionStorage.setItem("csl-auth-alive", "1");
     window.location.href = next;
   }, []);
