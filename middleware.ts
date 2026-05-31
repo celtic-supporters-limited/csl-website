@@ -18,9 +18,20 @@ export async function middleware(request: NextRequest) {
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            // Strip maxAge and expires so refreshed tokens are written as session
+            // cookies — cleared when the browser closes, not persisted on disk.
+            const { maxAge: _m, expires: _e, ...sessionOptions } = (options ?? {}) as {
+              maxAge?: unknown;
+              expires?: unknown;
+              [key: string]: unknown;
+            };
+            supabaseResponse.cookies.set(
+              name,
+              value,
+              sessionOptions as Parameters<typeof supabaseResponse.cookies.set>[2]
+            );
+          });
         },
       },
     }
