@@ -1088,14 +1088,29 @@ export default function PortalClient({
   const router = useRouter();
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // sessionStorage is cleared when the browser closes, unlike session cookies
-  // which Chrome restores on "Continue where you left off". If the flag is
-  // absent the user reopened the browser without signing in — enforce re-login.
+  // sessionStorage is cleared on browser close and is never restored by bfcache
+  // or Chrome's "Continue where you left off". If the flag is absent the user
+  // returned without actively signing in — enforce re-login.
+  // The pageshow handler catches bfcache restores (event.persisted === true),
+  // which bypass the initial mount check entirely.
   useEffect(() => {
-    if (!sessionStorage.getItem("csl-auth-alive")) {
-      void createBrowserSupabase().auth.signOut();
-      window.location.href = "/login";
+    const supabase = createBrowserSupabase();
+
+    function enforceSession() {
+      if (!sessionStorage.getItem("csl-auth-alive")) {
+        void supabase.auth.signOut();
+        window.location.href = "/login";
+      }
     }
+
+    enforceSession();
+
+    function handlePageShow(event: PageTransitionEvent) {
+      if (event.persisted) enforceSession();
+    }
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
   }, []);
 
   // Sign the user out and redirect to /login if no activity for 30 minutes.

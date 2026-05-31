@@ -53,6 +53,30 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Block top-level navigations with no referrer page (Sec-Fetch-Site: none +
+  // Sec-Fetch-Mode: navigate) even when a session cookie exists. This covers
+  // browser restarts and session restores where Chrome may have revived the
+  // auth cookies but sessionStorage (and therefore csl-auth-alive) is gone.
+  // Navigations that originate inside the app carry Sec-Fetch-Site: same-origin
+  // and are unaffected.
+  if (
+    request.nextUrl.pathname.startsWith("/member-portal") &&
+    user &&
+    request.headers.get("sec-fetch-site") === "none" &&
+    request.headers.get("sec-fetch-mode") === "navigate"
+  ) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    const response = NextResponse.redirect(loginUrl);
+    // Delete the auth cookies so the next middleware invocation does not see a
+    // valid session and loop back to the portal.
+    request.cookies
+      .getAll()
+      .filter((c) => c.name.startsWith("sb-"))
+      .forEach((c) => response.cookies.delete(c.name));
+    return response;
+  }
+
   return supabaseResponse;
 }
 
