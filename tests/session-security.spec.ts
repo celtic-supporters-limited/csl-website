@@ -26,11 +26,18 @@ const hasCredentials = !!(TEST_EMAIL && TEST_PASSWORD);
 
 async function signIn(page: Page): Promise<void> {
   await page.goto("/login");
-  await page.getByLabel("Email address").fill(TEST_EMAIL);
-  await page.getByLabel("Password").fill(TEST_PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  // signIn uses window.location.href which triggers a full navigation
-  await page.waitForURL("**/member-portal**", { timeout: 15_000 });
+  // On a fresh dev server, Next.js compiles JS bundles lazily on first request.
+  // While bundles are loading React hydrates in multiple passes (Strict Mode
+  // double-invocation + RSC bootstrap), causing elements to detach between each
+  // pass. networkidle waits until ALL HTTP bundle requests finish — WebSocket
+  // HMR connections do not count — so the DOM is stable before we interact.
+  await page.waitForLoadState("networkidle", { timeout: 60_000 });
+  await page.fill("#email", TEST_EMAIL);
+  await page.fill("#password", TEST_PASSWORD);
+  await page.click('button[type="submit"]');
+  // window.location.href triggers a full navigation; member portal fetches from
+  // Supabase + Stripe so allow up to 30 s for the load to complete.
+  await page.waitForURL("**/member-portal**", { timeout: 30_000 });
 }
 
 // ---------------------------------------------------------------------------
