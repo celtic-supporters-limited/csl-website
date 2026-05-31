@@ -868,6 +868,13 @@ function EditProfileTab({
     setErrorMsg("");
     setSavedMsg("");
 
+    const trimmedPhone = phone.trim();
+    if (trimmedPhone && !/^\+?[\d\s\-().]{5,25}$/.test(trimmedPhone)) {
+      setErrorMsg("Please enter a valid phone number, including your country code (e.g. +44 7911 123456).");
+      setSaving(false);
+      return;
+    }
+
     const res = await fetch("/api/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -970,8 +977,12 @@ function EditProfileTab({
               onChange={(e) => setPhone(e.target.value)}
               disabled={saving}
               className={inputCls}
-              placeholder="+44 7xxx xxxxxx"
+              placeholder="+44 7911 123456"
+              autoComplete="tel"
             />
+            <p className="text-xs text-gray-400 mt-1">
+              Include your country code (e.g. +44 for UK, +1 for US/Canada, +353 for Ireland).
+            </p>
           </div>
 
           <div>

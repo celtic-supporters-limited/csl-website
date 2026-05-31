@@ -30,9 +30,13 @@ export async function PATCH(req: NextRequest) {
   if ("last_name" in body)
     update.last_name =
       typeof body.last_name === "string" ? body.last_name.trim() || null : null;
-  if ("phone" in body)
-    update.phone =
-      typeof body.phone === "string" ? body.phone.trim() || null : null;
+  if ("phone" in body) {
+    const p = typeof body.phone === "string" ? body.phone.trim() : "";
+    if (p && !/^\+?[\d\s\-().]{5,25}$/.test(p)) {
+      return NextResponse.json({ error: "Invalid phone number format." }, { status: 400 });
+    }
+    update.phone = p || null;
+  }
   if ("fan_status" in body) {
     const fs = body.fan_status;
     update.fan_status =
