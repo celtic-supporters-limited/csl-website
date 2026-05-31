@@ -832,6 +832,101 @@ function EnquiriesTab({ cases }: { cases: PortalCase[] }) {
 
 // ── Edit Profile tab ──────────────────────────────────────────────────────────
 
+type PhoneCountry = { iso: string; name: string; dial: string };
+
+// Shown first in the selector — ordered by expected frequency for CSL members.
+const PHONE_PRIORITY: PhoneCountry[] = [
+  { iso: "GB", name: "United Kingdom",  dial: "+44"  },
+  { iso: "IE", name: "Ireland",          dial: "+353" },
+  { iso: "US", name: "United States",   dial: "+1"   },
+  { iso: "CA", name: "Canada",          dial: "+1"   },
+  { iso: "AU", name: "Australia",       dial: "+61"  },
+  { iso: "NZ", name: "New Zealand",     dial: "+64"  },
+  { iso: "ZA", name: "South Africa",    dial: "+27"  },
+];
+
+// Full alphabetical list (includes the priority countries for searchability).
+const PHONE_ALL: PhoneCountry[] = [
+  { iso: "AR", name: "Argentina",             dial: "+54"  },
+  { iso: "AU", name: "Australia",             dial: "+61"  },
+  { iso: "AT", name: "Austria",              dial: "+43"  },
+  { iso: "BE", name: "Belgium",              dial: "+32"  },
+  { iso: "BR", name: "Brazil",               dial: "+55"  },
+  { iso: "CA", name: "Canada",               dial: "+1"   },
+  { iso: "CN", name: "China",                dial: "+86"  },
+  { iso: "HR", name: "Croatia",              dial: "+385" },
+  { iso: "CY", name: "Cyprus",               dial: "+357" },
+  { iso: "CZ", name: "Czech Republic",       dial: "+420" },
+  { iso: "DK", name: "Denmark",              dial: "+45"  },
+  { iso: "EG", name: "Egypt",                dial: "+20"  },
+  { iso: "FI", name: "Finland",              dial: "+358" },
+  { iso: "FR", name: "France",               dial: "+33"  },
+  { iso: "DE", name: "Germany",              dial: "+49"  },
+  { iso: "GH", name: "Ghana",                dial: "+233" },
+  { iso: "GR", name: "Greece",               dial: "+30"  },
+  { iso: "HK", name: "Hong Kong",            dial: "+852" },
+  { iso: "HU", name: "Hungary",              dial: "+36"  },
+  { iso: "IN", name: "India",                dial: "+91"  },
+  { iso: "ID", name: "Indonesia",            dial: "+62"  },
+  { iso: "IE", name: "Ireland",              dial: "+353" },
+  { iso: "IL", name: "Israel",               dial: "+972" },
+  { iso: "IT", name: "Italy",                dial: "+39"  },
+  { iso: "JP", name: "Japan",                dial: "+81"  },
+  { iso: "KE", name: "Kenya",                dial: "+254" },
+  { iso: "MY", name: "Malaysia",             dial: "+60"  },
+  { iso: "MX", name: "Mexico",               dial: "+52"  },
+  { iso: "MA", name: "Morocco",              dial: "+212" },
+  { iso: "NL", name: "Netherlands",          dial: "+31"  },
+  { iso: "NZ", name: "New Zealand",          dial: "+64"  },
+  { iso: "NG", name: "Nigeria",              dial: "+234" },
+  { iso: "NO", name: "Norway",               dial: "+47"  },
+  { iso: "PK", name: "Pakistan",             dial: "+92"  },
+  { iso: "PH", name: "Philippines",          dial: "+63"  },
+  { iso: "PL", name: "Poland",               dial: "+48"  },
+  { iso: "PT", name: "Portugal",             dial: "+351" },
+  { iso: "RO", name: "Romania",              dial: "+40"  },
+  { iso: "RU", name: "Russia",               dial: "+7"   },
+  { iso: "SA", name: "Saudi Arabia",         dial: "+966" },
+  { iso: "SG", name: "Singapore",            dial: "+65"  },
+  { iso: "SK", name: "Slovakia",             dial: "+421" },
+  { iso: "ZA", name: "South Africa",         dial: "+27"  },
+  { iso: "KR", name: "South Korea",          dial: "+82"  },
+  { iso: "ES", name: "Spain",                dial: "+34"  },
+  { iso: "SE", name: "Sweden",               dial: "+46"  },
+  { iso: "CH", name: "Switzerland",          dial: "+41"  },
+  { iso: "TW", name: "Taiwan",               dial: "+886" },
+  { iso: "TH", name: "Thailand",             dial: "+66"  },
+  { iso: "TR", name: "Turkey",               dial: "+90"  },
+  { iso: "AE", name: "United Arab Emirates", dial: "+971" },
+  { iso: "GB", name: "United Kingdom",       dial: "+44"  },
+  { iso: "US", name: "United States",        dial: "+1"   },
+  { iso: "VN", name: "Vietnam",              dial: "+84"  },
+  { iso: "ZW", name: "Zimbabwe",             dial: "+263" },
+];
+
+// Parse a stored E.164-ish number back into { iso, localNumber }.
+// Searches longer dial codes first to avoid +1 matching +353, +971, etc.
+// Prefers PHONE_PRIORITY order when two codes have the same length (US before CA for +1).
+function parseStoredPhone(stored: string | null): { iso: string; local: string } {
+  const s = (stored ?? "").trim();
+  if (!s.startsWith("+")) return { iso: "GB", local: s };
+
+  const priorityIsos = PHONE_PRIORITY.map((c) => c.iso);
+  const sorted = [...PHONE_ALL].sort((a, b) => {
+    if (b.dial.length !== a.dial.length) return b.dial.length - a.dial.length;
+    const pa = priorityIsos.indexOf(a.iso);
+    const pb = priorityIsos.indexOf(b.iso);
+    if (pa !== -1 && pb !== -1) return pa - pb;
+    if (pa !== -1) return -1;
+    if (pb !== -1) return 1;
+    return 0;
+  });
+
+  const match = sorted.find((c) => s.startsWith(c.dial));
+  if (!match) return { iso: "GB", local: s };
+  return { iso: match.iso, local: s.slice(match.dial.length).trim() };
+}
+
 const FAN_STATUS_OPTIONS = [
   "Season Ticket",
   "Away Member",
@@ -849,7 +944,9 @@ function EditProfileTab({
   const router = useRouter();
   const [firstName, setFirstName] = useState(member?.first_name ?? "");
   const [lastName, setLastName] = useState(member?.last_name ?? "");
-  const [phone, setPhone] = useState(member?.phone ?? "");
+  const parsedPhone = parseStoredPhone(member?.phone ?? "");
+  const [countryIso, setCountryIso] = useState(parsedPhone.iso);
+  const [localPhone, setLocalPhone] = useState(parsedPhone.local);
   const [fanStatus, setFanStatus] = useState(member?.fan_status ?? "");
   const [contactEmail, setContactEmail] = useState(
     member?.contact_email ?? true
@@ -868,12 +965,14 @@ function EditProfileTab({
     setErrorMsg("");
     setSavedMsg("");
 
-    const trimmedPhone = phone.trim();
-    if (trimmedPhone && !/^\+?[\d\s\-().]{5,25}$/.test(trimmedPhone)) {
-      setErrorMsg("Please enter a valid phone number, including your country code (e.g. +44 7911 123456).");
+    const country = PHONE_ALL.find((c) => c.iso === countryIso) ?? PHONE_PRIORITY[0];
+    const trimmedLocal = localPhone.trim();
+    if (trimmedLocal && !/^[\d\s\-().]{4,20}$/.test(trimmedLocal)) {
+      setErrorMsg("Please enter a valid local number using digits, spaces, or hyphens.");
       setSaving(false);
       return;
     }
+    const combinedPhone = trimmedLocal ? `${country.dial} ${trimmedLocal}` : "";
 
     const res = await fetch("/api/profile", {
       method: "PATCH",
@@ -881,7 +980,7 @@ function EditProfileTab({
       body: JSON.stringify({
         first_name: firstName.trim() || null,
         last_name: lastName.trim() || null,
-        phone: phone.trim() || null,
+        phone: combinedPhone || null,
         fan_status: fanStatus || null,
         contact_email: contactEmail,
         contact_sms: contactSms,
@@ -965,23 +1064,48 @@ function EditProfileTab({
 
           <div>
             <label
-              htmlFor="phone"
+              htmlFor="phone-local"
               className="block text-sm font-semibold text-gray-700 mb-1.5"
             >
               Phone (optional)
             </label>
-            <input
-              id="phone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              disabled={saving}
-              className={inputCls}
-              placeholder="+44 7911 123456"
-              autoComplete="tel"
-            />
+            <div className="flex flex-col sm:flex-row gap-2">
+              <select
+                id="phone-country"
+                value={countryIso}
+                onChange={(e) => setCountryIso(e.target.value)}
+                disabled={saving}
+                aria-label="Country code"
+                className="sm:w-56 shrink-0 border border-gray-300 rounded-lg px-3 py-2.5 text-[0.95rem] bg-white focus:outline-none focus:ring-2 focus:ring-csl-dark focus:border-transparent disabled:opacity-60"
+              >
+                <optgroup label="Common countries">
+                  {PHONE_PRIORITY.map((c) => (
+                    <option key={`p-${c.iso}`} value={c.iso}>
+                      {c.name} ({c.dial})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="All countries">
+                  {PHONE_ALL.map((c) => (
+                    <option key={`a-${c.iso}`} value={c.iso}>
+                      {c.name} ({c.dial})
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              <input
+                id="phone-local"
+                type="tel"
+                value={localPhone}
+                onChange={(e) => setLocalPhone(e.target.value)}
+                disabled={saving}
+                placeholder="7911 123456"
+                autoComplete="tel-national"
+                className="flex-1 min-w-0 border border-gray-300 rounded-lg px-4 py-2.5 text-[0.95rem] focus:outline-none focus:ring-2 focus:ring-csl-dark focus:border-transparent disabled:opacity-60"
+              />
+            </div>
             <p className="text-xs text-gray-400 mt-1">
-              Include your country code (e.g. +44 for UK, +1 for US/Canada, +353 for Ireland).
+              Select your country then enter your number without the country code.
             </p>
           </div>
 
