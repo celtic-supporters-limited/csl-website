@@ -1,0 +1,152 @@
+/**
+ * Session Security Tests
+ *
+ * Tests for cookie-based session expiry and the 30-minute inactivity timeout.
+ *
+ * Tests 1-3 require a real member account. Provide credentials via env vars:
+ *   TEST_USER_EMAIL=member@example.com
+ *   TEST_USER_PASSWORD=yourpassword
+ *
+ * Test 4 needs no credentials — just a running dev server.
+ *
+ * Run:
+ *   npx playwright test tests/session-security.spec.ts
+ */
+
+import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
+
+const TEST_EMAIL = process.env.TEST_USER_EMAIL ?? "";
+const TEST_PASSWORD = process.env.TEST_USER_PASSWORD ?? "";
+const hasCredentials = !!(TEST_EMAIL && TEST_PASSWORD);
+
+// ---------------------------------------------------------------------------
+// Shared helper
+// ---------------------------------------------------------------------------
+
+async function signIn(page: Page): Promise<void> {
+  await page.goto("/login");
+  await page.getByLabel("Email address").fill(TEST_EMAIL);
+  await page.getByLabel("Password").fill(TEST_PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  // signIn uses window.location.href which triggers a full navigation
+  await page.waitForURL("**/member-portal**", { timeout: 15_000 });
+}
+
+// ---------------------------------------------------------------------------
+// TEST 1 — Auth cookies are session cookies (no max-age / expires attribute)
+// ---------------------------------------------------------------------------
+// @supabase/ssr previously wrote cookies with maxAge, making them persistent
+// across browser restarts. Our custom cookies adapter omits maxAge/expires so
+// every auth cookie is a session cookie cleared by the browser on close.
+// ---------------------------------------------------------------------------
+
+test("auth cookies have no expiry (session cookies only)", async ({
+  page,
+  context,
+}) => {
+  test.skip(
+    !hasCredentials,
+    "Set TEST_USER_EMAIL and TEST_USER_PASSWORD to run this test"
+  );
+
+  await signIn(page);
+
+  const cookies = await context.cookies();
+  const authCookies = cookies.filter((c) => c.name.startsWith("sb-"));
+
+  expect(
+    authCookies.length,
+    "At least one Supabase auth cookie (sb-*) must be present after sign-in"
+  ).toBeGreaterThan(0);
+
+  for (const cookie of authCookies) {
+    // Playwright uses -1 for cookies with no expiry (session cookies).
+    // Any positive value means the cookie persists after the browser closes.
+    expect(
+      cookie.expires,
+      `Cookie "${cookie.name}" must be a session cookie — found expires=${cookie.expires}`
+    ).toBe(-1);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// TEST 2 — Session does not persist after the browser context is closed
+// ---------------------------------------------------------------------------
+// Closing a browser context destroys all session cookies. Opening a new
+// context should require the user to sign in again.
+// ---------------------------------------------------------------------------
+
+test("session does not persist after browser close", async ({ browser }) => {
+  test.skip(
+    !hasCredentials,
+    "Set TEST_USER_EMAIL and TEST_USER_PASSWORD to run this test"
+  );
+
+  // Context 1 — sign in and verify portal is accessible
+  const ctx1 = await browser.newContext();
+  const page1 = await ctx1.newPage();
+  await signIn(page1);
+  await expect(page1).toHaveURL(/\/member-portal/);
+  await ctx1.close(); // simulates the user closing the browser
+
+  // Context 2 — fresh context with no cookies; should be bounced to login
+  const ctx2 = await browser.newContext();
+  const page2 = await ctx2.newPage();
+  await page2.goto("/member-portal");
+  await expect(page2).toHaveURL(/\/login/);
+  await ctx2.close();
+});
+
+// ---------------------------------------------------------------------------
+// TEST 3 — 30-minute inactivity timeout signs out and redirects
+// ---------------------------------------------------------------------------
+// PortalClient.tsx attaches activity listeners (mousemove, keydown, click,
+// scroll). If none fire for 30 minutes the timer calls supabase.auth.signOut()
+// then sets window.location.href = '/login?reason=timeout'.
+//
+// page.clock.install() patches setTimeout in the browser page and persists
+// across navigations (Playwright installs it as an init script). fastForward
+// advances the fake clock and fires any due timers.
+// ---------------------------------------------------------------------------
+
+test(
+  "30-minute inactivity signs out and redirects to /login?reason=timeout",
+  async ({ page }) => {
+    test.skip(
+      !hasCredentials,
+      "Set TEST_USER_EMAIL and TEST_USER_PASSWORD to run this test"
+    );
+
+    // Install the fake clock before any navigation so the portal's useEffect
+    // picks up patched setTimeout when the component mounts.
+    await page.clock.install();
+
+    await signIn(page);
+    await expect(page).toHaveURL(/\/member-portal/);
+
+    // No user activity — advance the clock past the 30-minute threshold.
+    // fastForward fires all due timers once; the inactivity callback calls
+    // signOut() (async) then sets window.location.href.
+    await page.clock.fastForward(31 * 60 * 1000);
+
+    // Wait for the redirect that the timeout handler triggers.
+    await page.waitForURL("**/login?reason=timeout", { timeout: 15_000 });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// TEST 4 — Timeout banner visible at /login?reason=timeout (no credentials)
+// ---------------------------------------------------------------------------
+
+test("inactivity timeout banner is visible on /login?reason=timeout", async ({
+  page,
+}) => {
+  await page.goto("/login?reason=timeout");
+
+  await expect(
+    page.getByText(
+      "Your session expired due to inactivity. Please sign in again."
+    )
+  ).toBeVisible();
+});
