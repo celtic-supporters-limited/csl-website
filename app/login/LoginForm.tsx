@@ -21,7 +21,7 @@ function ErrorBanner({ msg }: { msg: string }) {
   );
 }
 
-export default function LoginForm({ redirectTo }: { redirectTo?: string }) {
+export default function LoginForm({ redirectTo, reason }: { redirectTo?: string; reason?: string }) {
   const [view, setView] = useState<View>("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -233,6 +233,12 @@ export default function LoginForm({ redirectTo }: { redirectTo?: string }) {
 
   // ── Default: password form ─────────────────────────────────────────────────
   return (
+    <>
+      {reason === "timeout" && (
+        <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+          Your session expired due to inactivity. Please sign in again.
+        </div>
+      )}
     <form onSubmit={handleSignIn} className={cardCls}>
       <div className="mb-4">
         <label
@@ -297,5 +303,6 @@ export default function LoginForm({ redirectTo }: { redirectTo?: string }) {
         </button>
       </div>
     </form>
+    </>
   );
 }

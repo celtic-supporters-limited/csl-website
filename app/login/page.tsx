@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 export default function LoginPage({
   searchParams,
 }: {
-  searchParams: { redirectTo?: string; error?: string };
+  searchParams: { redirectTo?: string; error?: string; reason?: string };
 }) {
   return (
     <main className="min-h-[calc(100vh-160px)] flex items-center justify-center bg-csl-light py-16 px-4">
@@ -30,7 +30,7 @@ export default function LoginPage({
           </div>
         )}
 
-        <LoginForm redirectTo={searchParams.redirectTo} />
+        <LoginForm redirectTo={searchParams.redirectTo} reason={searchParams.reason} />
 
         <p className="mt-6 text-center text-xs text-gray-400">
           Only active CSL members can sign in.{" "}

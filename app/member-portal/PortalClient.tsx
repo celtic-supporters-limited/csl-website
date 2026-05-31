@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
@@ -1072,6 +1072,8 @@ const NAV_ITEMS: { tab: Tab; label: string; icon: string }[] = [
 
 // ── Main portal component ─────────────────────────────────────────────────────
 
+const INACTIVITY_MS = 30 * 60 * 1000; // 30 minutes
+
 export default function PortalClient({
   user,
   member,
@@ -1084,6 +1086,29 @@ export default function PortalClient({
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [signingOut, setSigningOut] = useState(false);
   const router = useRouter();
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sign the user out and redirect to /login if no activity for 30 minutes.
+  useEffect(() => {
+    const supabase = createBrowserSupabase();
+
+    function resetTimer() {
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+      inactivityTimer.current = setTimeout(async () => {
+        await supabase.auth.signOut();
+        window.location.href = "/login?reason=timeout";
+      }, INACTIVITY_MS);
+    }
+
+    const activityEvents = ["mousemove", "keydown", "click", "scroll"] as const;
+    activityEvents.forEach((ev) => window.addEventListener(ev, resetTimer));
+    resetTimer();
+
+    return () => {
+      activityEvents.forEach((ev) => window.removeEventListener(ev, resetTimer));
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    };
+  }, []);
 
   const name = displayName(member, user.email);
   const tierDisplay = member?.plan_name ?? tierLabel(member?.membership_tier ?? null);
