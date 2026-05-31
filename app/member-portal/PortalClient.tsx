@@ -1094,8 +1094,8 @@ export default function PortalClient({
 
     function resetTimer() {
       if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-      inactivityTimer.current = setTimeout(async () => {
-        await supabase.auth.signOut();
+      inactivityTimer.current = setTimeout(() => {
+        void supabase.auth.signOut();
         window.location.href = "/login?reason=timeout";
       }, INACTIVITY_MS);
     }

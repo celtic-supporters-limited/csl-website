@@ -34,7 +34,18 @@ async function signIn(page: Page): Promise<void> {
   await page.waitForLoadState("networkidle", { timeout: 60_000 });
   await page.fill("#email", TEST_EMAIL);
   await page.fill("#password", TEST_PASSWORD);
-  await page.click('button[type="submit"]');
+  // Wait for the Supabase token response concurrently with the click so that
+  // the session cookies are written to document.cookie before the browser
+  // navigates. Without this, the middleware may call getUser() before setAll()
+  // has run, find no cookies, and redirect back to /login.
+  await Promise.all([
+    page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/auth/v1/token") && resp.status() === 200,
+      { timeout: 15_000 }
+    ),
+    page.click('button[type="submit"]'),
+  ]);
   // window.location.href triggers a full navigation; member portal fetches from
   // Supabase + Stripe so allow up to 30 s for the load to complete.
   await page.waitForURL("**/member-portal**", { timeout: 30_000 });
@@ -132,9 +143,18 @@ test(
     await signIn(page);
     await expect(page).toHaveURL(/\/member-portal/);
 
+    // React effects are scheduled via MessageChannel, which fires after paint
+    // — asynchronously after waitForURL resolves at "load". page.clock.install()
+    // patches setTimeout and requestAnimationFrame in the browser, so any
+    // browser-side yield (rAF, setTimeout(0)) would be frozen by the fake clock.
+    // page.waitForTimeout uses Playwright's Node.js timer, which is completely
+    // outside the fake clock, giving React real time to run useEffect and register
+    // the inactivity setTimeout before we advance the fake clock.
+    await page.waitForTimeout(1_000);
+
     // No user activity — advance the clock past the 30-minute threshold.
-    // fastForward fires all due timers once; the inactivity callback calls
-    // signOut() (async) then sets window.location.href.
+    // fastForward fires all due timers synchronously; the inactivity callback
+    // fire-and-forgets signOut() then sets window.location.href immediately.
     await page.clock.fastForward(31 * 60 * 1000);
 
     // Wait for the redirect that the timeout handler triggers.
