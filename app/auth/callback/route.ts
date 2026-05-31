@@ -29,7 +29,10 @@ export async function GET(request: NextRequest) {
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      return NextResponse.redirect(`${origin}${redirectTo}`);
+      // Route through /auth/session-init so the client page can write the
+      // sessionStorage liveness flag before landing on the portal.
+      const initUrl = `${origin}/auth/session-init?next=${encodeURIComponent(redirectTo)}`;
+      return NextResponse.redirect(initUrl);
     }
   }
 

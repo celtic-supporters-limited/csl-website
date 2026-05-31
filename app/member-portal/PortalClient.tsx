@@ -1088,6 +1088,16 @@ export default function PortalClient({
   const router = useRouter();
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // sessionStorage is cleared when the browser closes, unlike session cookies
+  // which Chrome restores on "Continue where you left off". If the flag is
+  // absent the user reopened the browser without signing in — enforce re-login.
+  useEffect(() => {
+    if (!sessionStorage.getItem("csl-auth-alive")) {
+      void createBrowserSupabase().auth.signOut();
+      window.location.href = "/login";
+    }
+  }, []);
+
   // Sign the user out and redirect to /login if no activity for 30 minutes.
   useEffect(() => {
     const supabase = createBrowserSupabase();

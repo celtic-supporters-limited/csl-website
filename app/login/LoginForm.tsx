@@ -52,6 +52,7 @@ export default function LoginForm({ redirectTo, reason }: { redirectTo?: string;
       return;
     }
 
+    sessionStorage.setItem("csl-auth-alive", "1");
     window.location.href = redirectTo ?? "/member-portal";
   }
 

@@ -38,6 +38,7 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
       return;
     }
 
+    sessionStorage.setItem("csl-auth-alive", "1");
     router.push("/member-portal");
     router.refresh();
   }

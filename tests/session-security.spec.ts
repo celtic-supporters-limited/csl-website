@@ -117,7 +117,48 @@ test("session does not persist after browser close", async ({ browser }) => {
 });
 
 // ---------------------------------------------------------------------------
-// TEST 3 — 30-minute inactivity timeout signs out and redirects
+// TEST 3 — Session rejected when cookies are restored but sessionStorage is not
+// ---------------------------------------------------------------------------
+// Chrome's "Continue where you left off" restores session cookies on browser
+// reopen, which bypasses the session-cookie approach. sessionStorage is the
+// only browser storage Chrome does NOT restore. We simulate this by copying
+// the auth cookies into a fresh browser context (no sessionStorage) and
+// confirming the portal kicks the user back to /login.
+// ---------------------------------------------------------------------------
+
+test(
+  "portal rejects session if cookies are restored but sessionStorage is absent",
+  async ({ browser }) => {
+    test.skip(
+      !hasCredentials,
+      "Set TEST_USER_EMAIL and TEST_USER_PASSWORD to run this test"
+    );
+
+    // Sign in and grab the resulting auth cookies.
+    const ctx1 = await browser.newContext();
+    const page1 = await ctx1.newPage();
+    await signIn(page1);
+    await expect(page1).toHaveURL(/\/member-portal/);
+    const authCookies = (await ctx1.cookies()).filter((c) =>
+      c.name.startsWith("sb-")
+    );
+    await ctx1.close();
+
+    // Create a fresh context with the auth cookies injected (simulates Chrome
+    // session restore) but with no sessionStorage (never set in this context).
+    const ctx2 = await browser.newContext();
+    await ctx2.addCookies(authCookies);
+    const page2 = await ctx2.newPage();
+    await page2.goto("/member-portal");
+
+    // PortalClient should detect the missing liveness flag, sign out, and redirect.
+    await expect(page2).toHaveURL(/\/login/, { timeout: 15_000 });
+    await ctx2.close();
+  }
+);
+
+// ---------------------------------------------------------------------------
+// TEST 5 — 30-minute inactivity timeout signs out and redirects
 // ---------------------------------------------------------------------------
 // PortalClient.tsx attaches activity listeners (mousemove, keydown, click,
 // scroll). If none fire for 30 minutes the timer calls supabase.auth.signOut()
@@ -163,7 +204,7 @@ test(
 );
 
 // ---------------------------------------------------------------------------
-// TEST 4 — Timeout banner visible at /login?reason=timeout (no credentials)
+// TEST 6 — Timeout banner visible at /login?reason=timeout (no credentials)
 // ---------------------------------------------------------------------------
 
 test("inactivity timeout banner is visible on /login?reason=timeout", async ({
