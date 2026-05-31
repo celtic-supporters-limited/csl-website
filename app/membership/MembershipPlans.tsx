@@ -58,6 +58,8 @@ export default function MembershipPlans() {
   const [customAnnual, setCustomAnnual] = useState("300");
   const [customMonthlyError, setCustomMonthlyError] = useState("");
   const [customAnnualError, setCustomAnnualError] = useState("");
+  const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const summaryRef = useRef<HTMLDivElement>(null);
@@ -65,6 +67,7 @@ export default function MembershipPlans() {
   function selectPlan(plan: SelectedPlan) {
     setSelected(plan);
     setCheckoutError("");
+    setEmailError("");
     setTimeout(
       () => summaryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
       50
@@ -103,13 +106,25 @@ export default function MembershipPlans() {
 
   async function proceedToStripe() {
     if (!selected) return;
+
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setEmailError("Please enter a valid email address.");
+      return;
+    }
+    setEmailError("");
+
     setLoading(true);
     setCheckoutError("");
     try {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: selected.type, amount: selected.amount }),
+        body: JSON.stringify({
+          plan: selected.type,
+          amount: selected.amount,
+          email: trimmedEmail,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.url) {
@@ -368,6 +383,32 @@ export default function MembershipPlans() {
             Your payment is processed securely by Stripe. CSL never stores your
             card details.
           </p>
+
+          <div className="mb-5 text-left">
+            <label
+              htmlFor="checkout-email"
+              className="block text-[0.875rem] font-semibold text-gray-700 mb-1.5"
+            >
+              Email address
+            </label>
+            <input
+              id="checkout-email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setEmailError("");
+                setCheckoutError("");
+              }}
+              disabled={loading}
+              placeholder="you@example.com"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-[0.95rem] focus:outline-none focus:ring-2 focus:ring-csl-dark focus:border-transparent disabled:opacity-60"
+            />
+            {emailError && (
+              <p className="mt-1 text-[0.8rem] text-red-600">{emailError}</p>
+            )}
+          </div>
 
           {checkoutError && (
             <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-[0.88rem]">

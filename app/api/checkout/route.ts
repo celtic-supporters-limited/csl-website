@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe, validatePlan, type PlanType } from "@/lib/stripe";
+import { getSupabase } from "@/lib/supabase";
 
 const VALID_PLANS: PlanType[] = [
   "standard",
@@ -9,10 +10,14 @@ const VALID_PLANS: PlanType[] = [
   "lifetime",
 ];
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const plan = body.plan as PlanType;
   const amount = typeof body.amount === "number" ? body.amount : undefined;
+  const email =
+    typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
 
   if (!VALID_PLANS.includes(plan)) {
     return NextResponse.json({ error: "Invalid plan." }, { status: 400 });
@@ -21,6 +26,35 @@ export async function POST(req: NextRequest) {
   const validationError = validatePlan(plan, amount);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
+  }
+
+  if (!email || !EMAIL_RE.test(email)) {
+    return NextResponse.json(
+      { error: "A valid email address is required." },
+      { status: 400 }
+    );
+  }
+
+  // Guard: block checkout if this email is already a registered member.
+  try {
+    const { data: existing } = await getSupabase()
+      .from("members")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (existing) {
+      return NextResponse.json(
+        {
+          error:
+            "An account with this email already exists. Please sign in or use a different email address.",
+        },
+        { status: 409 }
+      );
+    }
+  } catch (err) {
+    console.error("[checkout] Could not check existing member for email:", err);
+    // Fail open — a database hiccup should not block legitimate checkouts.
   }
 
   const origin =
@@ -49,6 +83,7 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
+        customer_email: email,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -66,6 +101,7 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
+        customer_email: email,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -83,6 +119,7 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
+        customer_email: email,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -100,6 +137,7 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
+        customer_email: email,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -117,6 +155,7 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
+        customer_email: email,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });

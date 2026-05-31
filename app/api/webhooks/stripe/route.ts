@@ -103,22 +103,58 @@ export async function POST(req: NextRequest) {
           break;
         }
 
+        const stripeCustomerId = customerId(session.customer);
+        if (!stripeCustomerId) {
+          console.error(
+            "[stripe-webhook] checkout.session.completed: no customer ID on session",
+            session.id
+          );
+          break;
+        }
+
+        // Guard: if this email is already registered under a different Stripe
+        // customer, refuse to overwrite — the user should sign in instead.
+        const { data: existingByEmail } = await db
+          .from("members")
+          .select("stripe_customer_id")
+          .eq("email", email)
+          .maybeSingle();
+
+        if (
+          existingByEmail &&
+          existingByEmail.stripe_customer_id !== stripeCustomerId
+        ) {
+          console.error(
+            "[stripe-webhook] Duplicate email with different Stripe customer —",
+            `email=${email}`,
+            `existing_customer=${existingByEmail.stripe_customer_id}`,
+            `new_customer=${stripeCustomerId}`
+          );
+          return NextResponse.json(
+            { error: "Email already registered under a different Stripe customer" },
+            { status: 409 }
+          );
+        }
+
         const planName = derivePlanName(session);
 
+        // Conflict on stripe_customer_id: immutable and unique per customer.
+        // A second checkout by the same Stripe customer (e.g. plan change)
+        // updates their record; a brand-new customer always inserts.
         const { error: upsertError } = await db
           .from("members")
           .upsert(
             {
               email,
               name: session.customer_details?.name ?? null,
-              stripe_customer_id: customerId(session.customer),
+              stripe_customer_id: stripeCustomerId,
               stripe_subscription_id: subscriptionId(session.subscription),
               membership_tier: deriveTier(session),
               plan_name: planName,
               amount_pence: session.amount_total ?? 0,
               status: "active",
             },
-            { onConflict: "email" }
+            { onConflict: "stripe_customer_id" }
           );
 
         if (upsertError) {
