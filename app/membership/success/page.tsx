@@ -1,11 +1,33 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getStripe } from "@/lib/stripe";
 
 export const metadata: Metadata = {
   title: "Welcome to CSL - Celtic Supporters Limited",
 };
 
-export default function MembershipSuccessPage() {
+export default async function MembershipSuccessPage({
+  searchParams,
+}: {
+  searchParams: { session_id?: string };
+}) {
+  let email: string | null = null;
+
+  if (searchParams.session_id) {
+    try {
+      const session = await getStripe().checkout.sessions.retrieve(
+        searchParams.session_id
+      );
+      email = session.customer_details?.email ?? null;
+    } catch {
+      // Non-fatal — signup link still works, email just won't be pre-filled.
+    }
+  }
+
+  const signupHref = email
+    ? `/signup?email=${encodeURIComponent(email)}`
+    : "/signup";
+
   return (
     <section className="bg-csl-light min-h-[60vh] flex items-center justify-center px-[5%] py-[72px]">
       <div className="text-center max-w-[520px]">
@@ -19,7 +41,7 @@ export default function MembershipSuccessPage() {
           and manage your account.
         </p>
         <Link
-          href="/signup"
+          href={signupHref}
           className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200"
         >
           Set up your account &rarr;
