@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Turnstile } from "@marsidev/react-turnstile";
 
@@ -17,6 +17,13 @@ export default function ProxyForm() {
   const [consent, setConsent] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileError, setTurnstileError] = useState("");
+  const successRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (state === "success" && successRef.current) {
+      successRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [state]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -66,7 +73,6 @@ export default function ProxyForm() {
         return;
       }
       setState("success");
-      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
       setErrorMsg("Network error. Please check your connection and try again.");
       setState("error");
@@ -75,7 +81,7 @@ export default function ProxyForm() {
 
   if (state === "success") {
     return (
-      <div className="bg-csl-light rounded-2xl text-center px-8 py-16 max-w-[520px] mx-auto">
+      <div ref={successRef} className="bg-csl-light rounded-2xl text-center px-8 py-16 max-w-[520px] mx-auto">
         <div className="text-5xl mb-4">&#10003;</div>
         <h2 className="text-2xl font-extrabold text-csl-dark mb-3">
           Proxy Intent Registered
