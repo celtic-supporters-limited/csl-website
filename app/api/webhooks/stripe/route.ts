@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
+import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
 
 // ── Derivation helpers ────────────────────────────────────────────────────────
 
@@ -99,6 +100,15 @@ export async function POST(req: NextRequest) {
           console.error(
             "[stripe-webhook] checkout.session.completed: no customer email on session",
             session.id
+          );
+          break;
+        }
+
+        const emailDomain = email.split("@")[1];
+        if (DISPOSABLE_EMAIL_DOMAINS.has(emailDomain)) {
+          console.error(
+            "[stripe-webhook] checkout.session.completed: disposable email rejected",
+            email
           );
           break;
         }

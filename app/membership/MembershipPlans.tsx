@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { Turnstile } from "@marsidev/react-turnstile";
 import type { PlanType } from "@/lib/stripe";
 
 interface SelectedPlan {
@@ -60,6 +61,8 @@ export default function MembershipPlans() {
   const [customAnnualError, setCustomAnnualError] = useState("");
   const [email, setEmail] = useState("");
   const [emailError, setEmailError] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileError, setTurnstileError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const summaryRef = useRef<HTMLDivElement>(null);
@@ -68,6 +71,7 @@ export default function MembershipPlans() {
     setSelected(plan);
     setCheckoutError("");
     setEmailError("");
+    setTurnstileError("");
     setTimeout(
       () => summaryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
       50
@@ -114,6 +118,12 @@ export default function MembershipPlans() {
     }
     setEmailError("");
 
+    if (!turnstileToken) {
+      setTurnstileError("Security check not completed. Please wait a moment.");
+      return;
+    }
+    setTurnstileError("");
+
     setLoading(true);
     setCheckoutError("");
     try {
@@ -124,6 +134,7 @@ export default function MembershipPlans() {
           plan: selected.type,
           amount: selected.amount,
           email: trimmedEmail,
+          turnstileToken,
         }),
       });
       const data = await res.json();
@@ -410,6 +421,19 @@ export default function MembershipPlans() {
             )}
           </div>
 
+          <div className="mb-5 flex justify-center">
+            <Turnstile
+              siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+              onSuccess={(token) => {
+                setTurnstileToken(token);
+                setTurnstileError("");
+              }}
+            />
+          </div>
+          {turnstileError && (
+            <p className="mb-4 text-[0.8rem] text-red-600">{turnstileError}</p>
+          )}
+
           {checkoutError && (
             <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-[0.88rem]">
               {checkoutError}
@@ -428,6 +452,8 @@ export default function MembershipPlans() {
               onClick={() => {
                 setSelected(null);
                 setCheckoutError("");
+                setTurnstileToken("");
+                setTurnstileError("");
               }}
               className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold border-[1.5px] border-csl-dark text-csl-dark hover:bg-white transition-colors duration-200"
             >

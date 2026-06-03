@@ -161,6 +161,41 @@ that logs to console only. All Zoho API calls must use `zohoapis.eu` — never `
 
 ---
 
+## Cloudflare Turnstile (bot protection)
+
+Turnstile protects the membership checkout form against automated bot submissions.
+The widget appears client-side; the server verifies the token before creating a Stripe session.
+
+For local development use Cloudflare's dummy test keys — they always pass without a real Cloudflare account:
+- Site key: `1x00000000000000000000AA`
+- Secret key: `1x0000000000000000000000000000000AA`
+
+### `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
+
+| | |
+|---|---|
+| **What it does** | Identifies the Turnstile widget to Cloudflare's challenge endpoint. Rendered client-side in the membership checkout panel. |
+| **Where to find it** | Cloudflare Dashboard > Turnstile > your site > Site Key |
+| **Format** | Alphanumeric string |
+| **Files that use it** | `app/membership/MembershipPlans.tsx` |
+| **Needed in Vercel** | Yes — set to your production Turnstile site key |
+| **Notes** | Prefixed `NEXT_PUBLIC_` — it is deliberately public. Use `1x00000000000000000000AA` locally (Cloudflare dummy key, always passes). |
+
+---
+
+### `TURNSTILE_SECRET_KEY`
+
+| | |
+|---|---|
+| **What it does** | Used server-side to verify the Turnstile token submitted with each checkout request against Cloudflare's siteverify API. |
+| **Where to find it** | Cloudflare Dashboard > Turnstile > your site > Secret Key |
+| **Format** | Alphanumeric string |
+| **Files that use it** | `app/api/checkout/route.ts` |
+| **Needed in Vercel** | Yes — set to your production Turnstile secret key |
+| **Notes** | **Keep secret.** No `NEXT_PUBLIC_` prefix. If unset in development the verification step is skipped (token presence is still checked). Use `1x0000000000000000000000000000000AA` locally. |
+
+---
+
 ## .gitignore coverage
 
 `.env.local` is excluded from version control by the `.gitignore` pattern `.env*.local`.

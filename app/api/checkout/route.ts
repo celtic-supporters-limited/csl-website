@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe, validatePlan, type PlanType } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
+import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
 
 const VALID_PLANS: PlanType[] = [
   "standard",
@@ -12,13 +13,68 @@ const VALID_PLANS: PlanType[] = [
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// In-memory rate limiter — resets on cold starts; best-effort deterrent only.
+const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
+const RATE_LIMIT = 5;
+const WINDOW_MS = 10 * 60 * 1000;
+
 export async function POST(req: NextRequest) {
+  // ── 1. Rate limiting ───────────────────────────────────────────────────────
+  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (entry && now - entry.windowStart < WINDOW_MS) {
+    entry.count += 1;
+    if (entry.count > RATE_LIMIT) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429 }
+      );
+    }
+  } else {
+    rateLimitMap.set(ip, { count: 1, windowStart: now });
+  }
+
   const body = await req.json();
   const plan = body.plan as PlanType;
   const amount = typeof body.amount === "number" ? body.amount : undefined;
   const email =
     typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const turnstileToken =
+    typeof body.turnstileToken === "string" ? body.turnstileToken : "";
 
+  // ── 2. Turnstile verification ──────────────────────────────────────────────
+  if (!turnstileToken) {
+    return NextResponse.json(
+      { error: "Bot detection token missing." },
+      { status: 400 }
+    );
+  }
+
+  const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
+  if (turnstileSecret) {
+    const verifyRes = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          secret: turnstileSecret,
+          response: turnstileToken,
+        }),
+      }
+    );
+    const verifyData = await verifyRes.json() as { success: boolean };
+    if (!verifyData.success) {
+      return NextResponse.json(
+        { error: "Bot detection check failed. Please try again." },
+        { status: 400 }
+      );
+    }
+  }
+
+  // ── 3. Plan validation ─────────────────────────────────────────────────────
   if (!VALID_PLANS.includes(plan)) {
     return NextResponse.json({ error: "Invalid plan." }, { status: 400 });
   }
@@ -28,6 +84,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
+  // ── 4. Email validation ────────────────────────────────────────────────────
   if (!email || !EMAIL_RE.test(email)) {
     return NextResponse.json(
       { error: "A valid email address is required." },
@@ -35,7 +92,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Guard: block checkout if this email is already a registered member.
+  const emailDomain = email.split("@")[1];
+  if (DISPOSABLE_EMAIL_DOMAINS.has(emailDomain)) {
+    return NextResponse.json(
+      { error: "Please use a permanent email address to register." },
+      { status: 400 }
+    );
+  }
+
+  // ── 5. Duplicate member guard ──────────────────────────────────────────────
   try {
     const { data: existing } = await getSupabase()
       .from("members")

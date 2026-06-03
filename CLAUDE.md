@@ -503,6 +503,27 @@ Applied to Nav inner bar, Nav mobile menu, Footer, and all 10 public pages. Hero
 full-width coloured background; `<Container className="relative z-10">` wraps content so nav logo,
 hero headlines, body headings, card grids and footer all share the same left edge.
 
+**Phase 9 — Spam Protection**
+
+Cloudflare Turnstile bot-protection widget added to the membership checkout panel
+(`app/membership/MembershipPlans.tsx`). Widget renders below the email field; token
+is required before `proceedToStripe()` sends the request. Server-side verification
+in `app/api/checkout/route.ts` calls `challenges.cloudflare.com/turnstile/v0/siteverify`
+before any plan or email checks. Dev uses Cloudflare dummy test keys (always pass).
+New env vars: `NEXT_PUBLIC_TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY`.
+
+Honeypot field (`name="website"`, `display:none`) added to `app/proxy/ProxyForm.tsx`.
+Bot submissions that fill the hidden field are silently swallowed — form shows the
+normal success state without hitting the API.
+
+Disposable email blocklist (`lib/disposable-email-domains.ts`) — 17 domains. Checked
+in `app/api/checkout/route.ts` after email regex validation, and in
+`app/api/webhooks/stripe/route.ts` after extracting `customer_details.email`.
+Returns 400 with "Please use a permanent email address to register."
+
+In-memory rate limiter in `app/api/checkout/route.ts`: 5 requests per IP per 10 minutes.
+Returns 429 on breach. Resets on cold starts; best-effort deterrent only.
+
 ### Next — Go-Live Checklist
 - Configure Stripe Billing Portal in Dashboard > Billing > Customer portal settings
 - Board sign-off on Pure Baltic webhook cutover
