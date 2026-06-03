@@ -141,14 +141,23 @@ export default function Nav() {
             onMouseEnter={() => setAboutOpen(true)}
             onMouseLeave={() => setAboutOpen(false)}
           >
-            <button
-              className={`px-3.5 py-2 flex items-center gap-1.5 ${topLinkClass(aboutActive)}`}
-              aria-expanded={aboutOpen}
-              aria-haspopup="true"
-            >
-              About
-              <Chevron open={aboutOpen} />
-            </button>
+            <div className="flex items-center">
+              <Link
+                href="/#about"
+                className={`pl-3.5 pr-1.5 py-2 ${topLinkClass(aboutActive)}`}
+              >
+                About
+              </Link>
+              <button
+                className={`pr-3.5 py-2 ${topLinkClass(aboutActive)}`}
+                onClick={() => setAboutOpen((o) => !o)}
+                aria-expanded={aboutOpen}
+                aria-haspopup="true"
+                aria-label="Open About menu"
+              >
+                <Chevron open={aboutOpen} />
+              </button>
+            </div>
             {aboutOpen && (
               <ul className="absolute top-full left-0 mt-0.5 min-w-[180px] bg-csl-dark border border-white/20 rounded-[6px] shadow-2xl py-1.5 z-50 list-none">
                 {aboutLinks.map(({ href, label }) => (
@@ -249,16 +258,26 @@ export default function Nav() {
 
             {/* About accordion */}
             <div className="border-t border-white/10 mt-1 pt-1">
-              <button
-                className={`w-full flex items-center justify-between px-3 py-2.5 text-[0.92rem] font-medium transition-colors duration-150 ${
-                  aboutActive ? "text-csl-gold" : "text-white/85 hover:text-white"
-                }`}
-                onClick={() => setMobileAboutOpen((o) => !o)}
-                aria-expanded={mobileAboutOpen}
-              >
-                About
-                <Chevron open={mobileAboutOpen} />
-              </button>
+              <div className="flex items-center justify-between">
+                <Link
+                  href="/#about"
+                  className={`flex-1 px-3 py-2.5 text-[0.92rem] font-medium transition-colors duration-150 ${
+                    aboutActive ? "text-csl-gold" : "text-white/85 hover:text-white"
+                  }`}
+                >
+                  About
+                </Link>
+                <button
+                  className={`px-3 py-2.5 transition-colors duration-150 ${
+                    aboutActive ? "text-csl-gold" : "text-white/85 hover:text-white"
+                  }`}
+                  onClick={() => setMobileAboutOpen((o) => !o)}
+                  aria-expanded={mobileAboutOpen}
+                  aria-label="Open About menu"
+                >
+                  <Chevron open={mobileAboutOpen} />
+                </button>
+              </div>
               {mobileAboutOpen && (
                 <div className="pl-5 pb-1 space-y-0.5">
                   {aboutLinks.map(({ href, label }) => (
