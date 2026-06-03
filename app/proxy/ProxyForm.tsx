@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import Link from "next/link";
+import { Turnstile } from "@marsidev/react-turnstile";
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
@@ -14,7 +15,8 @@ export default function ProxyForm() {
   const [state, setState] = useState<FormState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [consent, setConsent] = useState(false);
-  const formRef = useRef<HTMLFormElement>(null);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileError, setTurnstileError] = useState("");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -33,6 +35,12 @@ export default function ProxyForm() {
       return;
     }
 
+    if (!turnstileToken) {
+      setTurnstileError("Security check not completed. Please wait a moment.");
+      return;
+    }
+    setTurnstileError("");
+
     setState("submitting");
     setErrorMsg("");
 
@@ -42,6 +50,7 @@ export default function ProxyForm() {
       numShares: fd.get("numShares"),
       yearPurchased: fd.get("yearPurchased"),
       source: fd.get("source"),
+      turnstileToken,
     };
 
     try {
@@ -87,7 +96,6 @@ export default function ProxyForm() {
 
   return (
     <form
-      ref={formRef}
       onSubmit={handleSubmit}
       noValidate
       className="max-w-[520px] mx-auto bg-white rounded-2xl p-10 shadow-lg border border-gray-200"
@@ -191,13 +199,26 @@ export default function ProxyForm() {
             I consent to Celtic Supporters Limited storing and processing my
             personal data to handle this proxy registration, in accordance with
             the{" "}
-            <Link href="#" className="text-csl-dark underline">
+            <Link href="/privacy" className="text-csl-dark underline">
               Privacy Policy
             </Link>
             . <span className="text-red-500">*</span>
           </span>
         </label>
       </div>
+
+      <div className="mb-5 flex justify-center">
+        <Turnstile
+          siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+          onSuccess={(token) => {
+            setTurnstileToken(token);
+            setTurnstileError("");
+          }}
+        />
+      </div>
+      {turnstileError && (
+        <p className="mb-4 text-[0.8rem] text-red-600 text-center">{turnstileError}</p>
+      )}
 
       <button
         type="submit"

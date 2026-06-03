@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Turnstile } from "@marsidev/react-turnstile";
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
@@ -14,19 +15,35 @@ export default function ShareTracingForm() {
   const [state, setState] = useState<FormState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [consent, setConsent] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileError, setTurnstileError] = useState("");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    const fd = new FormData(e.currentTarget);
+
+    // Honeypot: silently reject submissions where the hidden field is filled
+    if (fd.get("website")) {
+      setState("success");
+      return;
+    }
+
     if (!consent) {
       setErrorMsg("Please confirm your consent before submitting.");
       setState("error");
       return;
     }
 
+    if (!turnstileToken) {
+      setTurnstileError("Security check not completed. Please wait a moment.");
+      return;
+    }
+    setTurnstileError("");
+
     setState("submitting");
     setErrorMsg("");
 
-    const fd = new FormData(e.currentTarget);
     const payload = {
       name: fd.get("name"),
       email: fd.get("email"),
@@ -35,6 +52,7 @@ export default function ShareTracingForm() {
       numShares: fd.get("numShares"),
       source: fd.get("source"),
       notes: fd.get("notes"),
+      turnstileToken,
     };
 
     try {
@@ -85,6 +103,16 @@ export default function ShareTracingForm() {
       noValidate
       className="max-w-[520px] mx-auto bg-white rounded-2xl p-10 shadow-lg border border-gray-200"
     >
+      {/* Honeypot — hidden from real users; bots fill it in */}
+      <input
+        type="text"
+        name="website"
+        style={{ display: "none" }}
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+      />
+
       {state === "error" && errorMsg && (
         <div className="mb-5 px-4 py-3.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-[0.88rem]">
           {errorMsg}
@@ -201,13 +229,26 @@ export default function ShareTracingForm() {
           <span className="text-[0.82rem] text-gray-600 leading-snug">
             I consent to Celtic Supporters Limited storing and processing my
             personal data to handle this enquiry, in accordance with the{" "}
-            <Link href="#" className="text-csl-dark underline">
+            <Link href="/privacy" className="text-csl-dark underline">
               Privacy Policy
             </Link>
             . <span className="text-red-500">*</span>
           </span>
         </label>
       </div>
+
+      <div className="mb-5 flex justify-center">
+        <Turnstile
+          siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+          onSuccess={(token) => {
+            setTurnstileToken(token);
+            setTurnstileError("");
+          }}
+        />
+      </div>
+      {turnstileError && (
+        <p className="mb-4 text-[0.8rem] text-red-600 text-center">{turnstileError}</p>
+      )}
 
       <button
         type="submit"

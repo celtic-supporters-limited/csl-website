@@ -1,20 +1,87 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { findOrCreateZohoContact, createZohoCase } from "@/lib/zoho";
+import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// In-memory rate limiter — resets on cold starts; best-effort deterrent only.
+const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
+const RATE_LIMIT = 5;
+const WINDOW_MS = 10 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
+  // ── 1. Rate limiting ───────────────────────────────────────────────────────
+  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (entry && now - entry.windowStart < WINDOW_MS) {
+    entry.count += 1;
+    if (entry.count > RATE_LIMIT) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429 }
+      );
+    }
+  } else {
+    rateLimitMap.set(ip, { count: 1, windowStart: now });
+  }
+
   const body = await req.json();
   const { name, email, numShares, yearPurchased, source } = body;
+  const turnstileToken =
+    typeof body.turnstileToken === "string" ? body.turnstileToken : "";
 
+  // ── 2. Turnstile verification ──────────────────────────────────────────────
+  if (!turnstileToken) {
+    return NextResponse.json(
+      { error: "Bot detection token missing." },
+      { status: 400 }
+    );
+  }
+
+  const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
+  if (turnstileSecret) {
+    const verifyRes = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          secret: turnstileSecret,
+          response: turnstileToken,
+        }),
+      }
+    );
+    const verifyData = (await verifyRes.json()) as { success: boolean };
+    if (!verifyData.success) {
+      return NextResponse.json(
+        { error: "Security check failed. Please refresh and try again." },
+        { status: 400 }
+      );
+    }
+  }
+
+  // ── 3. Field validation ────────────────────────────────────────────────────
   if (!name?.trim() || !email?.trim()) {
     return NextResponse.json(
       { error: "Name and email are required." },
       { status: 400 }
     );
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!EMAIL_RE.test(email)) {
     return NextResponse.json(
       { error: "Please provide a valid email address." },
+      { status: 400 }
+    );
+  }
+
+  // ── 4. Disposable email check ──────────────────────────────────────────────
+  const emailDomain = email.trim().toLowerCase().split("@")[1];
+  if (DISPOSABLE_EMAIL_DOMAINS.has(emailDomain)) {
+    return NextResponse.json(
+      { error: "Please use a permanent email address." },
       { status: 400 }
     );
   }
