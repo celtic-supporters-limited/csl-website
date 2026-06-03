@@ -21,9 +21,9 @@ export default function HomePage() {
               Own Your Club.<br />Shape Its Future.
             </h1>
             <p className="text-[1.1rem] text-white/80 mb-9 max-w-[540px] leading-[1.75]">
-              Celtic Supporters Limited is a shareholder-led organisation committed to
-              responsible ownership, transparent governance, and a Celtic FC that works
-              for everyone who loves the club.
+              Celtic Supporters Limited is a company formed by Celtic fans to build a
+              real shareholding in Celtic FC, coordinate proxy votes, and push for the
+              governance reform the club needs.
             </p>
             <div className="flex flex-wrap gap-3.5">
               <Link
@@ -52,7 +52,7 @@ export default function HomePage() {
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-center mb-2.5">
                   <span className="text-white/85 text-[0.9rem]">
-                    {CURRENT_MEMBERS} members and growing &mdash; help us reach 5,000
+                    {CURRENT_MEMBERS} members and growing. Help us reach 5,000.
                   </span>
                   <span className="text-gray-300 font-medium text-[0.85rem] tabular-nums ml-4 flex-shrink-0">
                     {CURRENT_MEMBERS.toLocaleString()} / {MEMBER_TARGET.toLocaleString()}
@@ -114,7 +114,7 @@ export default function HomePage() {
               {
                 icon: "🔍",
                 title: "Share Tracing",
-                body: "Thousands of Celtic shares are untraceable — certificates lost, estates unsettled, addresses changed. We help shareholders reunite with their shares and decide what to do with them.",
+                body: "Thousands of Celtic shares are untraceable: certificates lost, estates unsettled, addresses changed. We help shareholders find their holding and decide what to do with it.",
                 link: "/share-tracing",
                 cta: "Start Tracing",
               },
@@ -223,8 +223,8 @@ export default function HomePage() {
               </h2>
               <p className="text-white/80 text-[1.05rem] leading-[1.8] mb-7 max-w-[520px]">
                 65 pages of shareholder analysis built on Celtic PLC&apos;s own audited accounts
-                and public regulatory records. A governance case for a better-run Celtic &mdash;
-                not a takeover bid, not regime change.
+                and public regulatory records. A governance case for a better-run Celtic.
+                Not a takeover bid. Not regime change.
               </p>
               <Link
                 href="/celtic-paradox"
@@ -321,7 +321,7 @@ export default function HomePage() {
                   Target: 5,000 Members
                 </div>
                 <div className="text-[0.8rem] text-csl-muted">
-                  Help us get there &mdash; every subscription funds share acquisition.
+                  Help us get there. Every subscription funds share acquisition.
                 </div>
               </div>
             </div>

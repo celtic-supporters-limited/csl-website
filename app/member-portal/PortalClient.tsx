@@ -471,7 +471,7 @@ function SubscriptionTab({
         )}
 
         {isLifetime && (
-          <DetailRow label="Renewal">No renewal — lifetime membership</DetailRow>
+          <DetailRow label="Renewal">No renewal (lifetime membership)</DetailRow>
         )}
       </Card>
 

@@ -14,7 +14,7 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "Celtic Supporters Limited - Own Your Club. Shape Its Future.",
   description:
-    "Celtic Supporters Limited is a shareholder-led organisation committed to responsible ownership, transparent governance, and a Celtic FC that works for everyone who loves the club.",
+    "Celtic Supporters Limited is a shareholder body formed by Celtic fans to build a real ownership stake in Celtic FC. We buy shares, coordinate proxy votes, and push for governance reform.",
 };
 
 export default function RootLayout({

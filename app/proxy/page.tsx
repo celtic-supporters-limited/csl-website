@@ -19,7 +19,7 @@ export default function ProxyPage() {
         <Container className="relative z-10">
           <div className="max-w-[680px]">
             <div className="inline-flex items-center gap-1.5 bg-white/15 border border-white/25 px-3.5 py-1.5 rounded-full text-[0.82rem] font-medium text-white/90 mb-5 backdrop-blur-sm">
-              Your vote — amplified
+              Your vote, amplified
             </div>
             <h1 className="text-[clamp(2rem,4vw,3.2rem)] font-extrabold leading-[1.15] tracking-tight mb-5">
               Assign Your AGM<br />Proxy to CSL
@@ -54,9 +54,9 @@ export default function ProxyPage() {
               <p className="text-gray-500 leading-[1.75] mb-4">
                 Celtic PLC holds an Annual General Meeting where shareholders vote
                 on resolutions covering the Board, remuneration, and significant
-                corporate decisions. Most shareholders never cast their vote —
-                either because they cannot attend, or because they do not know how
-                to vote by proxy.
+                corporate decisions. Most shareholders never cast their vote, either
+                because they cannot attend or because they do not know how to vote
+                by proxy.
               </p>
               <p className="text-gray-500 leading-[1.75] mb-4">
                 By assigning your proxy to CSL, you direct your shares&apos; votes
@@ -147,7 +147,7 @@ export default function ProxyPage() {
               Assign Your Proxy
             </span>
             <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-3.5">
-              Register Your Intent to Proxy
+              Register Your Proxy Intent
             </h2>
             <p className="text-[1.05rem] text-gray-500 max-w-[600px] mx-auto">
               Complete this form and we&apos;ll send you the official proxy

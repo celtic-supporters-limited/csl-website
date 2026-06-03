@@ -35,9 +35,8 @@ export default function Footer() {
               &#9752; Celtic Supporters Limited
             </div>
             <p className="text-[0.85rem] leading-[1.7] mb-3">
-              A not-for-profit organisation committed to governance-led change at
-              Celtic FC, representing the collective voice of thousands of
-              shareholders and supporters.
+              A not-for-profit shareholder organisation working for governance-led
+              change at Celtic FC, owned and run by supporters.
             </p>
             <a
               href="mailto:info@celticsupporterslimited.net"
