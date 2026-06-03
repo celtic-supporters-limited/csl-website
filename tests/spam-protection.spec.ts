@@ -88,8 +88,9 @@ test.describe("Proxy form — spam protection", () => {
   });
 
   test("rate limiting: 429 after 5 requests from same IP", async ({ request }) => {
-    // Use a dedicated test IP that no other test shares
-    const ip = "10.99.2.1";
+    // Suffix with timestamp so each test run gets a fresh Map entry even if
+    // the dev server hot-reloads the route module between runs.
+    const ip = `10.99.2.1-${Date.now()}`;
     const payload = {
       name: "Test User",
       email: "test@example.com",
@@ -163,7 +164,7 @@ test.describe("Share tracing form — spam protection", () => {
   });
 
   test("rate limiting: 429 after 5 requests from same IP", async ({ request }) => {
-    const ip = "10.99.2.2";
+    const ip = `10.99.2.2-${Date.now()}`;
     const payload = {
       name: "Test User",
       email: "test@example.com",

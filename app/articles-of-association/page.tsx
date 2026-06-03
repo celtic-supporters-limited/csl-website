@@ -78,7 +78,7 @@ export default function ArticlesOfAssociation() {
       <section className="py-12 bg-white">
         <Container><div className="max-w-[800px]">
           <p className="text-[0.8rem] text-gray-500 uppercase tracking-widest font-semibold mb-8 pb-4 border-b border-gray-100">
-            Articles of the Companies Act 2006 &mdash; Private Company Limited by Guarantee
+            Articles of the Companies Act 2006: Private Company Limited by Guarantee
           </p>
 
           {/* Article 1 */}

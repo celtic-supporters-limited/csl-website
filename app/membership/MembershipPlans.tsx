@@ -87,7 +87,7 @@ export default function MembershipPlans() {
     setCustomMonthlyError("");
     selectPlan({
       type: "custom_monthly",
-      label: `Custom Monthly — £${val}/month`,
+      label: `Custom Monthly, £${val}/month`,
       priceDisplay: `£${val} / month`,
       amount: val,
     });
@@ -102,7 +102,7 @@ export default function MembershipPlans() {
     setCustomAnnualError("");
     selectPlan({
       type: "custom_annual",
-      label: `Custom Annual — £${val}/year`,
+      label: `Custom Annual, £${val}/year`,
       priceDisplay: `£${val} / year`,
       amount: val,
     });
@@ -186,7 +186,7 @@ export default function MembershipPlans() {
             onClick={() =>
               selectPlan({
                 type: "standard",
-                label: "Standard — £10/month",
+                label: "Standard, £10/month",
                 priceDisplay: "£10 / month",
               })
             }
@@ -219,7 +219,7 @@ export default function MembershipPlans() {
             onClick={() =>
               selectPlan({
                 type: "accelerator",
-                label: "Accelerator — £25/month",
+                label: "Accelerator, £25/month",
                 priceDisplay: "£25 / month",
               })
             }
@@ -237,7 +237,7 @@ export default function MembershipPlans() {
             <sup className="text-[1.1rem] align-super">£</sup>5,000
           </div>
           <p className="text-[0.84rem] text-gray-400 mb-1.5">
-            One-off payment — no further charges
+            One-off payment. No further charges.
           </p>
           <hr className="border-gray-100 my-4" />
           <p className="text-[0.875rem] text-gray-600 leading-relaxed mb-5 flex-1">
@@ -251,7 +251,7 @@ export default function MembershipPlans() {
               selectPlan({
                 type: "lifetime",
                 label: "Lifetime Membership",
-                priceDisplay: "£5,000 — one-off payment",
+                priceDisplay: "£5,000 (one-off payment)",
                 amount: 5000,
               })
             }
@@ -273,7 +273,7 @@ export default function MembershipPlans() {
             £30+
           </div>
           <p className="text-[0.84rem] text-gray-400 mb-1.5">
-            Per Month — in £5 increments
+            Per Month, in £5 increments
           </p>
           <hr className="border-gray-100 my-4" />
           <p className="text-[0.875rem] text-gray-600 leading-relaxed mb-4 flex-1">
@@ -306,7 +306,7 @@ export default function MembershipPlans() {
               </div>
               <span className="text-[0.875rem] text-gray-400">/month</span>
             </div>
-            <p className="text-[0.75rem] text-gray-400">Minimum £30 — £5 increments</p>
+            <p className="text-[0.75rem] text-gray-400">Minimum £30, in £5 increments</p>
             {customMonthlyError && (
               <p className="text-[0.75rem] text-red-600 mt-1">{customMonthlyError}</p>
             )}
@@ -326,7 +326,7 @@ export default function MembershipPlans() {
             £300+
           </div>
           <p className="text-[0.84rem] text-gray-400 mb-1.5">
-            Per Year — in £10 increments
+            Per Year, in £10 increments
           </p>
           <hr className="border-gray-100 my-4" />
           <p className="text-[0.875rem] text-gray-600 leading-relaxed mb-4 flex-1">
@@ -363,7 +363,7 @@ export default function MembershipPlans() {
               </div>
               <span className="text-[0.875rem] text-gray-400">/year</span>
             </div>
-            <p className="text-[0.75rem] text-gray-400">Minimum £300 — £10 increments</p>
+            <p className="text-[0.75rem] text-gray-400">Minimum £300, in £10 increments</p>
             {customAnnualError && (
               <p className="text-[0.75rem] text-red-600 mt-1">{customAnnualError}</p>
             )}

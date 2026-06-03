@@ -514,7 +514,7 @@ function SubscriptionTab({
             {portalLoading ? "Opening..." : "Update payment method"}
           </button>
           <p className="text-xs text-gray-400 mt-2">
-            Secured by Stripe &mdash; you will be taken to a Stripe-hosted page.
+            Secured by Stripe. You will be taken to a Stripe-hosted page.
           </p>
         </Card>
       )}
@@ -611,7 +611,7 @@ function PaymentsTab({ payments }: { payments: PortalPayment[] }) {
 
 type LibrarySubTab = "meetings" | "documents";
 
-const STUB_TOOLTIP = "Coming soon — document will be available shortly";
+const STUB_TOOLTIP = "Coming soon. This document will be available shortly.";
 
 function isStub(url: string | null): boolean {
   return !!url && url.includes("STUB_");
