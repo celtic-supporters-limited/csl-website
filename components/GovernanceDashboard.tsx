@@ -191,8 +191,8 @@ export default function GovernanceDashboard({ criteria }: Props) {
             Help us hold Celtic PLC accountable
           </h2>
           <p className="text-white/70 mb-8 max-w-xl mx-auto text-[0.95rem] leading-relaxed">
-            CSL represents Celtic shareholders and supporters. Join us or assign your proxy
-            vote to strengthen our mandate at the AGM.
+            CSL speaks for Celtic shareholders and supporters. Join us or assign your proxy
+            to back CSL at the AGM.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
