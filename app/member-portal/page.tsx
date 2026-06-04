@@ -17,7 +17,11 @@ export const metadata: Metadata = {
   description: "Your CSL member dashboard - subscription, recordings, and enquiries.",
 };
 
-export default async function MemberPortalPage() {
+export default async function MemberPortalPage({
+  searchParams,
+}: {
+  searchParams: { tab?: string };
+}) {
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
     !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -187,6 +191,7 @@ export default async function MemberPortalPage() {
       documents={documents}
       governanceCriteria={governanceCriteria}
       stripeSub={stripeSub}
+      initialTab={searchParams.tab}
     />
   );
 }

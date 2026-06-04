@@ -88,6 +88,10 @@ export type StripeSubData = {
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
+const VALID_TABS = new Set<Tab>([
+  "dashboard", "subscription", "payments", "documents", "enquiries", "profile",
+]);
+
 type Props = {
   user: { email: string; id: string };
   member: Member | null;
@@ -96,6 +100,7 @@ type Props = {
   documents: MemberDocument[];
   governanceCriteria: GovernanceCriterion[];
   stripeSub: StripeSubData | null;
+  initialTab?: string;
 };
 
 type Tab =
@@ -439,6 +444,8 @@ function SubscriptionTab({
 }) {
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalError, setPortalError] = useState("");
+  const [manageLoading, setManageLoading] = useState(false);
+  const [manageError, setManageError] = useState("");
 
   async function openBillingPortal() {
     setPortalLoading(true);
@@ -455,6 +462,24 @@ function SubscriptionTab({
     } catch {
       setPortalLoading(false);
       setPortalError("Network error. Please try again.");
+    }
+  }
+
+  async function openSubscriptionPortal() {
+    setManageLoading(true);
+    setManageError("");
+    try {
+      const res = await fetch("/api/stripe/portal", { method: "POST" });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setManageLoading(false);
+        setManageError(data.error ?? "Could not open subscription portal.");
+      }
+    } catch {
+      setManageLoading(false);
+      setManageError("Network error. Please try again.");
     }
   }
 
@@ -522,6 +547,26 @@ function SubscriptionTab({
 
         {isLifetime && (
           <DetailRow label="Renewal">No renewal (lifetime membership)</DetailRow>
+        )}
+
+        {!isLifetime && (
+          <div className="pt-4 mt-2 border-t border-gray-100">
+            {manageError && (
+              <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+                {manageError}
+              </p>
+            )}
+            <button
+              onClick={openSubscriptionPortal}
+              disabled={manageLoading}
+              className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors disabled:opacity-60"
+            >
+              {manageLoading ? "Opening..." : "Change or cancel subscription"}
+            </button>
+            <p className="text-xs text-gray-400 mt-2">
+              Secured by Stripe. You will be taken to a Stripe-hosted page.
+            </p>
+          </div>
         )}
       </Card>
 
@@ -1103,8 +1148,11 @@ export default function PortalClient({
   documents,
   governanceCriteria,
   stripeSub,
+  initialTab,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
+  const [activeTab, setActiveTab] = useState<Tab>(
+    VALID_TABS.has(initialTab as Tab) ? (initialTab as Tab) : "dashboard"
+  );
   const [signingOut, setSigningOut] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
