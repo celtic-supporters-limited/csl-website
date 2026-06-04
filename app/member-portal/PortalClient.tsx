@@ -27,6 +27,7 @@ export type Member = {
   contact_email: boolean | null;
   contact_sms: boolean | null;
   contact_telephone: boolean | null;
+  is_admin: boolean | null;
 };
 
 export type PortalEvent = {
@@ -1254,7 +1255,19 @@ export default function PortalClient({
                 <PaymentsTab payments={payments} />
               )}
               {activeTab === "documents" && (
-                <DocumentLibrary documents={documents} />
+                <div className="space-y-4">
+                  {member?.is_admin && (
+                    <div className="flex justify-end">
+                      <Link
+                        href="/member-portal/admin/documents/new"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
+                      >
+                        + Add Document
+                      </Link>
+                    </div>
+                  )}
+                  <DocumentLibrary documents={documents} />
+                </div>
               )}
               {activeTab === "enquiries" && (
                 <EnquiriesTab cases={cases} />

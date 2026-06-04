@@ -11,6 +11,7 @@ const CATEGORIES = [
   "AGM Documents",
   "Governance",
   "Guides & Templates",
+  "Recordings",
 ] as const;
 
 type Props = {

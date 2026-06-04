@@ -16,6 +16,7 @@ const CATEGORY_BADGE: Record<string, string> = {
   "AGM Documents":      "bg-amber-100 text-amber-800",
   "Governance":         "bg-green-100 text-green-800",
   "Guides & Templates": "bg-gray-100 text-gray-700",
+  "Recordings":         "bg-teal-100 text-teal-800",
 };
 
 export function toPreviewUrl(driveUrl: string): string {
