@@ -24,6 +24,9 @@ export async function PATCH(req: NextRequest) {
   // Build update object — only accept known profile fields
   const update: Record<string, unknown> = {};
 
+  if ("name" in body)
+    update.name =
+      typeof body.name === "string" ? body.name.trim() || null : null;
   if ("first_name" in body)
     update.first_name =
       typeof body.first_name === "string" ? body.first_name.trim() || null : null;

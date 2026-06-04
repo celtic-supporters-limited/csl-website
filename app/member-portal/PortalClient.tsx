@@ -112,9 +112,9 @@ function tierLabel(tier: string | null): string {
 
 function displayName(member: Member | null, email: string): string {
   if (member?.first_name && member.last_name)
-    return `${member.first_name} ${member.last_name}`;
-  if (member?.first_name) return member.first_name;
-  if (member?.name) return member.name;
+    return toTitleCase(`${member.first_name} ${member.last_name}`);
+  if (member?.first_name) return toTitleCase(member.first_name);
+  if (member?.name) return toTitleCase(member.name);
   return email.split("@")[0];
 }
 
@@ -135,6 +135,10 @@ function formatPence(p: number | null): string {
 
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function toTitleCase(s: string): string {
+  return s.replace(/\S+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
 
 // ── Shared UI primitives ──────────────────────────────────────────────────────
@@ -1331,6 +1335,7 @@ export default function PortalClient({
                   </div>
                   <p className="font-bold text-gray-900 text-sm">{name}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{tierDisplay}</p>
+                  <p className="text-xs text-gray-400 mt-0.5 break-all">{user.email}</p>
                 </div>
 
                 <nav>

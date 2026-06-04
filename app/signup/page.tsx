@@ -21,7 +21,7 @@ export default function SignupPage({
             Activate Your Account
           </h1>
           <p className="text-gray-500 text-sm">
-            Create a password to access your member portal.
+            Enter your name and create a password to access your member portal.
           </p>
         </div>
         <SignupForm email={searchParams.email} />

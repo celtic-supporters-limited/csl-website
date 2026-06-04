@@ -41,8 +41,10 @@ test("signup with already-registered email shows an error", async ({
   await expect(page.locator("#signup-email")).toHaveValue(TEST_EMAIL);
   await expect(page.locator("#signup-email")).toBeDisabled();
 
-  // Fill in a valid password (the existing user already has one; this attempt
-  // will be rejected before any password change occurs).
+  // Fill in name and password. The existing user already has a password; the
+  // signUp call will be rejected before any password change occurs.
+  await page.fill("#signup-first-name", "Test");
+  await page.fill("#signup-last-name", "User");
   await page.fill("#signup-password", TEST_PASSWORD);
   await page.fill("#signup-confirm", TEST_PASSWORD);
 

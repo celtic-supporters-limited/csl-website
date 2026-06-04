@@ -1,21 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 
 export default function SignupForm({ email: initialEmail }: { email?: string }) {
   const [email, setEmail] = useState(initialEmail ?? "");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg("");
 
+    if (!firstName.trim()) {
+      setErrorMsg("First name is required.");
+      return;
+    }
+    if (!lastName.trim()) {
+      setErrorMsg("Last name is required.");
+      return;
+    }
     if (password.length < 8) {
       setErrorMsg("Password must be at least 8 characters.");
       return;
@@ -38,9 +46,27 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
       return;
     }
 
+    // Save name to the members row created by the Stripe webhook.
+    // Non-fatal: if the fetch fails the user can update via Edit Profile.
+    try {
+      await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          name: `${firstName.trim()} ${lastName.trim()}`,
+        }),
+      });
+    } catch {
+      // swallow — don't block the user from accessing their portal
+    }
+
     sessionStorage.setItem("csl-auth-alive", "1");
-    router.push("/member-portal");
-    router.refresh();
+    // window.location.href ensures the browser sends the new session cookie
+    // with the request so middleware sees the session immediately.
+    // router.push races the cookie and causes a redirect back to /login.
+    window.location.href = "/member-portal";
   }
 
   const inputCls =
@@ -74,6 +100,48 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
         )}
       </div>
 
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label
+            htmlFor="signup-first-name"
+            className="block text-sm font-semibold text-gray-700 mb-1.5"
+          >
+            First name
+          </label>
+          <input
+            id="signup-first-name"
+            type="text"
+            required
+            autoComplete="given-name"
+            autoFocus
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            disabled={loading}
+            className={inputCls}
+            placeholder="Gary"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="signup-last-name"
+            className="block text-sm font-semibold text-gray-700 mb-1.5"
+          >
+            Last name
+          </label>
+          <input
+            id="signup-last-name"
+            type="text"
+            required
+            autoComplete="family-name"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            disabled={loading}
+            className={inputCls}
+            placeholder="Phinn"
+          />
+        </div>
+      </div>
+
       <div className="mb-4">
         <label
           htmlFor="signup-password"
@@ -86,7 +154,6 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
           type="password"
           required
           autoComplete="new-password"
-          autoFocus={!initialEmail}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={loading}
@@ -125,7 +192,7 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
         disabled={loading}
         className="w-full bg-csl-dark text-white font-semibold rounded-lg py-3 text-[0.95rem] hover:bg-csl-mid transition-colors disabled:opacity-60"
       >
-        {loading ? "Creating account..." : "Create account"}
+        {loading ? "Activating account..." : "Activate account"}
       </button>
 
       <p className="mt-4 text-xs text-gray-400 text-center">
