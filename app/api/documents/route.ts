@@ -10,6 +10,23 @@ const VALID_CATEGORIES = new Set([
   "Recordings",
 ]);
 
+// In-memory rate limiter: 10 requests per user per 60 seconds.
+// Resets on cold start; admin-only endpoint so the surface is tiny.
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT = 10;
+const RATE_WINDOW_MS = 60 * 1000;
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(userId);
+  if (!entry || now >= entry.resetAt) {
+    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT) return false;
+  entry.count += 1;
+  return true;
+}
 
 export async function POST(req: NextRequest) {
   // Verify session
@@ -19,7 +36,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Check is_admin
+  // Check is_admin — verified here independently of the page-level guard
   const db = getSupabase();
   const { data: member } = await db
     .from("members")
@@ -29,6 +46,14 @@ export async function POST(req: NextRequest) {
 
   if (!member?.is_admin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Rate limit by user ID
+  if (!checkRateLimit(user.id)) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a minute before trying again." },
+      { status: 429 }
+    );
   }
 
   let body: {
@@ -49,10 +74,16 @@ export async function POST(req: NextRequest) {
 
   if (!title?.trim())
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
+  if (title.trim().length > 200)
+    return NextResponse.json({ error: "Title must be 200 characters or fewer." }, { status: 400 });
+  if (description && description.trim().length > 500)
+    return NextResponse.json({ error: "Description must be 500 characters or fewer." }, { status: 400 });
   if (!category || !VALID_CATEGORIES.has(category))
     return NextResponse.json({ error: "Invalid category." }, { status: 400 });
   if (!drive_url?.trim())
     return NextResponse.json({ error: "Google Drive URL is required." }, { status: 400 });
+  if (!drive_url.trim().startsWith("https://drive.google.com/"))
+    return NextResponse.json({ error: "URL must start with https://drive.google.com/" }, { status: 400 });
   if (!published_at)
     return NextResponse.json({ error: "Document date is required." }, { status: 400 });
 
