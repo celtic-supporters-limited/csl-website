@@ -9,6 +9,7 @@ import type {
   PortalCase,
   PortalPayment,
   StripeSubData,
+  GovernanceCriterion,
 } from "./PortalClient";
 import type { MemberDocument } from "@/components/DocumentCard";
 
@@ -57,13 +58,14 @@ export default async function MemberPortalPage() {
   let cases: PortalCase[] = [];
   let payments: PortalPayment[] = [];
   let documents: MemberDocument[] = [];
+  let governanceCriteria: GovernanceCriterion[] = [];
   let stripeSub: StripeSubData | null = null;
 
   try {
     const db = getSupabase();
 
-    // Batch 1 — member record, events, cases, documents (parallel, independent)
-    const [memberRes, eventsRes, casesRes, documentsRes] = await Promise.all([
+    // Batch 1 — member record, events, cases, documents, governance (parallel, independent)
+    const [memberRes, eventsRes, casesRes, documentsRes, governanceRes] = await Promise.all([
       db.from("members").select("*").eq("email", user.email).maybeSingle(),
       db
         .from("events")
@@ -78,13 +80,17 @@ export default async function MemberPortalPage() {
         .from("documents")
         .select("id, title, description, category, drive_url, file_type, published_at")
         .eq("members_only", true)
-        .order("published_at", { ascending: false }),
+        .order("created_at", { ascending: false }),
+      db
+        .from("governance_criteria")
+        .select("status, last_reviewed"),
     ]);
 
     member = memberRes.data ?? null;
     events = eventsRes.data ?? [];
     cases = casesRes.data ?? [];
     documents = (documentsRes.data ?? []) as MemberDocument[];
+    governanceCriteria = (governanceRes.data ?? []) as GovernanceCriterion[];
 
     // Batch 2 — requires stripe_customer_id and stripe_subscription_id from batch 1
     if (member) {
@@ -187,6 +193,7 @@ export default async function MemberPortalPage() {
       cases={cases}
       payments={payments}
       documents={documents}
+      governanceCriteria={governanceCriteria}
       stripeSub={stripeSub}
     />
   );

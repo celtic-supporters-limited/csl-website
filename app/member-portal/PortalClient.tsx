@@ -51,6 +51,11 @@ export type PortalDocument = {
   is_published: boolean;
 };
 
+export type GovernanceCriterion = {
+  status: string;
+  last_reviewed: string | null;
+};
+
 export type PortalCase = {
   id: string;
   contact_name: string | null;
@@ -89,6 +94,7 @@ type Props = {
   cases: PortalCase[];
   payments: PortalPayment[];
   documents: MemberDocument[];
+  governanceCriteria: GovernanceCriterion[];
   stripeSub: StripeSubData | null;
 };
 
@@ -222,15 +228,26 @@ function CaseStatusBadge({ status }: { status: string | null }) {
 
 // ── Dashboard tab ─────────────────────────────────────────────────────────────
 
+const DOC_BADGE: Record<string, string> = {
+  "Meeting Minutes":    "bg-blue-100 text-blue-800",
+  "Research & Papers":  "bg-purple-100 text-purple-800",
+  "AGM Documents":      "bg-amber-100 text-amber-800",
+  "Governance":         "bg-green-100 text-green-800",
+  "Guides & Templates": "bg-gray-100 text-gray-700",
+  "Recordings":         "bg-teal-100 text-teal-800",
+};
+
 function DashboardTab({
   member,
-  events,
   cases,
+  documents,
+  governanceCriteria,
   onTabChange,
 }: {
   member: Member | null;
-  events: PortalEvent[];
   cases: PortalCase[];
+  documents: MemberDocument[];
+  governanceCriteria: GovernanceCriterion[];
   onTabChange: (tab: Tab) => void;
 }) {
   if (!member) {
@@ -253,6 +270,15 @@ function DashboardTab({
       </Card>
     );
   }
+
+  const metCount     = governanceCriteria.filter((c) => c.status === "Met").length;
+  const partialCount = governanceCriteria.filter((c) => c.status === "Partial").length;
+  const notMetCount  = governanceCriteria.filter((c) => c.status === "Not Met").length;
+  const lastReviewed = governanceCriteria
+    .map((c) => c.last_reviewed)
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? null;
 
   return (
     <div className="space-y-5">
@@ -281,54 +307,71 @@ function DashboardTab({
         <DetailRow label="Member since">{formatDate(member.created_at)}</DetailRow>
       </Card>
 
-      {events.slice(0, 2).length > 0 && (
+      {governanceCriteria.length > 0 && (
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-gray-900">Governance Scorecard</h3>
+            <Link
+              href="/governance"
+              className="text-csl-dark text-xs font-semibold hover:underline"
+            >
+              View full scorecard
+            </Link>
+          </div>
+          <div className="flex flex-wrap gap-2 mb-3">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+              &#9679; {metCount} Met
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+              &#9679; {partialCount} Partial
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+              &#9679; {notMetCount} Not Met
+            </span>
+            <span className="text-xs text-gray-400 self-center">
+              out of {governanceCriteria.length}
+            </span>
+          </div>
+          {lastReviewed && (
+            <p className="text-xs text-gray-400">Last reviewed: {formatDate(lastReviewed)}</p>
+          )}
+        </Card>
+      )}
+
+      {documents.length > 0 && (
         <Card>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-gray-900">Recent Content</h3>
+            <h3 className="font-bold text-gray-900">Latest Documents</h3>
             <button
               onClick={() => onTabChange("documents")}
               className="text-csl-dark text-xs font-semibold hover:underline"
             >
-              View all
+              View all documents
             </button>
-
           </div>
           <div className="space-y-0">
-            {events.slice(0, 2).map((ev) => (
+            {documents.slice(0, 3).map((doc) => (
               <div
-                key={ev.id}
-                className="flex items-start justify-between gap-4 py-2.5 border-b border-gray-100 last:border-0"
+                key={doc.id}
+                className="flex items-center justify-between gap-4 py-2.5 border-b border-gray-100 last:border-0"
               >
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {ev.title ?? "Untitled"}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {formatDate(ev.event_date)}
-                  </p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${DOC_BADGE[doc.category] ?? "bg-gray-100 text-gray-700"}`}>
+                      {doc.category}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 truncate">{doc.title}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{formatDate(doc.published_at)}</p>
                 </div>
-                <div className="flex gap-2 flex-shrink-0">
-                  {ev.recording_url && (
-                    <a
-                      href={ev.recording_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-semibold text-csl-dark hover:text-csl-mid"
-                    >
-                      Watch
-                    </a>
-                  )}
-                  {ev.slides_url && (
-                    <a
-                      href={ev.slides_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-semibold text-gray-500 hover:text-gray-800"
-                    >
-                      Slides
-                    </a>
-                  )}
-                </div>
+                <a
+                  href={doc.drive_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-shrink-0 text-xs font-semibold text-csl-dark hover:text-csl-mid"
+                >
+                  View
+                </a>
               </div>
             ))}
           </div>
@@ -1059,6 +1102,7 @@ export default function PortalClient({
   cases,
   payments,
   documents,
+  governanceCriteria,
   stripeSub,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
@@ -1243,8 +1287,9 @@ export default function PortalClient({
               {activeTab === "dashboard" && (
                 <DashboardTab
                   member={member}
-                  events={events}
                   cases={cases}
+                  documents={documents}
+                  governanceCriteria={governanceCriteria}
                   onTabChange={setActiveTab}
                 />
               )}
