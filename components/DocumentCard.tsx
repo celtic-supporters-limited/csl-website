@@ -6,7 +6,6 @@ export type MemberDocument = {
   description: string | null;
   category: string;
   drive_url: string;
-  file_type: string;
   published_at: string;
 };
 
@@ -47,9 +46,6 @@ export default function DocumentCard({ document: doc, onView }: Props) {
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${badgeClass}`}>
             {doc.category}
-          </span>
-          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
-            {doc.file_type}
           </span>
         </div>
         <h3 className="font-semibold text-gray-900 text-[0.93rem] leading-snug">

@@ -12,8 +12,6 @@ const CATEGORIES = [
   "Recordings",
 ] as const;
 
-const FILE_TYPES = ["PDF", "DOCX", "XLSX", "PPTX"] as const;
-
 const inputCls =
   "w-full border border-gray-300 rounded-lg px-4 py-2.5 text-[0.95rem] focus:outline-none focus:ring-2 focus:ring-csl-dark focus:border-transparent";
 
@@ -24,7 +22,6 @@ export default function AdminDocumentForm() {
   const [description, setDescription] = useState("");
   const [category, setCategory]     = useState<string>(CATEGORIES[0]);
   const [driveUrl, setDriveUrl]     = useState("");
-  const [fileType, setFileType]     = useState("PDF");
   const [docDate, setDocDate]       = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState<string | null>(null);
@@ -44,7 +41,6 @@ export default function AdminDocumentForm() {
           description,
           category,
           drive_url: driveUrl,
-          file_type: fileType,
           published_at: docDate,
         }),
       });
@@ -79,7 +75,7 @@ export default function AdminDocumentForm() {
           <button
             onClick={() => {
               setTitle(""); setDescription(""); setDriveUrl(""); setDocDate("");
-              setCategory(CATEGORIES[0]); setFileType("PDF"); setPublished(false);
+              setCategory(CATEGORIES[0]); setPublished(false);
             }}
             className="inline-flex items-center justify-center px-5 py-2.5 rounded-lg text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
           >
@@ -119,34 +115,18 @@ export default function AdminDocumentForm() {
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <div>
-          <label htmlFor="category" className={labelCls}>Category</label>
-          <select
-            id="category"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className={inputCls}
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="fileType" className={labelCls}>File type</label>
-          <select
-            id="fileType"
-            value={fileType}
-            onChange={(e) => setFileType(e.target.value)}
-            className={inputCls}
-          >
-            {FILE_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label htmlFor="category" className={labelCls}>Category</label>
+        <select
+          id="category"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className={inputCls}
+        >
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
       </div>
 
       <div>

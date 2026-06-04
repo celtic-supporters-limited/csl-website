@@ -10,7 +10,6 @@ const VALID_CATEGORIES = new Set([
   "Recordings",
 ]);
 
-const VALID_FILE_TYPES = new Set(["PDF", "DOCX", "XLSX", "PPTX"]);
 
 export async function POST(req: NextRequest) {
   // Verify session
@@ -37,7 +36,6 @@ export async function POST(req: NextRequest) {
     description?: string;
     category?: string;
     drive_url?: string;
-    file_type?: string;
     published_at?: string;
   };
 
@@ -47,7 +45,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { title, description, category, drive_url, file_type, published_at } = body;
+  const { title, description, category, drive_url, published_at } = body;
 
   if (!title?.trim())
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
@@ -55,8 +53,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid category." }, { status: 400 });
   if (!drive_url?.trim())
     return NextResponse.json({ error: "Google Drive URL is required." }, { status: 400 });
-  if (!file_type || !VALID_FILE_TYPES.has(file_type))
-    return NextResponse.json({ error: "Invalid file type." }, { status: 400 });
   if (!published_at)
     return NextResponse.json({ error: "Document date is required." }, { status: 400 });
 
@@ -68,7 +64,7 @@ export async function POST(req: NextRequest) {
       category,
       drive_url: drive_url.trim(),
       file_url: drive_url.trim(),
-      file_type,
+      file_type: "PDF",
       published_at,
       members_only: true,
       is_published: true,
