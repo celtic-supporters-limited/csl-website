@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 
 // ── Exported types (imported by page.tsx) ────────────────────────────────────
@@ -1200,13 +1200,18 @@ function EditProfileTab({
 
 // ── Nav config ────────────────────────────────────────────────────────────────
 
-const NAV_ITEMS: { tab: Tab; label: string; icon: string }[] = [
-  { tab: "dashboard", label: "Dashboard", icon: "&#9776;" },
-  { tab: "subscription", label: "Subscription", icon: "&#128179;" },
-  { tab: "payments", label: "Payments", icon: "&#128196;" },
-  { tab: "library", label: "Members Library", icon: "&#128218;" },
-  { tab: "enquiries", label: "My Enquiries", icon: "&#128269;" },
-  { tab: "profile", label: "Edit Profile", icon: "&#9998;" },
+type NavItem =
+  | { kind: "tab"; tab: Tab; label: string; icon: string }
+  | { kind: "link"; href: string; label: string; icon: string };
+
+const NAV_ITEMS: NavItem[] = [
+  { kind: "tab",  tab: "dashboard",    label: "Dashboard",       icon: "&#9776;" },
+  { kind: "tab",  tab: "subscription", label: "Subscription",    icon: "&#128179;" },
+  { kind: "tab",  tab: "payments",     label: "Payments",        icon: "&#128196;" },
+  { kind: "tab",  tab: "library",      label: "Members Library", icon: "&#128218;" },
+  { kind: "link", href: "/member-portal/documents", label: "Document Library", icon: "&#128196;" },
+  { kind: "tab",  tab: "enquiries",    label: "My Enquiries",    icon: "&#128269;" },
+  { kind: "tab",  tab: "profile",      label: "Edit Profile",    icon: "&#9998;" },
 ];
 
 // ── Main portal component ─────────────────────────────────────────────────────
@@ -1225,6 +1230,7 @@ export default function PortalClient({
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [signingOut, setSigningOut] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // sessionStorage is cleared on browser close and is never restored by bfcache
@@ -1311,19 +1317,20 @@ export default function PortalClient({
               {/* Mobile: horizontal scroll nav */}
               <div className="lg:hidden overflow-x-auto mb-4">
                 <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1.5 min-w-max">
-                  {NAV_ITEMS.map(({ tab, label }) => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                        activeTab === tab
-                          ? "bg-csl-dark text-white"
-                          : "text-gray-600 hover:bg-gray-100"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                  {NAV_ITEMS.map((item) => {
+                    const key = item.kind === "tab" ? item.tab : item.href;
+                    const isActive = item.kind === "tab" ? activeTab === item.tab : pathname === item.href;
+                    const cls = `px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                      isActive ? "bg-csl-dark text-white" : "text-gray-600 hover:bg-gray-100"
+                    }`;
+                    return item.kind === "link" ? (
+                      <Link key={key} href={item.href} className={cls}>{item.label}</Link>
+                    ) : (
+                      <button key={key} onClick={() => setActiveTab(item.tab)} className={cls}>
+                        {item.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1340,21 +1347,31 @@ export default function PortalClient({
 
                 <nav>
                   <ul className="space-y-0.5">
-                    {NAV_ITEMS.map(({ tab, label, icon }) => (
-                      <li key={tab}>
-                        <button
-                          onClick={() => setActiveTab(tab)}
-                          className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
-                            activeTab === tab
-                              ? "bg-csl-light text-csl-dark font-semibold"
-                              : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                          }`}
-                          dangerouslySetInnerHTML={{
-                            __html: `<span>${icon}</span>&nbsp;${label}`,
-                          }}
-                        />
-                      </li>
-                    ))}
+                    {NAV_ITEMS.map((item) => {
+                      const key = item.kind === "tab" ? item.tab : item.href;
+                      const isActive = item.kind === "tab" ? activeTab === item.tab : pathname === item.href;
+                      const cls = `w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                        isActive
+                          ? "bg-csl-light text-csl-dark font-semibold"
+                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                      }`;
+                      return (
+                        <li key={key}>
+                          {item.kind === "link" ? (
+                            <Link href={item.href} className={cls}>
+                              <span dangerouslySetInnerHTML={{ __html: item.icon }} />
+                              &nbsp;{item.label}
+                            </Link>
+                          ) : (
+                            <button
+                              onClick={() => setActiveTab(item.tab)}
+                              className={cls}
+                              dangerouslySetInnerHTML={{ __html: `<span>${item.icon}</span>&nbsp;${item.label}` }}
+                            />
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </nav>
 

@@ -200,19 +200,23 @@ events (
 )
 
 -- Member-only governance documents (papers, reports, meeting minutes, notices)
--- Migration: sql/add-members-library.sql
--- File storage: Google Drive URLs in file_url — currently stubbed (STUB_ prefix)
---   CSL Google Drive account to be created before go-live; replace stub URLs with real ones
--- To publish a new document: INSERT with is_published=true and real Google Drive URL
--- Admin self-service UI for Martin: future phase
+-- Migration: sql/add-members-library.sql (original) + sql/add-document-library-columns.sql (adds new columns)
+-- Storage: Google Drive - drive_url holds the shareable link; no Supabase Storage bucket
+-- To add a document: upload to CSL Google Drive subfolder (documentscsl@gmail.com), right-click
+--   -> Get link, then INSERT a row in Supabase with the link in drive_url
+-- RLS: authenticated users only; members_only=true rows visible to all logged-in users
 documents (
   id            uuid primary key default gen_random_uuid(),
   title         text not null,
   description   text,
-  document_type text not null default 'paper',  -- 'paper' | 'minutes' | 'report' | 'notice'
+  category      text,  -- 'Meeting Minutes' | 'Research & Papers' | 'AGM Documents' | 'Governance' | 'Guides & Templates'
+  document_type text not null default 'paper',  -- legacy column, kept for backwards compat
+  drive_url     text,  -- Google Drive shareable URL (canonical); use /preview transform in DocumentCard
+  file_url      text not null,  -- legacy column, kept for backwards compat with Members Library tab
+  file_type     text not null default 'PDF',  -- 'PDF' | 'DOCX' | 'XLSX' | 'PPTX'
   published_at  timestamptz not null default now(),
-  file_url      text not null,
-  is_published  boolean not null default false,
+  members_only  boolean not null default true,
+  is_published  boolean not null default false,  -- legacy column
   created_at    timestamptz not null default now()
 )
 ```
@@ -333,6 +337,8 @@ Required in Vercel (Project Settings > Environment Variables) and `.env.local` f
 1. `sql/phase-5-schema.sql` — creates `members`, `events` tables + RLS policies
 2. `sql/phase-5b-schema.sql` — adds new `members` columns, creates `payments` table + RLS
 3. `sql/add-members-library.sql` — extends `events` with `minutes_url`/`description`; creates `documents` table + RLS; seeds 14th Members Meeting and The Celtic Paradox paper
+4. `sql/add-governance-criteria.sql` — creates `governance_criteria` table + RLS; seeds all 12 demands
+5. `sql/add-document-library-columns.sql` — adds `category`, `drive_url`, `file_type`, `members_only` to `documents`; updates RLS; fixes Celtic Paradox stub URL; seeds April 2026 meeting minutes
 
 **Stripe webhook registration:**
 URL: `https://csl-website-ten.vercel.app/api/webhooks/stripe`
@@ -349,12 +355,12 @@ Events: `checkout.session.completed`, `customer.subscription.deleted`, `invoice.
 - **Zoho CRM** — integration is a stub (logs only); implement when `ZOHO_*` env vars are set
 - **Resend email** — welcome email and intake form notifications are placeholders;
   implement when `RESEND_API_KEY` is set
-- **Members Library Google Drive URLs** — all `file_url`, `minutes_url`, `recording_url`,
-  and `slides_url` values are currently stubbed (`STUB_` prefix). Create CSL Google Drive
-  account, upload documents, set share permissions to "anyone with link can view", and
-  replace stub URLs in the database before go-live
-- **`sql/add-members-library.sql`** — must be run in Supabase before Members Library tab
-  shows any data (events description/minutes_url columns + documents table)
+- **Members Library Google Drive URLs** — `minutes_url`, `recording_url`, and `slides_url`
+  on the `events` table are still stubbed (`STUB_` prefix). Replace with real Drive links.
+  The `documents` table now has real Drive URLs for The Celtic Paradox and April 2026 minutes
+  (set via `sql/add-document-library-columns.sql`).
+- **`sql/add-document-library-columns.sql`** — must be run in Supabase before the Document
+  Library page at `/member-portal/documents` shows documents. Also fixes Celtic Paradox stub URL.
 
 ## Session Start Prompt (copy-paste to begin each Claude Code session)
 
@@ -523,6 +529,47 @@ Returns 400 with "Please use a permanent email address to register."
 
 In-memory rate limiter in `app/api/checkout/route.ts`: 5 requests per IP per 10 minutes.
 Returns 429 on breach. Resets on cold starts; best-effort deterrent only.
+
+**Phase 10 — Governance Dashboard**
+Public page at `/governance` showing CSL's 12-point Celtic Paradox Accountability Framework.
+`governance_criteria` table in Supabase (id 1-12, tier, demand, status, commentary, last_reviewed).
+ISR page (`revalidate=3600`); `components/GovernanceDashboard.tsx` is a pure presentational
+component receiving criteria as props (auth-ready: adding a session guard to `page.tsx` is the
+only change needed to restrict to members). Hero, summary score bar (Met/Partial/Not Met pills),
+three tier sections with criterion cards, explainer, CTA footer.
+`PATCH /api/governance` — Bearer token endpoint (GOVERNANCE_UPDATE_TOKEN env var) for updating
+criterion status/commentary without a database UI.
+Nav reordered: Home / Take Action / About / Governance / Membership. Footer adds Accountability column.
+SQL: `sql/add-governance-criteria.sql`. Env var: `GOVERNANCE_UPDATE_TOKEN`.
+
+**Phase 11 — Member Document Library**
+Dedicated route at `/member-portal/documents` for member-only document access.
+Documents stored in CSL Google Drive (documentscsl@gmail.com); Supabase `documents` table holds
+only metadata and the Drive shareable link — no Supabase Storage, no file uploads.
+`sql/add-document-library-columns.sql` adds `category`, `drive_url`, `file_type`, `members_only`
+to the existing `documents` table; replaces old RLS policy; seeds Celtic Paradox (real URL) and
+April 2026 meeting minutes.
+Architecture: `app/member-portal/documents/page.tsx` (server component, fetches with auth client)
+-> `components/DocumentLibrary.tsx` (client component, category filter pills) ->
+`components/DocumentCard.tsx` (static card; transforms drive_url to /preview for clean viewer).
+Portal sidebar (`PortalClient.tsx`) gains a "Document Library" Link item (navigates to the
+standalone route; active state via usePathname). Unauthenticated access redirects to /login via
+middleware. Drive URL transformation: `.../view?usp=...` -> `.../preview` at render time only;
+`drive_url` in DB stores the standard shareable link unchanged.
+
+## Document Library
+
+- **Route:** `/member-portal/documents` — members only (middleware auth guard)
+- **Storage:** CSL Google Drive (`documentscsl@gmail.com`) — NOT Supabase Storage, no storage costs
+- **Metadata:** `documents` table in Supabase (`category`, `drive_url`, `file_type`, `published_at`, `members_only`)
+- **Access model:** soft gate — must be logged in to see links; Drive files set to "anyone with the link - viewer"
+- **Drive URL transform:** `drive_url` stores the standard `/view?usp=drive_link` shareable URL; `DocumentCard.tsx` converts to `/preview` at render time for a clean viewer with no Drive chrome
+- **To add a document:**
+  1. Upload file to the correct CSL Google Drive subfolder (no sharing step - root folder is already shared)
+  2. Right-click -> Get link -> Copy link
+  3. In Supabase table editor, insert a row into `documents` with: `title`, `description`, `category` (one of the five values), `drive_url` (the link), `file_type` (PDF/DOCX/etc), `published_at` (document date, not today), `members_only = true`
+- **Categories:** Meeting Minutes | Research & Papers | AGM Documents | Governance | Guides & Templates
+- **No upload endpoint, no signed URLs, no storage API calls**
 
 ### Next — Go-Live Checklist
 - Configure Stripe Billing Portal in Dashboard > Billing > Customer portal settings
