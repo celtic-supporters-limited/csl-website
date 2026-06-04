@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Turnstile } from "@marsidev/react-turnstile";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
@@ -18,6 +18,7 @@ export default function ProxyForm() {
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileError, setTurnstileError] = useState("");
   const successRef = useRef<HTMLDivElement>(null);
+  const turnstileRef = useRef<TurnstileInstance>(null);
 
   useEffect(() => {
     if (state === "success" && successRef.current) {
@@ -69,12 +70,16 @@ export default function ProxyForm() {
       const data = await res.json();
       if (!res.ok) {
         setErrorMsg(data.error || "Something went wrong. Please try again.");
+        turnstileRef.current?.reset();
+        setTurnstileToken("");
         setState("error");
         return;
       }
       setState("success");
     } catch {
       setErrorMsg("Network error. Please check your connection and try again.");
+      turnstileRef.current?.reset();
+      setTurnstileToken("");
       setState("error");
     }
   }
@@ -215,6 +220,7 @@ export default function ProxyForm() {
 
       <div className="mb-5 flex justify-center">
         <Turnstile
+          ref={turnstileRef}
           siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
           onSuccess={(token) => {
             setTurnstileToken(token);

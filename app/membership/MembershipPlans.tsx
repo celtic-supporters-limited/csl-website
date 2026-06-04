@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Turnstile } from "@marsidev/react-turnstile";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import type { PlanType } from "@/lib/stripe";
 
 interface SelectedPlan {
@@ -66,6 +66,7 @@ export default function MembershipPlans() {
   const [loading, setLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const summaryRef = useRef<HTMLDivElement>(null);
+  const turnstileRef = useRef<TurnstileInstance>(null);
 
   function selectPlan(plan: SelectedPlan) {
     setSelected(plan);
@@ -140,12 +141,16 @@ export default function MembershipPlans() {
       const data = await res.json();
       if (!res.ok || !data.url) {
         setCheckoutError(data.error || "Something went wrong. Please try again.");
+        turnstileRef.current?.reset();
+        setTurnstileToken("");
         setLoading(false);
         return;
       }
       window.location.href = data.url;
     } catch {
       setCheckoutError("Network error. Please check your connection and try again.");
+      turnstileRef.current?.reset();
+      setTurnstileToken("");
       setLoading(false);
     }
   }
@@ -423,6 +428,7 @@ export default function MembershipPlans() {
 
           <div className="mb-5 flex justify-center">
             <Turnstile
+              ref={turnstileRef}
               siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
               onSuccess={(token) => {
                 setTurnstileToken(token);
