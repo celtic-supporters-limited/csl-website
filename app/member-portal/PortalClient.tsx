@@ -1266,7 +1266,7 @@ export default function PortalClient({
                       </Link>
                     </div>
                   )}
-                  <DocumentLibrary documents={documents} />
+                  <DocumentLibrary documents={documents} isAdmin={member?.is_admin === true} />
                 </div>
               )}
               {activeTab === "enquiries" && (

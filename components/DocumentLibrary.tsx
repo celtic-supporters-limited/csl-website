@@ -16,9 +16,10 @@ const CATEGORIES = [
 
 type Props = {
   documents: MemberDocument[];
+  isAdmin?: boolean;
 };
 
-export default function DocumentLibrary({ documents }: Props) {
+export default function DocumentLibrary({ documents, isAdmin }: Props) {
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [viewingDoc, setViewingDoc] = useState<MemberDocument | null>(null);
 
@@ -65,7 +66,7 @@ export default function DocumentLibrary({ documents }: Props) {
         ) : (
           <div className="space-y-3">
             {filtered.map((doc) => (
-              <DocumentCard key={doc.id} document={doc} onView={setViewingDoc} />
+              <DocumentCard key={doc.id} document={doc} onView={setViewingDoc} isAdmin={isAdmin} />
             ))}
           </div>
         )}
