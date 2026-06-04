@@ -5,7 +5,6 @@ import { getStripe } from "@/lib/stripe";
 import PortalClient from "./PortalClient";
 import type {
   Member,
-  PortalEvent,
   PortalCase,
   PortalPayment,
   StripeSubData,
@@ -54,7 +53,6 @@ export default async function MemberPortalPage() {
   }
 
   let member: Member | null = null;
-  let events: PortalEvent[] = [];
   let cases: PortalCase[] = [];
   let payments: PortalPayment[] = [];
   let documents: MemberDocument[] = [];
@@ -64,13 +62,9 @@ export default async function MemberPortalPage() {
   try {
     const db = getSupabase();
 
-    // Batch 1 — member record, events, cases, documents, governance (parallel, independent)
-    const [memberRes, eventsRes, casesRes, documentsRes, governanceRes] = await Promise.all([
+    // Batch 1 — member record, cases, documents, governance (parallel, independent)
+    const [memberRes, casesRes, documentsRes, governanceRes] = await Promise.all([
       db.from("members").select("*").eq("email", user.email).maybeSingle(),
-      db
-        .from("events")
-        .select("id, title, event_date, description, recording_url, slides_url, minutes_url, members_only")
-        .order("event_date", { ascending: false }),
       db
         .from("shareholder_cases")
         .select("id, contact_name, email, case_type, status, created_at")
@@ -87,7 +81,6 @@ export default async function MemberPortalPage() {
     ]);
 
     member = memberRes.data ?? null;
-    events = eventsRes.data ?? [];
     cases = casesRes.data ?? [];
     documents = (documentsRes.data ?? []) as MemberDocument[];
     governanceCriteria = (governanceRes.data ?? []) as GovernanceCriterion[];
@@ -189,7 +182,6 @@ export default async function MemberPortalPage() {
     <PortalClient
       user={{ email: user.email, id: user.id }}
       member={member}
-      events={events}
       cases={cases}
       payments={payments}
       documents={documents}

@@ -30,6 +30,7 @@ export type Member = {
   is_admin: boolean | null;
 };
 
+
 export type PortalEvent = {
   id: string;
   title: string | null;
@@ -90,7 +91,6 @@ export type StripeSubData = {
 type Props = {
   user: { email: string; id: string };
   member: Member | null;
-  events: PortalEvent[];
   cases: PortalCase[];
   payments: PortalPayment[];
   documents: MemberDocument[];
@@ -1098,7 +1098,6 @@ const INACTIVITY_MS = 30 * 60 * 1000; // 30 minutes
 export default function PortalClient({
   user,
   member,
-  events,
   cases,
   payments,
   documents,
