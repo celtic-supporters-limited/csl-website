@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
+import { createBrowserSupabase } from "@/lib/supabase-browser";
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
@@ -17,8 +18,30 @@ export default function ShareTracingForm() {
   const [consent, setConsent] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileError, setTurnstileError] = useState("");
+  const [prefillName, setPrefillName] = useState("");
+  const [prefillEmail, setPrefillEmail] = useState("");
   const successRef = useRef<HTMLDivElement>(null);
   const turnstileRef = useRef<TurnstileInstance>(null);
+
+  useEffect(() => {
+    const supabase = createBrowserSupabase();
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.email) return;
+      setPrefillEmail(user.email);
+      const { data: member } = await supabase
+        .from("members")
+        .select("first_name, last_name, name")
+        .eq("email", user.email)
+        .maybeSingle();
+      if (!member) return;
+      const full =
+        member.first_name && member.last_name
+          ? `${member.first_name} ${member.last_name}`
+          : (member.name ?? "");
+      if (full) setPrefillName(full);
+    })();
+  }, []);
 
   useEffect(() => {
     if (state === "success" && successRef.current) {
@@ -139,6 +162,8 @@ export default function ShareTracingForm() {
           name="name"
           type="text"
           required
+          value={prefillName}
+          onChange={(e) => setPrefillName(e.target.value)}
           placeholder="e.g. James McPherson"
           className={inputClass}
         />
@@ -153,6 +178,8 @@ export default function ShareTracingForm() {
           name="email"
           type="email"
           required
+          value={prefillEmail}
+          onChange={(e) => setPrefillEmail(e.target.value)}
           placeholder="your@email.com"
           className={inputClass}
         />
