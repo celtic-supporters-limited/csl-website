@@ -208,8 +208,11 @@ export async function POST(req: NextRequest) {
       });
     } else {
       // lifetime — one-off payment, fixed at £5,000
+      // customer_creation: "always" ensures Stripe creates a Customer object
+      // even for one-time payments so the webhook gets a stripe_customer_id.
       session = await stripe.checkout.sessions.create({
         mode: "payment",
+        customer_creation: "always",
         line_items: [
           {
             quantity: 1,
