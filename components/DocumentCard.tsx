@@ -1,4 +1,14 @@
-import type { MemberDocument } from "@/app/member-portal/documents/page";
+"use client";
+
+export type MemberDocument = {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string;
+  drive_url: string;
+  file_type: string;
+  published_at: string;
+};
 
 const CATEGORY_BADGE: Record<string, string> = {
   "Meeting Minutes":    "bg-blue-100 text-blue-800",
@@ -8,7 +18,7 @@ const CATEGORY_BADGE: Record<string, string> = {
   "Guides & Templates": "bg-gray-100 text-gray-700",
 };
 
-function toPreviewUrl(driveUrl: string): string {
+export function toPreviewUrl(driveUrl: string): string {
   // Convert .../file/d/FILE_ID/view?usp=... to .../file/d/FILE_ID/preview
   // so the document opens in a clean viewer with no Drive navigation chrome.
   return driveUrl.replace(/\/view(\?.*)?$/, "/preview");
@@ -22,9 +32,13 @@ function formatDate(iso: string): string {
   });
 }
 
-export default function DocumentCard({ document: doc }: { document: MemberDocument }) {
+type Props = {
+  document: MemberDocument;
+  onView: (doc: MemberDocument) => void;
+};
+
+export default function DocumentCard({ document: doc, onView }: Props) {
   const badgeClass = CATEGORY_BADGE[doc.category] ?? "bg-gray-100 text-gray-700";
-  const previewUrl = toPreviewUrl(doc.drive_url);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4">
@@ -45,14 +59,12 @@ export default function DocumentCard({ document: doc }: { document: MemberDocume
         )}
         <p className="text-gray-400 text-xs mt-1.5">{formatDate(doc.published_at)}</p>
       </div>
-      <a
-        href={previewUrl}
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        onClick={() => onView(doc)}
         className="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors whitespace-nowrap"
       >
         View Document &#8594;
-      </a>
+      </button>
     </div>
   );
 }

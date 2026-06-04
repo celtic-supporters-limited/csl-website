@@ -85,7 +85,6 @@ type Props = {
   events: PortalEvent[];
   cases: PortalCase[];
   payments: PortalPayment[];
-  documents: PortalDocument[];
   stripeSub: StripeSubData | null;
 };
 
@@ -93,7 +92,6 @@ type Tab =
   | "dashboard"
   | "subscription"
   | "payments"
-  | "library"
   | "enquiries"
   | "profile";
 
@@ -282,12 +280,12 @@ function DashboardTab({
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-gray-900">Recent Content</h3>
-            <button
-              onClick={() => onTabChange("library")}
+            <Link
+              href="/member-portal/library"
               className="text-csl-dark text-xs font-semibold hover:underline"
             >
               View all
-            </button>
+            </Link>
 
           </div>
           <div className="space-y-0">
@@ -608,174 +606,6 @@ function PaymentsTab({ payments }: { payments: PortalPayment[] }) {
         </div>
       )}
     </Card>
-  );
-}
-
-// ── Members Library tab ───────────────────────────────────────────────────────
-
-type LibrarySubTab = "meetings" | "documents";
-
-const STUB_TOOLTIP = "Coming soon. This document will be available shortly.";
-
-function isStub(url: string | null): boolean {
-  return !!url && url.includes("STUB_");
-}
-
-function LibraryLinkButton({
-  href,
-  label,
-  outline,
-}: {
-  href: string | null;
-  label: string;
-  outline?: boolean;
-}) {
-  if (!href) return null;
-  const stub = isStub(href);
-  const base = "inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors";
-  const active = outline
-    ? "border border-csl-dark text-csl-dark hover:bg-csl-light"
-    : "bg-csl-dark text-white hover:bg-csl-mid";
-  const disabled = "bg-gray-100 text-gray-400 cursor-not-allowed";
-
-  return (
-    <a
-      href={stub ? undefined : href}
-      target={stub ? undefined : "_blank"}
-      rel="noopener noreferrer"
-      title={stub ? STUB_TOOLTIP : undefined}
-      onClick={stub ? (e) => e.preventDefault() : undefined}
-      className={`${base} ${stub ? disabled : active}`}
-    >
-      {label}
-      {stub && <span className="ml-1 text-[0.65rem]">&#9679; Soon</span>}
-    </a>
-  );
-}
-
-function MeetingsPanel({ events }: { events: PortalEvent[] }) {
-  if (events.length === 0) {
-    return (
-      <Card>
-        <div className="text-center py-10">
-          <div className="text-3xl mb-3">&#128196;</div>
-          <p className="text-gray-500 text-sm">No meetings recorded yet.</p>
-        </div>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {events.map((ev) => (
-        <Card key={ev.id}>
-          <div className="flex flex-col gap-3">
-            <div>
-              <h4 className="font-bold text-gray-900">{ev.title ?? "Untitled"}</h4>
-              <p className="text-xs text-gray-400 mt-0.5">{formatDate(ev.event_date)}</p>
-            </div>
-            {ev.description && (
-              <p className="text-sm text-gray-500 leading-relaxed line-clamp-2">
-                {ev.description}
-              </p>
-            )}
-            <div className="flex gap-2 flex-wrap">
-              <LibraryLinkButton href={ev.minutes_url} label="Minutes" />
-              <LibraryLinkButton href={ev.recording_url} label="Recording" />
-              <LibraryLinkButton href={ev.slides_url} label="Slides" outline />
-            </div>
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-const DOC_TYPE_BADGE: Record<string, string> = {
-  paper:   "bg-blue-50 text-blue-700 border-blue-200",
-  minutes: "bg-green-50 text-green-700 border-green-200",
-  report:  "bg-gray-100 text-gray-600 border-gray-200",
-  notice:  "bg-amber-50 text-amber-700 border-amber-200",
-};
-
-function DocumentsPanel({ documents }: { documents: PortalDocument[] }) {
-  if (documents.length === 0) {
-    return (
-      <Card>
-        <div className="text-center py-10">
-          <div className="text-3xl mb-3">&#128196;</div>
-          <p className="text-gray-500 text-sm">No documents published yet.</p>
-        </div>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {documents.map((doc) => (
-        <Card key={doc.id}>
-          <div className="flex flex-col gap-3">
-            <div>
-              <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                <span
-                  className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                    DOC_TYPE_BADGE[doc.document_type] ?? DOC_TYPE_BADGE.report
-                  }`}
-                >
-                  {doc.document_type.charAt(0).toUpperCase() + doc.document_type.slice(1)}
-                </span>
-                <span className="text-xs text-gray-400">{formatDate(doc.published_at)}</span>
-              </div>
-              <h4 className="font-bold text-gray-900">{doc.title}</h4>
-              {doc.description && (
-                <p className="text-sm text-gray-500 mt-1 leading-relaxed line-clamp-2">
-                  {doc.description}
-                </p>
-              )}
-            </div>
-            <div>
-              <LibraryLinkButton href={doc.file_url} label="Download" />
-              {isStub(doc.file_url) && (
-                <p className="text-xs text-gray-400 mt-1.5">{STUB_TOOLTIP}</p>
-              )}
-            </div>
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-function MembersLibraryTab({
-  events,
-  documents,
-}: {
-  events: PortalEvent[];
-  documents: PortalDocument[];
-}) {
-  const [subTab, setSubTab] = useState<LibrarySubTab>("meetings");
-
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1.5 w-fit">
-        {(["meetings", "documents"] as LibrarySubTab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setSubTab(t)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-              subTab === t
-                ? "bg-csl-dark text-white"
-                : "text-gray-600 hover:bg-gray-100"
-            }`}
-          >
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
-        ))}
-      </div>
-
-      {subTab === "meetings"  && <MeetingsPanel events={events} />}
-      {subTab === "documents" && <DocumentsPanel documents={documents} />}
-    </div>
   );
 }
 
@@ -1208,8 +1038,7 @@ const NAV_ITEMS: NavItem[] = [
   { kind: "tab",  tab: "dashboard",    label: "Dashboard",       icon: "&#9776;" },
   { kind: "tab",  tab: "subscription", label: "Subscription",    icon: "&#128179;" },
   { kind: "tab",  tab: "payments",     label: "Payments",        icon: "&#128196;" },
-  { kind: "tab",  tab: "library",      label: "Members Library", icon: "&#128218;" },
-  { kind: "link", href: "/member-portal/documents", label: "Document Library", icon: "&#128196;" },
+  { kind: "link", href: "/member-portal/library",   label: "Library",         icon: "&#128218;" },
   { kind: "tab",  tab: "enquiries",    label: "My Enquiries",    icon: "&#128269;" },
   { kind: "tab",  tab: "profile",      label: "Edit Profile",    icon: "&#9998;" },
 ];
@@ -1224,7 +1053,6 @@ export default function PortalClient({
   events,
   cases,
   payments,
-  documents,
   stripeSub,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
@@ -1419,9 +1247,6 @@ export default function PortalClient({
               )}
               {activeTab === "payments" && (
                 <PaymentsTab payments={payments} />
-              )}
-              {activeTab === "library" && (
-                <MembersLibraryTab events={events} documents={documents} />
               )}
               {activeTab === "enquiries" && (
                 <EnquiriesTab cases={cases} />
