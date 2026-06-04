@@ -118,7 +118,7 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
             onChange={(e) => setFirstName(e.target.value)}
             disabled={loading}
             className={inputCls}
-            placeholder="Gary"
+            placeholder="First name"
           />
         </div>
         <div>
@@ -137,7 +137,7 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
             onChange={(e) => setLastName(e.target.value)}
             disabled={loading}
             className={inputCls}
-            placeholder="Phinn"
+            placeholder="Last name"
           />
         </div>
       </div>
