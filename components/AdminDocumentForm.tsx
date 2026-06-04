@@ -142,7 +142,7 @@ export default function AdminDocumentForm() {
         />
         <p className="text-gray-400 text-xs mt-1.5">
           Right-click the file in Google Drive &rarr; Get link &rarr; Copy link.
-          Ensure the root folder is shared as &ldquo;Anyone with the link &mdash; Viewer&rdquo;.
+          For Google Sheets and Docs, use the Share link.
         </p>
       </div>
 

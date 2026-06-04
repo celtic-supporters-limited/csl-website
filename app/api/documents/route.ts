@@ -82,8 +82,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid category." }, { status: 400 });
   if (!drive_url?.trim())
     return NextResponse.json({ error: "Google Drive URL is required." }, { status: 400 });
-  if (!drive_url.trim().startsWith("https://drive.google.com/"))
-    return NextResponse.json({ error: "URL must start with https://drive.google.com/" }, { status: 400 });
+  if (
+    !drive_url.trim().startsWith("https://drive.google.com/") &&
+    !drive_url.trim().startsWith("https://docs.google.com/")
+  )
+    return NextResponse.json({ error: "URL must start with https://drive.google.com/ or https://docs.google.com/" }, { status: 400 });
   if (!published_at)
     return NextResponse.json({ error: "Document date is required." }, { status: 400 });
 
