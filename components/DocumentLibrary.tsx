@@ -30,16 +30,11 @@ export default function DocumentLibrary({ documents }: Props) {
     <>
       <div>
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Documents</h2>
-            <p className="text-gray-500 text-sm mt-0.5">
-              CSL documents available to all active members.
-            </p>
-          </div>
-          <span className="self-start text-xs font-semibold bg-white text-csl-dark border border-gray-200 px-2.5 py-1 rounded-full whitespace-nowrap">
-            {documents.length} document{documents.length !== 1 ? "s" : ""}
-          </span>
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-900">Documents</h2>
+          <p className="text-gray-500 text-sm mt-0.5">
+            CSL documents available to all active members.
+          </p>
         </div>
 
         {/* Category filter pills */}

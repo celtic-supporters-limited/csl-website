@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function DocumentsRedirect() {
-  redirect("/member-portal/library?tab=documents");
+  redirect("/member-portal");
 }

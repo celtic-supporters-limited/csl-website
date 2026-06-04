@@ -10,6 +10,7 @@ import type {
   PortalPayment,
   StripeSubData,
 } from "./PortalClient";
+import type { MemberDocument } from "@/components/DocumentCard";
 
 export const metadata: Metadata = {
   title: "Member Portal | Celtic Supporters Limited",
@@ -55,13 +56,14 @@ export default async function MemberPortalPage() {
   let events: PortalEvent[] = [];
   let cases: PortalCase[] = [];
   let payments: PortalPayment[] = [];
+  let documents: MemberDocument[] = [];
   let stripeSub: StripeSubData | null = null;
 
   try {
     const db = getSupabase();
 
-    // Batch 1 — member record, events, cases (parallel, independent)
-    const [memberRes, eventsRes, casesRes] = await Promise.all([
+    // Batch 1 — member record, events, cases, documents (parallel, independent)
+    const [memberRes, eventsRes, casesRes, documentsRes] = await Promise.all([
       db.from("members").select("*").eq("email", user.email).maybeSingle(),
       db
         .from("events")
@@ -72,11 +74,17 @@ export default async function MemberPortalPage() {
         .select("id, contact_name, email, case_type, status, created_at")
         .eq("email", user.email)
         .order("created_at", { ascending: false }),
+      db
+        .from("documents")
+        .select("id, title, description, category, drive_url, file_type, published_at")
+        .eq("members_only", true)
+        .order("published_at", { ascending: false }),
     ]);
 
     member = memberRes.data ?? null;
     events = eventsRes.data ?? [];
     cases = casesRes.data ?? [];
+    documents = (documentsRes.data ?? []) as MemberDocument[];
 
     // Batch 2 — requires stripe_customer_id and stripe_subscription_id from batch 1
     if (member) {
@@ -178,6 +186,7 @@ export default async function MemberPortalPage() {
       events={events}
       cases={cases}
       payments={payments}
+      documents={documents}
       stripeSub={stripeSub}
     />
   );
