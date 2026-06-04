@@ -125,16 +125,6 @@ export default function Nav() {
             )}
           </li>
 
-          {/* Membership */}
-          <li>
-            <Link
-              href="/membership"
-              className={`block px-3.5 py-2 ${topLinkClass(pathname === "/membership")}`}
-            >
-              Membership
-            </Link>
-          </li>
-
           {/* About dropdown */}
           <li
             className="relative"
@@ -169,6 +159,26 @@ export default function Nav() {
                 ))}
               </ul>
             )}
+          </li>
+
+          {/* Governance */}
+          <li>
+            <Link
+              href="/governance"
+              className={`block px-3.5 py-2 ${topLinkClass(pathname === "/governance")}`}
+            >
+              Governance
+            </Link>
+          </li>
+
+          {/* Membership */}
+          <li>
+            <Link
+              href="/membership"
+              className={`block px-3.5 py-2 ${topLinkClass(pathname === "/membership")}`}
+            >
+              Membership
+            </Link>
           </li>
         </ul>
 
@@ -244,18 +254,6 @@ export default function Nav() {
               )}
             </div>
 
-            {/* Membership */}
-            <div className="border-t border-white/10 mt-1 pt-1">
-              <Link
-                href="/membership"
-                className={`block px-3 py-2.5 rounded text-[0.92rem] font-medium transition-colors duration-150 ${
-                  pathname === "/membership" ? "text-csl-gold" : "text-white/85 hover:text-white"
-                }`}
-              >
-                Membership
-              </Link>
-            </div>
-
             {/* About accordion */}
             <div className="border-t border-white/10 mt-1 pt-1">
               <div className="flex items-center justify-between">
@@ -293,6 +291,30 @@ export default function Nav() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Governance */}
+            <div className="border-t border-white/10 mt-1 pt-1">
+              <Link
+                href="/governance"
+                className={`block px-3 py-2.5 rounded text-[0.92rem] font-medium transition-colors duration-150 ${
+                  pathname === "/governance" ? "text-csl-gold" : "text-white/85 hover:text-white"
+                }`}
+              >
+                Governance
+              </Link>
+            </div>
+
+            {/* Membership */}
+            <div className="border-t border-white/10 mt-1 pt-1">
+              <Link
+                href="/membership"
+                className={`block px-3 py-2.5 rounded text-[0.92rem] font-medium transition-colors duration-150 ${
+                  pathname === "/membership" ? "text-csl-gold" : "text-white/85 hover:text-white"
+                }`}
+              >
+                Membership
+              </Link>
             </div>
 
             {/* CTA buttons */}

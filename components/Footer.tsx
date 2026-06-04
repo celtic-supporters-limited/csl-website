@@ -29,7 +29,7 @@ export default function Footer() {
   return (
     <footer className="bg-gray-900 text-white/70">
       <Container className="pt-12 pb-7">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-10 mb-10">
           <div>
             <div className="font-extrabold text-[1.1rem] text-white mb-2.5">
               &#9752; Celtic Supporters Limited
@@ -111,6 +111,24 @@ export default function Footer() {
               <li>
                 <Link href="/membership" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
                   Upgrade Subscription
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="text-white text-[0.85rem] font-bold mb-3.5 uppercase tracking-widest">
+              Accountability
+            </h4>
+            <ul className="space-y-2">
+              <li>
+                <Link href="/governance" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                  Governance Dashboard
+                </Link>
+              </li>
+              <li>
+                <Link href="/celtic-paradox" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                  The Celtic Paradox
                 </Link>
               </li>
             </ul>
