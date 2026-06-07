@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
+import { sendPaymentFailedEmail } from "@/lib/resend";
 
 // ── Derivation helpers ────────────────────────────────────────────────────────
 
@@ -177,23 +178,43 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-      // ── customer.subscription.deleted ───────────────────────────────────
-      case "customer.subscription.deleted": {
-        const sub = event.data.object as Stripe.Subscription;
-        const cid = customerId(sub.customer);
+      // ── invoice.paid ────────────────────────────────────────────────────
+      case "invoice.paid": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const cid = customerId(invoice.customer);
+
+        if (!cid) {
+          console.warn(
+            "[stripe-webhook] invoice.paid: no customer ID on invoice",
+            invoice.id
+          );
+          break;
+        }
+
+        // Derive tier from billing period duration (annual invoices span ~365 days).
+        // InvoiceLineItem.price was removed in Stripe SDK v22; period duration is reliable.
+        const daysInPeriod =
+          (invoice.period_end - invoice.period_start) / 86400;
+        const tier = daysInPeriod > 300 ? "annual" : "monthly";
 
         const { error } = await db
           .from("members")
-          .update({ status: "cancelled" })
+          .update({
+            status: "active",
+            membership_tier: tier,
+            amount_pence: invoice.amount_paid ?? 0,
+          })
           .eq("stripe_customer_id", cid);
 
         if (error) {
           console.error(
-            "[stripe-webhook] Supabase update error (subscription.deleted):",
+            "[stripe-webhook] Supabase update error (invoice.paid):",
             error.message
           );
         } else {
-          console.log(`[stripe-webhook] Member cancelled: customer ${cid}`);
+          console.log(
+            `[stripe-webhook] invoice.paid processed for customer ${cid}`
+          );
         }
         break;
       }
@@ -211,18 +232,92 @@ export async function POST(req: NextRequest) {
           break;
         }
 
-        const { error } = await db
+        const { data: member, error } = await db
           .from("members")
           .update({ status: "payment_failed" })
-          .eq("stripe_customer_id", cid);
+          .eq("stripe_customer_id", cid)
+          .select("email")
+          .maybeSingle();
 
         if (error) {
           console.error(
             "[stripe-webhook] Supabase update error (payment_failed):",
             error.message
           );
+        }
+
+        if (member?.email) {
+          try {
+            await sendPaymentFailedEmail(member.email);
+          } catch (emailErr) {
+            console.error(
+              "[stripe-webhook] Resend error (payment_failed):",
+              emailErr
+            );
+          }
+        }
+
+        console.log(
+          `[stripe-webhook] invoice.payment_failed processed for customer ${cid}`
+        );
+        break;
+      }
+
+      // ── customer.subscription.updated ───────────────────────────────────
+      case "customer.subscription.updated": {
+        const sub = event.data.object as Stripe.Subscription;
+        const cid = customerId(sub.customer);
+
+        if (!cid) {
+          console.warn(
+            "[stripe-webhook] customer.subscription.updated: no customer ID on subscription",
+            sub.id
+          );
+          break;
+        }
+
+        const item = sub.items.data[0];
+        const interval = item?.price?.recurring?.interval;
+        const tier = interval === "year" ? "annual" : "monthly";
+        const amountPence = item?.price?.unit_amount ?? 0;
+
+        const { error } = await db
+          .from("members")
+          .update({ membership_tier: tier, amount_pence: amountPence })
+          .eq("stripe_customer_id", cid);
+
+        if (error) {
+          console.error(
+            "[stripe-webhook] Supabase update error (subscription.updated):",
+            error.message
+          );
         } else {
-          console.log(`[stripe-webhook] Member payment_failed: customer ${cid}`);
+          console.log(
+            `[stripe-webhook] customer.subscription.updated processed for customer ${cid}`
+          );
+        }
+        break;
+      }
+
+      // ── customer.subscription.deleted ───────────────────────────────────
+      case "customer.subscription.deleted": {
+        const sub = event.data.object as Stripe.Subscription;
+        const cid = customerId(sub.customer);
+
+        const { error } = await db
+          .from("members")
+          .update({ status: "cancelled" })
+          .eq("stripe_customer_id", cid);
+
+        if (error) {
+          console.error(
+            "[stripe-webhook] Supabase update error (subscription.deleted):",
+            error.message
+          );
+        } else {
+          console.log(
+            `[stripe-webhook] customer.subscription.deleted processed for customer ${cid}`
+          );
         }
         break;
       }
