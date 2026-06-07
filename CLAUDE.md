@@ -333,6 +333,36 @@ Required in Vercel (Project Settings > Environment Variables) and `.env.local` f
 - **GitHub repo:** `celtic-supporters-limited/csl-website` (`main` branch)
 - **Supabase project:** EU West (Ireland) — EU data residency confirmed
 
+## Deployment Process (preview before production)
+
+All changes must go through a pull request — never push directly to `main`.
+
+**Branches:**
+- `main` — production branch; protected, requires PR + 1 approval before merging
+- `develop` — default working branch; Vercel auto-generates a Preview URL on every push
+- Feature branches — cut from `develop` for larger pieces of work, merged back to `develop`
+
+**Workflow for each Claude Code session:**
+1. Work on `develop` (or a feature branch off `develop`)
+2. Push to origin — Vercel builds a Preview deployment automatically
+3. Review the Preview URL to confirm the change looks correct
+4. Open a Pull Request from `develop` (or feature branch) into `main`
+5. Approve the PR after reviewing the Preview — merge triggers a Production deployment
+
+**GitHub branch protection (main):**
+- Require a pull request before merging
+- Require at least 1 approval (Gary Phinn is the approver)
+- Do not allow bypassing the above settings
+
+**Starting a session:**
+```powershell
+git checkout develop
+git pull origin develop
+# ... make changes ...
+git push origin develop
+# review Vercel Preview, then open PR to main
+```
+
 **SQL migrations — run in order in Supabase Dashboard > SQL Editor:**
 1. `sql/phase-5-schema.sql` — creates `members`, `events` tables + RLS policies
 2. `sql/phase-5b-schema.sql` — adds new `members` columns, creates `payments` table + RLS
@@ -342,7 +372,7 @@ Required in Vercel (Project Settings > Environment Variables) and `.env.local` f
 
 **Stripe webhook registration:**
 URL: `https://csl-website-ten.vercel.app/api/webhooks/stripe`
-Events: `checkout.session.completed`, `customer.subscription.deleted`, `invoice.payment_failed`
+Events: `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated`, `customer.subscription.deleted`
 
 ## Known Issues / Pending
 
@@ -379,6 +409,8 @@ C:\Claude Code Projects\Celtic Supporters Limited\csl-website\
 To start a session:
 ```powershell
 cd "C:\Claude Code Projects\Celtic Supporters Limited\csl-website"
+git checkout develop
+git pull origin develop
 claude
 ```
 
