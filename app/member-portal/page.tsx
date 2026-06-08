@@ -62,12 +62,13 @@ export default async function MemberPortalPage({
   let documents: MemberDocument[] = [];
   let governanceCriteria: GovernanceCriterion[] = [];
   let stripeSub: StripeSubData | null = null;
+  let activeCount = 0;
 
   try {
     const db = getSupabase();
 
-    // Batch 1 — member record, cases, documents, governance (parallel, independent)
-    const [memberRes, casesRes, documentsRes, governanceRes] = await Promise.all([
+    // Batch 1 — member record, cases, documents, governance, active count (parallel)
+    const [memberRes, casesRes, documentsRes, governanceRes, activeCountRes] = await Promise.all([
       db.from("members").select("*").eq("email", user.email).maybeSingle(),
       db
         .from("shareholder_cases")
@@ -82,12 +83,17 @@ export default async function MemberPortalPage({
       db
         .from("governance_criteria")
         .select("status, last_reviewed"),
+      db
+        .from("members")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "active"),
     ]);
 
     member = memberRes.data ?? null;
     cases = casesRes.data ?? [];
     documents = (documentsRes.data ?? []) as MemberDocument[];
     governanceCriteria = (governanceRes.data ?? []) as GovernanceCriterion[];
+    activeCount = activeCountRes.count ?? 0;
 
     // Batch 2 — requires stripe_customer_id and stripe_subscription_id from batch 1
     if (member) {
@@ -191,6 +197,7 @@ export default async function MemberPortalPage({
       documents={documents}
       governanceCriteria={governanceCriteria}
       stripeSub={stripeSub}
+      activeCount={activeCount}
       initialTab={searchParams.tab}
     />
   );

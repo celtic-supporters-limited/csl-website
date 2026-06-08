@@ -28,6 +28,7 @@ export type Member = {
   contact_sms: boolean | null;
   contact_telephone: boolean | null;
   is_admin: boolean | null;
+  payment_failed_at: string | null;
 };
 
 export type PortalDocument = {
@@ -88,6 +89,7 @@ type Props = {
   documents: MemberDocument[];
   governanceCriteria: GovernanceCriterion[];
   stripeSub: StripeSubData | null;
+  activeCount: number;
   initialTab?: string;
 };
 
@@ -203,17 +205,23 @@ function StatusPill({ status }: { status: string | null }) {
 }
 
 function CaseStatusBadge({ status }: { status: string | null }) {
-  const map: Record<string, string> = {
+  const styleMap: Record<string, string> = {
     New: "bg-blue-50 text-blue-700 border-blue-200",
     "In Progress": "bg-amber-50 text-amber-700 border-amber-200",
     Resolved: "bg-green-50 text-green-700 border-green-200",
   };
-  const cls = map[status ?? ""] ?? "bg-gray-100 text-gray-600 border-gray-200";
+  const labelMap: Record<string, string> = {
+    New: "Received — we'll be in touch shortly",
+    "In Progress": "Being reviewed",
+    Resolved: "Closed",
+  };
+  const cls = styleMap[status ?? ""] ?? "bg-gray-100 text-gray-600 border-gray-200";
+  const label = labelMap[status ?? ""] ?? (status ?? "Unknown");
   return (
     <span
       className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cls}`}
     >
-      {status ?? "Unknown"}
+      {label}
     </span>
   );
 }
@@ -235,13 +243,38 @@ function DashboardTab({
   documents,
   governanceCriteria,
   onTabChange,
+  stripeSub,
+  activeCount,
 }: {
   member: Member | null;
   cases: PortalCase[];
   documents: MemberDocument[];
   governanceCriteria: GovernanceCriterion[];
   onTabChange: (tab: Tab) => void;
+  stripeSub: StripeSubData | null;
+  activeCount: number;
 }) {
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState("");
+
+  async function openBillingPortal() {
+    setPortalLoading(true);
+    setPortalError("");
+    try {
+      const res = await fetch("/api/billing-portal", { method: "POST" });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setPortalLoading(false);
+        setPortalError(data.error ?? "Could not open billing portal.");
+      }
+    } catch {
+      setPortalLoading(false);
+      setPortalError("Network error. Please try again.");
+    }
+  }
+
   if (!member) {
     return (
       <Card>
@@ -272,24 +305,39 @@ function DashboardTab({
     .sort()
     .at(-1) ?? null;
 
+  const isLifetime = member.membership_tier === "lifetime";
+  const showNextRenewal =
+    !isLifetime &&
+    member.status === "active" &&
+    stripeSub?.current_period_end != null;
+
   return (
     <div className="space-y-5">
+      {/* A1 — Payment failed banner */}
       {member.status === "payment_failed" && (
-        <div className="flex gap-3 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm text-amber-800">
-          <span className="flex-shrink-0">&#9888;&#65039;</span>
-          <div>
-            <strong>Payment failed.</strong> Your last payment could not be
-            processed.{" "}
-            <button
-              onClick={() => onTabChange("membership")}
-              className="font-semibold underline hover:no-underline"
-            >
-              View membership details.
-            </button>
+        <div className="rounded-xl border border-red-300 bg-red-50 px-5 py-4">
+          <div className="flex gap-3 items-start">
+            <span className="flex-shrink-0 text-red-500 text-lg leading-none mt-0.5">&#9888;</span>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-red-800 mb-2">
+                Your last payment failed. Please update your payment details to keep your membership active.
+              </p>
+              {portalError && (
+                <p className="text-xs text-red-700 mb-2">{portalError}</p>
+              )}
+              <button
+                onClick={openBillingPortal}
+                disabled={portalLoading}
+                className="inline-flex items-center px-4 py-2 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60"
+              >
+                {portalLoading ? "Opening..." : "Update payment method"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
+      {/* B1 — Membership overview with next renewal */}
       <Card>
         <h3 className="font-bold text-gray-900 mb-4">Membership Overview</h3>
         <DetailRow label="Status">
@@ -297,8 +345,46 @@ function DashboardTab({
         </DetailRow>
         <DetailRow label="Plan">{planDisplay(member)}</DetailRow>
         <DetailRow label="Member since">{formatDate(member.created_at)}</DetailRow>
+        {showNextRenewal && (
+          <DetailRow label="Next renewal">
+            {formatDate(stripeSub!.current_period_end)}
+          </DetailRow>
+        )}
       </Card>
 
+      {/* B2 — Community reinforcement */}
+      {activeCount > 0 && (
+        <p className="text-center text-sm text-gray-400">
+          You are 1 of{" "}
+          <span className="font-semibold text-gray-600">
+            {activeCount.toLocaleString()}
+          </span>{" "}
+          members holding Celtic accountable.
+        </p>
+      )}
+
+      {/* B3 — Quick actions */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: "Assign Proxy",     href: "/proxy",                               icon: "&#128221;" },
+          { label: "Latest Document",  href: "/member-portal?tab=documents",         icon: "&#128196;" },
+          { label: "Contact CSL",      href: "mailto:info@celticsupporters.net",      icon: "&#9993;"   },
+        ].map(({ label, href, icon }) => (
+          <a
+            key={label}
+            href={href}
+            className="flex flex-col items-center gap-2 bg-white rounded-xl border border-gray-200 p-4 text-center hover:border-csl-dark hover:bg-csl-light transition-colors"
+          >
+            <span
+              className="text-2xl leading-none"
+              dangerouslySetInnerHTML={{ __html: icon }}
+            />
+            <span className="text-xs font-semibold text-gray-700 leading-tight">{label}</span>
+          </a>
+        ))}
+      </div>
+
+      {/* Governance scorecard */}
       {governanceCriteria.length > 0 && (
         <Card>
           <div className="flex items-center justify-between mb-3">
@@ -396,7 +482,7 @@ function DashboardTab({
             {cases.slice(0, 3).map((c) => (
               <div
                 key={c.id}
-                className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 gap-3"
+                className="flex items-start justify-between py-2.5 border-b border-gray-100 last:border-0 gap-3"
               >
                 <div>
                   <p className="text-sm font-medium text-gray-900">{c.case_type}</p>
@@ -1125,6 +1211,7 @@ export default function PortalClient({
   documents,
   governanceCriteria,
   stripeSub,
+  activeCount,
   initialTab,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>(
@@ -1315,26 +1402,60 @@ export default function PortalClient({
                   documents={documents}
                   governanceCriteria={governanceCriteria}
                   onTabChange={setActiveTab}
+                  stripeSub={stripeSub}
+                  activeCount={activeCount}
                 />
               )}
               {activeTab === "membership" && (
                 <MyMembershipTab member={member} stripeSub={stripeSub} payments={payments} />
               )}
-              {activeTab === "documents" && (
-                <div className="space-y-4">
-                  {member?.is_admin && (
-                    <div className="flex justify-end">
-                      <Link
-                        href="/member-portal/admin/documents/new"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
-                      >
-                        + Add Document
-                      </Link>
-                    </div>
-                  )}
-                  <DocumentLibrary documents={documents} isAdmin={member?.is_admin === true} />
-                </div>
-              )}
+              {activeTab === "documents" && (() => {
+                // A3 — grace period: payment_failed members retain access for 7 days
+                const isPaymentFailed = member?.status === "payment_failed";
+                const failedAt = member?.payment_failed_at
+                  ? new Date(member.payment_failed_at).getTime()
+                  : null;
+                const gracePeriodExpired =
+                  isPaymentFailed &&
+                  failedAt !== null &&
+                  Date.now() - failedAt > 7 * 24 * 60 * 60 * 1000;
+
+                if (gracePeriodExpired) {
+                  return (
+                    <Card>
+                      <div className="text-center py-10">
+                        <div className="text-4xl mb-3">&#128274;</div>
+                        <h3 className="font-bold text-gray-900 mb-2">Document access paused</h3>
+                        <p className="text-gray-500 text-sm mb-5 max-w-sm mx-auto">
+                          Your membership payment is overdue. Please update your payment details to restore document access.
+                        </p>
+                        <button
+                          onClick={() => setActiveTab("membership")}
+                          className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
+                        >
+                          Update payment details
+                        </button>
+                      </div>
+                    </Card>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    {member?.is_admin && (
+                      <div className="flex justify-end">
+                        <Link
+                          href="/member-portal/admin/documents/new"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
+                        >
+                          + Add Document
+                        </Link>
+                      </div>
+                    )}
+                    <DocumentLibrary documents={documents} isAdmin={member?.is_admin === true} />
+                  </div>
+                );
+              })()}
               {activeTab === "enquiries" && (
                 <EnquiriesTab cases={cases} />
               )}
