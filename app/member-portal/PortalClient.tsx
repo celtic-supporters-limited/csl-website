@@ -77,7 +77,7 @@ export type StripeSubData = {
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 const VALID_TABS = new Set<Tab>([
-  "dashboard", "subscription", "payments", "documents", "enquiries", "profile",
+  "dashboard", "membership", "documents", "enquiries", "profile",
 ]);
 
 type Props = {
@@ -93,8 +93,7 @@ type Props = {
 
 type Tab =
   | "dashboard"
-  | "subscription"
-  | "payments"
+  | "membership"
   | "documents"
   | "enquiries"
   | "profile";
@@ -282,10 +281,10 @@ function DashboardTab({
             <strong>Payment failed.</strong> Your last payment could not be
             processed.{" "}
             <button
-              onClick={() => onTabChange("subscription")}
+              onClick={() => onTabChange("membership")}
               className="font-semibold underline hover:no-underline"
             >
-              View subscription details.
+              View membership details.
             </button>
           </div>
         </div>
@@ -421,14 +420,16 @@ function DashboardTab({
   );
 }
 
-// ── Subscription tab ──────────────────────────────────────────────────────────
+// ── My Membership tab ─────────────────────────────────────────────────────────
 
-function SubscriptionTab({
+function MyMembershipTab({
   member,
   stripeSub,
+  payments,
 }: {
   member: Member | null;
   stripeSub: StripeSubData | null;
+  payments: PortalPayment[];
 }) {
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalError, setPortalError] = useState("");
@@ -490,7 +491,6 @@ function SubscriptionTab({
   const isLifetime = member.membership_tier === "lifetime";
   const statusToShow = stripeSub?.status ?? member.status;
 
-  // Format card expiry
   const cardExpiry =
     stripeSub?.card_exp_month != null && stripeSub?.card_exp_year != null
       ? `${String(stripeSub.card_exp_month).padStart(2, "0")}/${String(
@@ -500,6 +500,7 @@ function SubscriptionTab({
 
   return (
     <div className="space-y-5">
+      {/* Plan, status, next billing, manage */}
       <Card>
         <h3 className="font-bold text-gray-900 mb-4">Current Subscription</h3>
 
@@ -558,6 +559,7 @@ function SubscriptionTab({
         )}
       </Card>
 
+      {/* Card on file */}
       {!isLifetime && stripeSub && (
         <Card>
           <h3 className="font-bold text-gray-900 mb-4">Payment Method</h3>
@@ -602,6 +604,63 @@ function SubscriptionTab({
         </Card>
       )}
 
+      {/* Payment history — Date, Plan, Amount, Status (no Ref) */}
+      <Card>
+        <h3 className="font-bold text-gray-900 mb-1">Payment History</h3>
+        <p className="text-sm text-gray-400 mb-5">
+          All charges recorded against your membership.
+        </p>
+
+        {payments.length === 0 ? (
+          <div className="text-center py-10">
+            <div className="text-3xl mb-3">&#128196;</div>
+            <p className="text-gray-500 text-sm">No payments recorded yet.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Date
+                  </th>
+                  <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Plan
+                  </th>
+                  <th className="text-right py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Amount
+                  </th>
+                  <th className="text-left py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => (
+                  <tr key={p.id} className="border-b border-gray-100 last:border-0">
+                    <td className="py-3 pr-4 text-gray-700 whitespace-nowrap">
+                      {formatDate(p.paid_at)}
+                    </td>
+                    <td className="py-3 pr-4 text-gray-700">
+                      {p.plan_name ?? "-"}
+                    </td>
+                    <td className="py-3 pr-4 text-gray-900 font-semibold text-right whitespace-nowrap">
+                      {formatPence(p.amount_pence)}
+                    </td>
+                    <td className="py-3">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+                        {p.status === "completed" ? "Paid" : p.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Upgrade prompt */}
       {!isLifetime && (
         <Card>
           <h3 className="font-bold text-gray-900 mb-2">Upgrade</h3>
@@ -618,75 +677,6 @@ function SubscriptionTab({
         </Card>
       )}
     </div>
-  );
-}
-
-// ── Payments tab ──────────────────────────────────────────────────────────────
-
-function PaymentsTab({ payments }: { payments: PortalPayment[] }) {
-  return (
-    <Card>
-      <h3 className="font-bold text-gray-900 mb-1">Payment History</h3>
-      <p className="text-sm text-gray-400 mb-5">
-        All charges recorded against your membership.
-      </p>
-
-      {payments.length === 0 ? (
-        <div className="text-center py-10">
-          <div className="text-3xl mb-3">&#128196;</div>
-          <p className="text-gray-500 text-sm">No payments recorded yet.</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Plan
-                </th>
-                <th className="text-right py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">
-                  Ref
-                </th>
-                <th className="text-left py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {payments.map((p) => (
-                <tr key={p.id} className="border-b border-gray-100 last:border-0">
-                  <td className="py-3 pr-4 text-gray-700 whitespace-nowrap">
-                    {formatDate(p.paid_at)}
-                  </td>
-                  <td className="py-3 pr-4 text-gray-700">
-                    {p.plan_name ?? "-"}
-                  </td>
-                  <td className="py-3 pr-4 text-gray-900 font-semibold text-right whitespace-nowrap">
-                    {formatPence(p.amount_pence)}
-                  </td>
-                  <td className="py-3 pr-4 text-gray-400 font-mono text-xs hidden sm:table-cell">
-                    {p.stripe_payment_intent_id
-                      ? `...${p.stripe_payment_intent_id.slice(-8)}`
-                      : "-"}
-                  </td>
-                  <td className="py-3">
-                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
-                      {p.status === "completed" ? "Paid" : p.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Card>
   );
 }
 
@@ -1116,12 +1106,11 @@ type NavItem =
   | { kind: "link"; href: string; label: string; icon: string };
 
 const NAV_ITEMS: NavItem[] = [
-  { kind: "tab", tab: "dashboard",    label: "Dashboard",       icon: "&#9776;" },
-  { kind: "tab", tab: "subscription", label: "Subscription",    icon: "&#128179;" },
-  { kind: "tab", tab: "payments",     label: "Payments",        icon: "&#128196;" },
-  { kind: "tab", tab: "documents",    label: "Documents",       icon: "&#128218;" },
-  { kind: "tab", tab: "enquiries",    label: "My Enquiries",    icon: "&#128269;" },
-  { kind: "tab", tab: "profile",      label: "Edit Profile",    icon: "&#9998;" },
+  { kind: "tab", tab: "dashboard",  label: "Dashboard",     icon: "&#9776;"   },
+  { kind: "tab", tab: "membership", label: "My Membership", icon: "&#128179;" },
+  { kind: "tab", tab: "documents",  label: "Documents",     icon: "&#128218;" },
+  { kind: "tab", tab: "enquiries",  label: "My Enquiries",  icon: "&#128269;" },
+  { kind: "tab", tab: "profile",    label: "Edit Profile",  icon: "&#9998;"   },
 ];
 
 // ── Main portal component ─────────────────────────────────────────────────────
@@ -1328,11 +1317,8 @@ export default function PortalClient({
                   onTabChange={setActiveTab}
                 />
               )}
-              {activeTab === "subscription" && (
-                <SubscriptionTab member={member} stripeSub={stripeSub} />
-              )}
-              {activeTab === "payments" && (
-                <PaymentsTab payments={payments} />
+              {activeTab === "membership" && (
+                <MyMembershipTab member={member} stripeSub={stripeSub} payments={payments} />
               )}
               {activeTab === "documents" && (
                 <div className="space-y-4">
