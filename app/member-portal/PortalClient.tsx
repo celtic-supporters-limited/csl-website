@@ -90,6 +90,9 @@ type Props = {
   governanceCriteria: GovernanceCriterion[];
   stripeSub: StripeSubData | null;
   activeCount: number;
+  agmDate: string | null;
+  sharesRepresented: string;
+  proxyCount: number;
   initialTab?: string;
 };
 
@@ -245,6 +248,9 @@ function DashboardTab({
   onTabChange,
   stripeSub,
   activeCount,
+  agmDate,
+  sharesRepresented,
+  proxyCount,
 }: {
   member: Member | null;
   cases: PortalCase[];
@@ -253,6 +259,9 @@ function DashboardTab({
   onTabChange: (tab: Tab) => void;
   stripeSub: StripeSubData | null;
   activeCount: number;
+  agmDate: string | null;
+  sharesRepresented: string;
+  proxyCount: number;
 }) {
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalError, setPortalError] = useState("");
@@ -296,6 +305,23 @@ function DashboardTab({
     );
   }
 
+  const isLifetime = member.membership_tier === "lifetime";
+  const showNextRenewal =
+    !isLifetime &&
+    member.status === "active" &&
+    stripeSub?.current_period_end != null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const agmDateObj = agmDate ? new Date(agmDate) : null;
+  if (agmDateObj) agmDateObj.setHours(0, 0, 0, 0);
+  const daysToGo = agmDateObj
+    ? Math.round((agmDateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  const latestProxy   = cases.find((c) => c.case_type === "Proxy Assignment") ?? null;
+  const latestTracing = cases.find((c) => c.case_type === "Share Tracing")    ?? null;
+
   const metCount     = governanceCriteria.filter((c) => c.status === "Met").length;
   const partialCount = governanceCriteria.filter((c) => c.status === "Partial").length;
   const notMetCount  = governanceCriteria.filter((c) => c.status === "Not Met").length;
@@ -305,15 +331,11 @@ function DashboardTab({
     .sort()
     .at(-1) ?? null;
 
-  const isLifetime = member.membership_tier === "lifetime";
-  const showNextRenewal =
-    !isLifetime &&
-    member.status === "active" &&
-    stripeSub?.current_period_end != null;
+  const sharesNum = parseInt(sharesRepresented, 10) || 0;
 
   return (
     <div className="space-y-5">
-      {/* A1 — Payment failed banner */}
+      {/* Payment failed banner */}
       {member.status === "payment_failed" && (
         <div className="rounded-xl border border-red-300 bg-red-50 px-5 py-4">
           <div className="flex gap-3 items-start">
@@ -337,85 +359,201 @@ function DashboardTab({
         </div>
       )}
 
-      {/* B1 — Membership overview with next renewal */}
-      <Card>
-        <h3 className="font-bold text-gray-900 mb-4">Membership Overview</h3>
-        <DetailRow label="Status">
-          <StatusPill status={member.status} />
-        </DetailRow>
-        <DetailRow label="Plan">{planDisplay(member)}</DetailRow>
-        <DetailRow label="Member since">{formatDate(member.created_at)}</DetailRow>
-        {showNextRenewal && (
-          <DetailRow label="Next renewal">
-            {formatDate(stripeSub!.current_period_end)}
-          </DetailRow>
+      {/* Section 1 — Membership status bar */}
+      <div className="bg-white rounded-xl border border-gray-200 px-5 py-3.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-[0.75rem] font-semibold uppercase tracking-wider text-gray-400">
+            Your membership
+          </p>
+          <div className="flex flex-wrap items-center gap-2 mt-0.5">
+            <span className="font-bold text-gray-900 text-sm">{planDisplay(member)}</span>
+            <StatusPill status={member.status} />
+            {showNextRenewal && (
+              <span className="text-xs text-gray-400">
+                &middot; Renews {formatDate(stripeSub!.current_period_end)}
+              </span>
+            )}
+          </div>
+        </div>
+        {!isLifetime && (
+          <div className="flex-shrink-0 flex flex-col items-end gap-1">
+            <button
+              onClick={openBillingPortal}
+              disabled={portalLoading}
+              className="text-xs font-semibold text-csl-dark hover:underline disabled:opacity-60"
+            >
+              {portalLoading ? "Opening..." : "Manage subscription"}
+            </button>
+            {portalError && member.status !== "payment_failed" && (
+              <p className="text-xs text-red-600">{portalError}</p>
+            )}
+          </div>
         )}
-      </Card>
+      </div>
 
-      {/* B2 — Community reinforcement */}
-      {activeCount > 0 && (
-        <p className="text-center text-sm text-gray-400">
-          You are 1 of{" "}
-          <span className="font-semibold text-gray-600">
-            {activeCount.toLocaleString()}
-          </span>{" "}
-          members holding Celtic accountable.
-        </p>
+      {/* Section 2 — AGM alert banner */}
+      {agmDate && agmDateObj ? (
+        <div className="bg-csl-dark text-white rounded-xl px-6 py-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/60 mb-1">
+                Celtic FC AGM
+              </p>
+              <p className="text-xl font-extrabold">{formatDate(agmDate)}</p>
+              {daysToGo != null && daysToGo > 0 && (
+                <p className="text-white/75 text-sm mt-0.5">{daysToGo} days to go</p>
+              )}
+              {daysToGo === 0 && (
+                <p className="text-csl-gold text-sm font-semibold mt-0.5">Today</p>
+              )}
+              {daysToGo != null && daysToGo < 0 && (
+                <p className="text-white/60 text-sm mt-0.5">AGM has taken place</p>
+              )}
+            </div>
+            <Link
+              href="/proxy"
+              className="flex-shrink-0 inline-flex items-center px-5 py-2.5 rounded-lg bg-csl-gold text-csl-dark font-bold text-sm hover:brightness-110 transition-all"
+            >
+              Assign your proxy vote &#8594;
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 px-5 py-3.5 text-center">
+          <p className="text-sm text-gray-400">
+            Celtic FC AGM date not yet confirmed. All members will be notified when the date is set.
+          </p>
+        </div>
       )}
 
-      {/* B3 — Quick actions */}
+      {/* Section 3 — Collective impact stats */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: "Assign Proxy",     href: "/proxy",                               icon: "&#128221;" },
-          { label: "Latest Document",  href: "/member-portal?tab=documents",         icon: "&#128196;" },
-          { label: "Contact CSL",      href: "mailto:info@celticsupporters.net",      icon: "&#9993;"   },
-        ].map(({ label, href, icon }) => (
-          <a
-            key={label}
-            href={href}
-            className="flex flex-col items-center gap-2 bg-white rounded-xl border border-gray-200 p-4 text-center hover:border-csl-dark hover:bg-csl-light transition-colors"
-          >
-            <span
-              className="text-2xl leading-none"
-              dangerouslySetInnerHTML={{ __html: icon }}
-            />
-            <span className="text-xs font-semibold text-gray-700 leading-tight">{label}</span>
-          </a>
+          {
+            label: "Members",
+            value: activeCount.toLocaleString(),
+            sub: "holding Celtic accountable",
+          },
+          {
+            label: "Shares Represented",
+            value: sharesNum > 0 ? sharesNum.toLocaleString() : "-",
+            sub: "votes at the AGM",
+          },
+          {
+            label: "Proxy Assignments",
+            value: proxyCount.toLocaleString(),
+            sub: "votes assigned to CSL",
+          },
+        ].map(({ label, value, sub }) => (
+          <div key={label} className="bg-csl-dark text-white rounded-xl p-4 text-center">
+            <p className="text-xl sm:text-2xl font-extrabold leading-none">{value}</p>
+            <p className="text-[0.7rem] sm:text-xs font-semibold mt-1.5 text-white/90 uppercase tracking-wide">
+              {label}
+            </p>
+            <p className="text-[0.65rem] sm:text-xs text-white/50 mt-0.5 leading-tight">
+              {sub}
+            </p>
+          </div>
         ))}
       </div>
 
-      {/* Governance scorecard */}
-      {governanceCriteria.length > 0 && (
-        <Card>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-gray-900">Governance Scorecard</h3>
-            <Link
-              href="/governance"
-              className="text-csl-dark text-xs font-semibold hover:underline"
-            >
-              View full scorecard
-            </Link>
-          </div>
-          <div className="flex flex-wrap gap-2 mb-3">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
-              &#9679; {metCount} Met
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-              &#9679; {partialCount} Partial
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
-              &#9679; {notMetCount} Not Met
-            </span>
-            <span className="text-xs text-gray-400 self-center">
-              out of {governanceCriteria.length}
-            </span>
-          </div>
-          {lastReviewed && (
-            <p className="text-xs text-gray-400">Last reviewed: {formatDate(lastReviewed)}</p>
+      {/* Section 4 — Three pillar action cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Aggregate */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+          <p className="text-[0.7rem] font-bold uppercase tracking-widest text-csl-dark mb-2">
+            Aggregate
+          </p>
+          <h4 className="font-bold text-gray-900 text-sm mb-1">Assign Your Proxy Vote</h4>
+          <p className="text-xs text-gray-500 flex-1 mb-4">
+            Authorise CSL to vote on your behalf at the Celtic FC AGM and all general meetings.
+          </p>
+          {latestProxy && (
+            <div className="mb-3 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+              <p className="text-xs text-gray-400 mb-1.5">
+                Submitted {formatDate(latestProxy.created_at)}
+              </p>
+              <CaseStatusBadge status={latestProxy.status} />
+            </div>
           )}
-        </Card>
-      )}
+          <Link
+            href="/proxy"
+            className={`inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+              latestProxy
+                ? "border border-csl-dark text-csl-dark hover:bg-csl-light"
+                : "bg-csl-dark text-white hover:bg-csl-mid"
+            }`}
+          >
+            {latestProxy ? "Update proxy assignment" : "Assign proxy"} &#8594;
+          </Link>
+        </div>
 
+        {/* Accumulate */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+          <p className="text-[0.7rem] font-bold uppercase tracking-widest text-csl-dark mb-2">
+            Accumulate
+          </p>
+          <h4 className="font-bold text-gray-900 text-sm mb-1">Trace Your Celtic Shares</h4>
+          <p className="text-xs text-gray-500 flex-1 mb-4">
+            Reconnect with lost Celtic FC shares or assign them under CSL&apos;s voting block to strengthen collective governance.
+          </p>
+          {latestTracing && (
+            <div className="mb-3 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+              <p className="text-xs text-gray-400 mb-1.5">
+                Submitted {formatDate(latestTracing.created_at)}
+              </p>
+              <CaseStatusBadge status={latestTracing.status} />
+            </div>
+          )}
+          <Link
+            href="/share-tracing"
+            className={`inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+              latestTracing
+                ? "border border-csl-dark text-csl-dark hover:bg-csl-light"
+                : "bg-csl-dark text-white hover:bg-csl-mid"
+            }`}
+          >
+            {latestTracing ? "View trace status" : "Start share trace"} &#8594;
+          </Link>
+        </div>
+
+        {/* Activate */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+          <p className="text-[0.7rem] font-bold uppercase tracking-widest text-csl-dark mb-2">
+            Activate
+          </p>
+          <h4 className="font-bold text-gray-900 text-sm mb-1">Celtic FC Accountability Score</h4>
+          <p className="text-xs text-gray-500 flex-1 mb-4">
+            Track CSL&apos;s 12-point governance framework and see how Celtic FC is responding to shareholder demands.
+          </p>
+          {governanceCriteria.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+                &#9679; {metCount} Met
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                &#9679; {partialCount} Partial
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                &#9679; {notMetCount} Not Met
+              </span>
+              {lastReviewed && (
+                <p className="text-[0.65rem] text-gray-400 w-full mt-0.5">
+                  Updated {formatDate(lastReviewed)}
+                </p>
+              )}
+            </div>
+          )}
+          <Link
+            href="/governance"
+            className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
+          >
+            View full scorecard &#8594;
+          </Link>
+        </div>
+      </div>
+
+      {/* Section 5 — Latest Documents */}
       {documents.length > 0 && (
         <Card>
           <div className="flex items-center justify-between mb-4">
@@ -455,53 +593,6 @@ function DashboardTab({
           </div>
         </Card>
       )}
-
-      <Card>
-        <h3 className="font-bold text-gray-900 mb-4">My Enquiries</h3>
-        {cases.length === 0 ? (
-          <div className="text-center py-4">
-            <p className="text-gray-400 text-sm mb-3">No enquiries submitted yet.</p>
-            <div className="flex gap-3 justify-center">
-              <Link
-                href="/share-tracing"
-                className="text-xs font-semibold text-csl-dark hover:underline"
-              >
-                Trace my shares
-              </Link>
-              <span className="text-gray-300">|</span>
-              <Link
-                href="/proxy"
-                className="text-xs font-semibold text-csl-dark hover:underline"
-              >
-                Assign proxy
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-0">
-            {cases.slice(0, 3).map((c) => (
-              <div
-                key={c.id}
-                className="flex items-start justify-between py-2.5 border-b border-gray-100 last:border-0 gap-3"
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{c.case_type}</p>
-                  <p className="text-xs text-gray-400">{formatDate(c.created_at)}</p>
-                </div>
-                <CaseStatusBadge status={c.status} />
-              </div>
-            ))}
-            {cases.length > 3 && (
-              <button
-                onClick={() => onTabChange("enquiries")}
-                className="mt-2 text-xs font-semibold text-csl-dark hover:underline"
-              >
-                View all {cases.length} enquiries
-              </button>
-            )}
-          </div>
-        )}
-      </Card>
     </div>
   );
 }
@@ -1192,11 +1283,12 @@ type NavItem =
   | { kind: "link"; href: string; label: string; icon: string };
 
 const NAV_ITEMS: NavItem[] = [
-  { kind: "tab", tab: "dashboard",  label: "Dashboard",     icon: "&#9776;"   },
-  { kind: "tab", tab: "membership", label: "My Membership", icon: "&#128179;" },
-  { kind: "tab", tab: "documents",  label: "Documents",     icon: "&#128218;" },
-  { kind: "tab", tab: "enquiries",  label: "My Enquiries",  icon: "&#128269;" },
-  { kind: "tab", tab: "profile",    label: "Edit Profile",  icon: "&#9998;"   },
+  { kind: "tab",  tab: "dashboard",  label: "Dashboard",     icon: "&#9776;"   },
+  { kind: "tab",  tab: "membership", label: "My Membership", icon: "&#128179;" },
+  { kind: "tab",  tab: "documents",  label: "Documents",     icon: "&#128218;" },
+  { kind: "link", href: "/share-tracing", label: "Share Tracing", icon: "&#128270;" },
+  { kind: "tab",  tab: "enquiries",  label: "My Enquiries",  icon: "&#128269;" },
+  { kind: "tab",  tab: "profile",    label: "Edit Profile",  icon: "&#9998;"   },
 ];
 
 // ── Main portal component ─────────────────────────────────────────────────────
@@ -1212,6 +1304,9 @@ export default function PortalClient({
   governanceCriteria,
   stripeSub,
   activeCount,
+  agmDate,
+  sharesRepresented,
+  proxyCount,
   initialTab,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>(
@@ -1404,6 +1499,9 @@ export default function PortalClient({
                   onTabChange={setActiveTab}
                   stripeSub={stripeSub}
                   activeCount={activeCount}
+                  agmDate={agmDate}
+                  sharesRepresented={sharesRepresented}
+                  proxyCount={proxyCount}
                 />
               )}
               {activeTab === "membership" && (
