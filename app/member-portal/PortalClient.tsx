@@ -139,10 +139,6 @@ function formatPence(p: number | null): string {
   return `£${(p / 100).toFixed(2).replace(/\.00$/, "")}`;
 }
 
-function capitalise(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
 function toTitleCase(s: string): string {
   return s.replace(/\S+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
