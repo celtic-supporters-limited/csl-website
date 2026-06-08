@@ -229,6 +229,33 @@ function CaseStatusBadge({ status }: { status: string | null }) {
   );
 }
 
+// ── Billing portal hook ──────────────────────────────────────────────────────
+
+function useBillingPortal() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function open() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/billing-portal", { method: "POST" });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setLoading(false);
+        setError(data.error ?? "Could not open Stripe portal.");
+      }
+    } catch {
+      setLoading(false);
+      setError("Network error. Please try again.");
+    }
+  }
+
+  return { loading, error, open };
+}
+
 // ── Dashboard tab ─────────────────────────────────────────────────────────────
 
 const DOC_BADGE: Record<string, string> = {
@@ -263,26 +290,7 @@ function DashboardTab({
   sharesRepresented: string;
   proxyCount: number;
 }) {
-  const [portalLoading, setPortalLoading] = useState(false);
-  const [portalError, setPortalError] = useState("");
-
-  async function openBillingPortal() {
-    setPortalLoading(true);
-    setPortalError("");
-    try {
-      const res = await fetch("/api/billing-portal", { method: "POST" });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        setPortalLoading(false);
-        setPortalError(data.error ?? "Could not open billing portal.");
-      }
-    } catch {
-      setPortalLoading(false);
-      setPortalError("Network error. Please try again.");
-    }
-  }
+  const billingPortal = useBillingPortal();
 
   if (!member) {
     return (
@@ -344,15 +352,15 @@ function DashboardTab({
               <p className="text-sm font-semibold text-red-800 mb-2">
                 Your last payment failed. Please update your payment details to keep your membership active.
               </p>
-              {portalError && (
-                <p className="text-xs text-red-700 mb-2">{portalError}</p>
+              {billingPortal.error && (
+                <p className="text-xs text-red-700 mb-2">{billingPortal.error}</p>
               )}
               <button
-                onClick={openBillingPortal}
-                disabled={portalLoading}
+                onClick={billingPortal.open}
+                disabled={billingPortal.loading}
                 className="inline-flex items-center px-4 py-2 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60"
               >
-                {portalLoading ? "Opening..." : "Update payment method"}
+                {billingPortal.loading ? "Opening..." : "Update payment method"}
               </button>
             </div>
           </div>
@@ -378,21 +386,21 @@ function DashboardTab({
         {!isLifetime && (
           <div className="flex-shrink-0 flex flex-col items-end gap-1">
             <button
-              onClick={openBillingPortal}
-              disabled={portalLoading}
+              onClick={billingPortal.open}
+              disabled={billingPortal.loading}
               className="text-xs font-semibold text-csl-dark hover:underline disabled:opacity-60"
             >
-              {portalLoading ? "Opening..." : "Manage subscription"}
+              {billingPortal.loading ? "Opening..." : "Manage subscription"}
             </button>
-            {portalError && member.status !== "payment_failed" && (
-              <p className="text-xs text-red-600">{portalError}</p>
+            {billingPortal.error && member.status !== "payment_failed" && (
+              <p className="text-xs text-red-600">{billingPortal.error}</p>
             )}
           </div>
         )}
       </div>
 
-      {/* Section 2 — AGM alert banner */}
-      {agmDate && agmDateObj ? (
+      {/* Section 2 — AGM alert banner (only rendered when date is set) */}
+      {agmDate && agmDateObj && (
         <div className="bg-csl-dark text-white rounded-xl px-6 py-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
@@ -418,44 +426,31 @@ function DashboardTab({
             </Link>
           </div>
         </div>
-      ) : (
-        <div className="rounded-xl border border-gray-200 bg-gray-50 px-5 py-3.5 text-center">
-          <p className="text-sm text-gray-400">
-            Celtic FC AGM date not yet confirmed. All members will be notified when the date is set.
-          </p>
-        </div>
       )}
 
       {/* Section 3 — Collective impact stats */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          {
-            label: "Members",
-            value: activeCount.toLocaleString(),
-            sub: "holding Celtic accountable",
-          },
-          {
-            label: "Shares Represented",
-            value: sharesNum > 0 ? sharesNum.toLocaleString() : "-",
-            sub: "votes at the AGM",
-          },
-          {
-            label: "Proxy Assignments",
-            value: proxyCount.toLocaleString(),
-            sub: "votes assigned to CSL",
-          },
-        ].map(({ label, value, sub }) => (
-          <div key={label} className="bg-csl-dark text-white rounded-xl p-4 text-center">
-            <p className="text-xl sm:text-2xl font-extrabold leading-none">{value}</p>
-            <p className="text-[0.7rem] sm:text-xs font-semibold mt-1.5 text-white/90 uppercase tracking-wide">
-              {label}
-            </p>
-            <p className="text-[0.65rem] sm:text-xs text-white/50 mt-0.5 leading-tight">
-              {sub}
-            </p>
+      {(() => {
+        const stats = [
+          { label: "Members",            value: activeCount.toLocaleString(),                        sub: "holding Celtic accountable" },
+          { label: "Shares Represented", value: sharesNum > 0 ? sharesNum.toLocaleString() : "-",   sub: "votes at the AGM"           },
+          ...(proxyCount > 0 ? [{ label: "Proxy Assignments", value: proxyCount.toLocaleString(), sub: "votes assigned to CSL" }] : []),
+        ];
+        return (
+          <div className={`grid gap-3 ${stats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+            {stats.map(({ label, value, sub }) => (
+              <div key={label} className="bg-csl-dark text-white rounded-xl p-4 text-center">
+                <p className="text-xl sm:text-2xl font-extrabold leading-none">{value}</p>
+                <p className="text-[0.7rem] sm:text-xs font-semibold mt-1.5 text-white/90 uppercase tracking-wide">
+                  {label}
+                </p>
+                <p className="text-[0.65rem] sm:text-xs text-white/50 mt-0.5 leading-tight">
+                  {sub}
+                </p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* Section 4 — Three pillar action cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -465,7 +460,7 @@ function DashboardTab({
             Aggregate
           </p>
           <h4 className="font-bold text-gray-900 text-sm mb-1">Assign Your Proxy Vote</h4>
-          <p className="text-xs text-gray-500 flex-1 mb-4">
+          <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-4">
             Authorise CSL to vote on your behalf at the Celtic FC AGM and all general meetings.
           </p>
           {latestProxy && (
@@ -478,7 +473,7 @@ function DashboardTab({
           )}
           <Link
             href="/proxy"
-            className={`inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+            className={`mt-auto inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
               latestProxy
                 ? "border border-csl-dark text-csl-dark hover:bg-csl-light"
                 : "bg-csl-dark text-white hover:bg-csl-mid"
@@ -494,8 +489,8 @@ function DashboardTab({
             Accumulate
           </p>
           <h4 className="font-bold text-gray-900 text-sm mb-1">Trace Your Celtic Shares</h4>
-          <p className="text-xs text-gray-500 flex-1 mb-4">
-            Reconnect with lost Celtic FC shares or assign them under CSL&apos;s voting block to strengthen collective governance.
+          <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-4">
+            Reconnect with Celtic FC shares and strengthen the voting block CSL holds on your behalf.
           </p>
           {latestTracing && (
             <div className="mb-3 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
@@ -507,7 +502,7 @@ function DashboardTab({
           )}
           <Link
             href="/share-tracing"
-            className={`inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+            className={`mt-auto inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
               latestTracing
                 ? "border border-csl-dark text-csl-dark hover:bg-csl-light"
                 : "bg-csl-dark text-white hover:bg-csl-mid"
@@ -523,7 +518,7 @@ function DashboardTab({
             Activate
           </p>
           <h4 className="font-bold text-gray-900 text-sm mb-1">Celtic FC Accountability Score</h4>
-          <p className="text-xs text-gray-500 flex-1 mb-4">
+          <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-4">
             Track CSL&apos;s 12-point governance framework and see how Celtic FC is responding to shareholder demands.
           </p>
           {governanceCriteria.length > 0 && (
@@ -546,7 +541,7 @@ function DashboardTab({
           )}
           <Link
             href="/governance"
-            className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
+            className="mt-auto inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
           >
             View full scorecard &#8594;
           </Link>
@@ -608,46 +603,7 @@ function MyMembershipTab({
   stripeSub: StripeSubData | null;
   payments: PortalPayment[];
 }) {
-  const [portalLoading, setPortalLoading] = useState(false);
-  const [portalError, setPortalError] = useState("");
-  const [manageLoading, setManageLoading] = useState(false);
-  const [manageError, setManageError] = useState("");
-
-  async function openBillingPortal() {
-    setPortalLoading(true);
-    setPortalError("");
-    try {
-      const res = await fetch("/api/billing-portal", { method: "POST" });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        setPortalLoading(false);
-        setPortalError(data.error ?? "Could not open billing portal.");
-      }
-    } catch {
-      setPortalLoading(false);
-      setPortalError("Network error. Please try again.");
-    }
-  }
-
-  async function openSubscriptionPortal() {
-    setManageLoading(true);
-    setManageError("");
-    try {
-      const res = await fetch("/api/stripe/portal", { method: "POST" });
-      const data = (await res.json()) as { url?: string; error?: string };
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        setManageLoading(false);
-        setManageError(data.error ?? "Could not open subscription portal.");
-      }
-    } catch {
-      setManageLoading(false);
-      setManageError("Network error. Please try again.");
-    }
-  }
+  const billingPortal = useBillingPortal();
 
   if (!member) {
     return (
@@ -677,9 +633,8 @@ function MyMembershipTab({
 
   return (
     <div className="space-y-5">
-      {/* Plan, status, next billing, manage */}
       <Card>
-        <h3 className="font-bold text-gray-900 mb-4">Current Subscription</h3>
+        <h3 className="font-bold text-gray-900 mb-4">My Membership</h3>
 
         <DetailRow label="Plan">{planDisplay(member)}</DetailRow>
         <DetailRow label="Status">
@@ -706,82 +661,54 @@ function MyMembershipTab({
         {!isLifetime && !stripeSub && (
           <DetailRow label="Payment details">
             <span className="text-gray-400 font-normal">
-              Payment details will appear after your next renewal.
+              Will appear after your next renewal.
             </span>
           </DetailRow>
         )}
 
         {isLifetime && (
-          <DetailRow label="Renewal">No renewal (lifetime membership)</DetailRow>
+          <DetailRow label="Renewal">No renewal required</DetailRow>
+        )}
+
+        {!isLifetime && stripeSub && (
+          <DetailRow label="Card on file">
+            {stripeSub.card_brand && stripeSub.card_last4 ? (
+              <span className="inline-flex items-center gap-2">
+                <span className="text-[0.65rem] font-bold uppercase bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-gray-600">
+                  {stripeSub.card_brand.slice(0, 4)}
+                </span>
+                &bull;&bull;&bull;&bull;&nbsp;{stripeSub.card_last4}
+                {cardExpiry && (
+                  <span className="text-gray-400 text-xs">&nbsp;· {cardExpiry}</span>
+                )}
+              </span>
+            ) : (
+              <span className="text-gray-400 font-normal">No card on file</span>
+            )}
+          </DetailRow>
         )}
 
         {!isLifetime && (
           <div className="pt-4 mt-2 border-t border-gray-100">
-            {manageError && (
+            {billingPortal.error && (
               <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
-                {manageError}
+                {billingPortal.error}
               </p>
             )}
             <button
-              onClick={openSubscriptionPortal}
-              disabled={manageLoading}
+              onClick={billingPortal.open}
+              disabled={billingPortal.loading}
               className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors disabled:opacity-60"
             >
-              {manageLoading ? "Opening..." : "Change or cancel subscription"}
+              {billingPortal.loading ? "Opening..." : "Manage subscription"}
             </button>
             <p className="text-xs text-gray-400 mt-2">
-              Secured by Stripe. You will be taken to a Stripe-hosted page.
+              Update your card, change plan, or cancel — all via Stripe.
             </p>
           </div>
         )}
       </Card>
 
-      {/* Card on file */}
-      {!isLifetime && stripeSub && (
-        <Card>
-          <h3 className="font-bold text-gray-900 mb-4">Payment Method</h3>
-
-          {stripeSub.card_brand && stripeSub.card_last4 ? (
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-7 rounded bg-gray-100 border border-gray-200 flex items-center justify-center text-[0.65rem] font-bold text-gray-600 uppercase tracking-wide">
-                {stripeSub.card_brand.slice(0, 4)}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">
-                  {capitalise(stripeSub.card_brand)} &bull;&bull;&bull;&bull;{" "}
-                  {stripeSub.card_last4}
-                </p>
-                {cardExpiry && (
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Expires {cardExpiry}
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400 mb-5">No card on file.</p>
-          )}
-
-          {portalError && (
-            <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
-              {portalError}
-            </p>
-          )}
-
-          <button
-            onClick={openBillingPortal}
-            disabled={portalLoading}
-            className="inline-block bg-csl-dark text-white font-semibold px-5 py-2.5 rounded-lg text-sm hover:bg-csl-mid transition-colors disabled:opacity-60"
-          >
-            {portalLoading ? "Opening..." : "Update payment method"}
-          </button>
-          <p className="text-xs text-gray-400 mt-2">
-            Secured by Stripe. You will be taken to a Stripe-hosted page.
-          </p>
-        </Card>
-      )}
-
-      {/* Payment history — Date, Plan, Amount, Status (no Ref) */}
       <Card>
         <h3 className="font-bold text-gray-900 mb-1">Payment History</h3>
         <p className="text-sm text-gray-400 mb-5">
@@ -804,11 +731,8 @@ function MyMembershipTab({
                   <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     Plan
                   </th>
-                  <th className="text-right py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <th className="text-right py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     Amount
-                  </th>
-                  <th className="text-left py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Status
                   </th>
                 </tr>
               </thead>
@@ -821,13 +745,8 @@ function MyMembershipTab({
                     <td className="py-3 pr-4 text-gray-700">
                       {p.plan_name ?? "-"}
                     </td>
-                    <td className="py-3 pr-4 text-gray-900 font-semibold text-right whitespace-nowrap">
+                    <td className="py-3 text-gray-900 font-semibold text-right whitespace-nowrap">
                       {formatPence(p.amount_pence)}
-                    </td>
-                    <td className="py-3">
-                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
-                        {p.status === "completed" ? "Paid" : p.status}
-                      </span>
                     </td>
                   </tr>
                 ))}
@@ -836,23 +755,6 @@ function MyMembershipTab({
           </div>
         )}
       </Card>
-
-      {/* Upgrade prompt */}
-      {!isLifetime && (
-        <Card>
-          <h3 className="font-bold text-gray-900 mb-2">Upgrade</h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Upgrade to Lifetime membership for a single one-off payment of
-            &pound;5,000.
-          </p>
-          <Link
-            href="/membership"
-            className="inline-block bg-csl-dark text-white font-semibold px-5 py-2.5 rounded-lg text-sm hover:bg-csl-mid transition-colors"
-          >
-            View membership options
-          </Link>
-        </Card>
-      )}
     </div>
   );
 }
@@ -862,7 +764,7 @@ function MyMembershipTab({
 function EnquiriesTab({ cases }: { cases: PortalCase[] }) {
   return (
     <Card>
-      <h3 className="font-bold text-gray-900 mb-1">My Share Enquiries</h3>
+      <h3 className="font-bold text-gray-900 mb-1">My Enquiries</h3>
       <p className="text-sm text-gray-400 mb-5">
         Track the progress of any share tracing or proxy assignment enquiries you
         have submitted.
