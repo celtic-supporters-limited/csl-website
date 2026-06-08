@@ -29,15 +29,7 @@ CREATE POLICY "Active members can view published documents"
     )
   );
 
--- Seed events: 14th Members Meeting
-INSERT INTO events (title, event_date, description, minutes_url, members_only)
-VALUES (
-  '14th Members Meeting',
-  '2026-04-14',
-  'Progress report on membership and shareholding, strategic vision, Recruit Five initiative, share tracing and proxy aggregation. 91 members in attendance.',
-  'https://drive.google.com/STUB_MINUTES_14TH_MEETING',
-  true
-);
+-- events table seed removed — events table dropped (superseded by documents table)
 
 -- Seed documents: The Celtic Paradox
 INSERT INTO documents (title, description, document_type, published_at, file_url, is_published)

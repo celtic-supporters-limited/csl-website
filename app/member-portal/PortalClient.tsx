@@ -30,18 +30,6 @@ export type Member = {
   is_admin: boolean | null;
 };
 
-
-export type PortalEvent = {
-  id: string;
-  title: string | null;
-  event_date: string | null;
-  description: string | null;
-  recording_url: string | null;
-  slides_url: string | null;
-  minutes_url: string | null;
-  members_only: boolean;
-};
-
 export type PortalDocument = {
   id: string;
   title: string;
