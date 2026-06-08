@@ -28,6 +28,7 @@ export type Member = {
   contact_sms: boolean | null;
   contact_telephone: boolean | null;
   is_admin: boolean | null;
+  payment_failed_at: string | null;
 };
 
 export type PortalDocument = {
@@ -88,6 +89,10 @@ type Props = {
   documents: MemberDocument[];
   governanceCriteria: GovernanceCriterion[];
   stripeSub: StripeSubData | null;
+  activeCount: number;
+  agmDate: string | null;
+  sharesRepresented: string;
+  proxyCount: number;
   initialTab?: string;
 };
 
@@ -132,10 +137,6 @@ function formatDate(iso: string | null | number): string {
 function formatPence(p: number | null): string {
   if (p == null) return "-";
   return `£${(p / 100).toFixed(2).replace(/\.00$/, "")}`;
-}
-
-function capitalise(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function toTitleCase(s: string): string {
@@ -203,19 +204,52 @@ function StatusPill({ status }: { status: string | null }) {
 }
 
 function CaseStatusBadge({ status }: { status: string | null }) {
-  const map: Record<string, string> = {
+  const styleMap: Record<string, string> = {
     New: "bg-blue-50 text-blue-700 border-blue-200",
     "In Progress": "bg-amber-50 text-amber-700 border-amber-200",
     Resolved: "bg-green-50 text-green-700 border-green-200",
   };
-  const cls = map[status ?? ""] ?? "bg-gray-100 text-gray-600 border-gray-200";
+  const labelMap: Record<string, string> = {
+    New: "Received — we'll be in touch shortly",
+    "In Progress": "Being reviewed",
+    Resolved: "Closed",
+  };
+  const cls = styleMap[status ?? ""] ?? "bg-gray-100 text-gray-600 border-gray-200";
+  const label = labelMap[status ?? ""] ?? (status ?? "Unknown");
   return (
     <span
       className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cls}`}
     >
-      {status ?? "Unknown"}
+      {label}
     </span>
   );
+}
+
+// ── Billing portal hook ──────────────────────────────────────────────────────
+
+function useBillingPortal() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function open() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/billing-portal", { method: "POST" });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setLoading(false);
+        setError(data.error ?? "Could not open Stripe portal.");
+      }
+    } catch {
+      setLoading(false);
+      setError("Network error. Please try again.");
+    }
+  }
+
+  return { loading, error, open };
 }
 
 // ── Dashboard tab ─────────────────────────────────────────────────────────────
@@ -235,13 +269,25 @@ function DashboardTab({
   documents,
   governanceCriteria,
   onTabChange,
+  stripeSub,
+  activeCount,
+  agmDate,
+  sharesRepresented,
+  proxyCount,
 }: {
   member: Member | null;
   cases: PortalCase[];
   documents: MemberDocument[];
   governanceCriteria: GovernanceCriterion[];
   onTabChange: (tab: Tab) => void;
+  stripeSub: StripeSubData | null;
+  activeCount: number;
+  agmDate: string | null;
+  sharesRepresented: string;
+  proxyCount: number;
 }) {
+  const billingPortal = useBillingPortal();
+
   if (!member) {
     return (
       <Card>
@@ -263,6 +309,23 @@ function DashboardTab({
     );
   }
 
+  const isLifetime = member.membership_tier === "lifetime";
+  const showNextRenewal =
+    !isLifetime &&
+    member.status === "active" &&
+    stripeSub?.current_period_end != null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const agmDateObj = agmDate ? new Date(agmDate) : null;
+  if (agmDateObj) agmDateObj.setHours(0, 0, 0, 0);
+  const daysToGo = agmDateObj
+    ? Math.round((agmDateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  const latestProxy   = cases.find((c) => c.case_type === "Proxy Assignment") ?? null;
+  const latestTracing = cases.find((c) => c.case_type === "Share Tracing")    ?? null;
+
   const metCount     = governanceCriteria.filter((c) => c.status === "Met").length;
   const partialCount = governanceCriteria.filter((c) => c.status === "Partial").length;
   const notMetCount  = governanceCriteria.filter((c) => c.status === "Not Met").length;
@@ -272,64 +335,216 @@ function DashboardTab({
     .sort()
     .at(-1) ?? null;
 
+  const sharesNum = parseInt(sharesRepresented, 10) || 0;
+
   return (
     <div className="space-y-5">
+      {/* Payment failed banner */}
       {member.status === "payment_failed" && (
-        <div className="flex gap-3 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm text-amber-800">
-          <span className="flex-shrink-0">&#9888;&#65039;</span>
-          <div>
-            <strong>Payment failed.</strong> Your last payment could not be
-            processed.{" "}
-            <button
-              onClick={() => onTabChange("membership")}
-              className="font-semibold underline hover:no-underline"
-            >
-              View membership details.
-            </button>
+        <div className="rounded-xl border border-red-300 bg-red-50 px-5 py-4">
+          <div className="flex gap-3 items-start">
+            <span className="flex-shrink-0 text-red-500 text-lg leading-none mt-0.5">&#9888;</span>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-red-800 mb-2">
+                Your last payment failed. Please update your payment details to keep your membership active.
+              </p>
+              {billingPortal.error && (
+                <p className="text-xs text-red-700 mb-2">{billingPortal.error}</p>
+              )}
+              <button
+                onClick={billingPortal.open}
+                disabled={billingPortal.loading}
+                className="inline-flex items-center px-4 py-2 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60"
+              >
+                {billingPortal.loading ? "Opening..." : "Update payment method"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      <Card>
-        <h3 className="font-bold text-gray-900 mb-4">Membership Overview</h3>
-        <DetailRow label="Status">
-          <StatusPill status={member.status} />
-        </DetailRow>
-        <DetailRow label="Plan">{planDisplay(member)}</DetailRow>
-        <DetailRow label="Member since">{formatDate(member.created_at)}</DetailRow>
-      </Card>
-
-      {governanceCriteria.length > 0 && (
-        <Card>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-gray-900">Governance Scorecard</h3>
-            <Link
-              href="/governance"
-              className="text-csl-dark text-xs font-semibold hover:underline"
+      {/* Section 1 — Membership status bar */}
+      <div className="bg-white rounded-xl border border-gray-200 px-5 py-3.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-[0.75rem] font-semibold uppercase tracking-wider text-gray-400">
+            Your membership
+          </p>
+          <div className="flex flex-wrap items-center gap-2 mt-0.5">
+            <span className="font-bold text-gray-900 text-sm">{planDisplay(member)}</span>
+            <StatusPill status={member.status} />
+            {showNextRenewal && (
+              <span className="text-xs text-gray-400">
+                &middot; Renews {formatDate(stripeSub!.current_period_end)}
+              </span>
+            )}
+          </div>
+        </div>
+        {!isLifetime && (
+          <div className="flex-shrink-0 flex flex-col items-end gap-1">
+            <button
+              onClick={billingPortal.open}
+              disabled={billingPortal.loading}
+              className="text-xs font-semibold text-csl-dark hover:underline disabled:opacity-60"
             >
-              View full scorecard
+              {billingPortal.loading ? "Opening..." : "Manage subscription"}
+            </button>
+            {billingPortal.error && member.status !== "payment_failed" && (
+              <p className="text-xs text-red-600">{billingPortal.error}</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Section 2 — AGM alert banner (only rendered when date is set) */}
+      {agmDate && agmDateObj && (
+        <div className="bg-csl-dark text-white rounded-xl px-6 py-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/60 mb-1">
+                Celtic FC AGM
+              </p>
+              <p className="text-xl font-extrabold">{formatDate(agmDate)}</p>
+              {daysToGo != null && daysToGo > 0 && (
+                <p className="text-white/75 text-sm mt-0.5">{daysToGo} days to go</p>
+              )}
+              {daysToGo === 0 && (
+                <p className="text-csl-gold text-sm font-semibold mt-0.5">Today</p>
+              )}
+              {daysToGo != null && daysToGo < 0 && (
+                <p className="text-white/60 text-sm mt-0.5">AGM has taken place</p>
+              )}
+            </div>
+            <Link
+              href="/proxy"
+              className="flex-shrink-0 inline-flex items-center px-5 py-2.5 rounded-lg bg-csl-gold text-csl-dark font-bold text-sm hover:brightness-110 transition-all"
+            >
+              Assign your proxy vote &#8594;
             </Link>
           </div>
-          <div className="flex flex-wrap gap-2 mb-3">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
-              &#9679; {metCount} Met
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-              &#9679; {partialCount} Partial
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
-              &#9679; {notMetCount} Not Met
-            </span>
-            <span className="text-xs text-gray-400 self-center">
-              out of {governanceCriteria.length}
-            </span>
-          </div>
-          {lastReviewed && (
-            <p className="text-xs text-gray-400">Last reviewed: {formatDate(lastReviewed)}</p>
-          )}
-        </Card>
+        </div>
       )}
 
+      {/* Section 3 — Collective impact stats */}
+      {(() => {
+        const stats = [
+          { label: "Members",            value: activeCount.toLocaleString(),                        sub: "holding Celtic accountable" },
+          { label: "Shares Represented", value: sharesNum > 0 ? sharesNum.toLocaleString() : "-",   sub: "votes at the AGM"           },
+          ...(proxyCount > 0 ? [{ label: "Proxy Assignments", value: proxyCount.toLocaleString(), sub: "votes assigned to CSL" }] : []),
+        ];
+        return (
+          <div className={`grid gap-3 ${stats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+            {stats.map(({ label, value, sub }) => (
+              <div key={label} className="bg-csl-dark text-white rounded-xl p-4 text-center">
+                <p className="text-xl sm:text-2xl font-extrabold leading-none">{value}</p>
+                <p className="text-[0.7rem] sm:text-xs font-semibold mt-1.5 text-white/90 uppercase tracking-wide">
+                  {label}
+                </p>
+                <p className="text-[0.65rem] sm:text-xs text-white/50 mt-0.5 leading-tight">
+                  {sub}
+                </p>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Section 4 — Three pillar action cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Aggregate */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+          <p className="text-[0.7rem] font-bold uppercase tracking-widest text-csl-dark mb-2">
+            Aggregate
+          </p>
+          <h4 className="font-bold text-gray-900 text-sm mb-1">Assign Your Proxy Vote</h4>
+          <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-4">
+            Authorise CSL to vote on your behalf at the Celtic FC AGM and all general meetings.
+          </p>
+          {latestProxy && (
+            <div className="mb-3 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+              <p className="text-xs text-gray-400 mb-1.5">
+                Submitted {formatDate(latestProxy.created_at)}
+              </p>
+              <CaseStatusBadge status={latestProxy.status} />
+            </div>
+          )}
+          <Link
+            href="/proxy"
+            className={`mt-auto inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+              latestProxy
+                ? "border border-csl-dark text-csl-dark hover:bg-csl-light"
+                : "bg-csl-dark text-white hover:bg-csl-mid"
+            }`}
+          >
+            {latestProxy ? "Update proxy assignment" : "Assign proxy"} &#8594;
+          </Link>
+        </div>
+
+        {/* Accumulate */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+          <p className="text-[0.7rem] font-bold uppercase tracking-widest text-csl-dark mb-2">
+            Accumulate
+          </p>
+          <h4 className="font-bold text-gray-900 text-sm mb-1">Trace Your Celtic Shares</h4>
+          <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-4">
+            Reconnect with Celtic FC shares and strengthen the voting block CSL holds on your behalf.
+          </p>
+          {latestTracing && (
+            <div className="mb-3 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+              <p className="text-xs text-gray-400 mb-1.5">
+                Submitted {formatDate(latestTracing.created_at)}
+              </p>
+              <CaseStatusBadge status={latestTracing.status} />
+            </div>
+          )}
+          <Link
+            href="/share-tracing"
+            className={`mt-auto inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+              latestTracing
+                ? "border border-csl-dark text-csl-dark hover:bg-csl-light"
+                : "bg-csl-dark text-white hover:bg-csl-mid"
+            }`}
+          >
+            {latestTracing ? "View trace status" : "Start share trace"} &#8594;
+          </Link>
+        </div>
+
+        {/* Activate */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+          <p className="text-[0.7rem] font-bold uppercase tracking-widest text-csl-dark mb-2">
+            Activate
+          </p>
+          <h4 className="font-bold text-gray-900 text-sm mb-1">Celtic FC Accountability Score</h4>
+          <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-4">
+            Track CSL&apos;s 12-point governance framework and see how Celtic FC is responding to shareholder demands.
+          </p>
+          {governanceCriteria.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+                &#9679; {metCount} Met
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                &#9679; {partialCount} Partial
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                &#9679; {notMetCount} Not Met
+              </span>
+              {lastReviewed && (
+                <p className="text-[0.65rem] text-gray-400 w-full mt-0.5">
+                  Updated {formatDate(lastReviewed)}
+                </p>
+              )}
+            </div>
+          )}
+          <Link
+            href="/governance"
+            className="mt-auto inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
+          >
+            View full scorecard &#8594;
+          </Link>
+        </div>
+      </div>
+
+      {/* Section 5 — Latest Documents */}
       {documents.length > 0 && (
         <Card>
           <div className="flex items-center justify-between mb-4">
@@ -369,53 +584,6 @@ function DashboardTab({
           </div>
         </Card>
       )}
-
-      <Card>
-        <h3 className="font-bold text-gray-900 mb-4">My Enquiries</h3>
-        {cases.length === 0 ? (
-          <div className="text-center py-4">
-            <p className="text-gray-400 text-sm mb-3">No enquiries submitted yet.</p>
-            <div className="flex gap-3 justify-center">
-              <Link
-                href="/share-tracing"
-                className="text-xs font-semibold text-csl-dark hover:underline"
-              >
-                Trace my shares
-              </Link>
-              <span className="text-gray-300">|</span>
-              <Link
-                href="/proxy"
-                className="text-xs font-semibold text-csl-dark hover:underline"
-              >
-                Assign proxy
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-0">
-            {cases.slice(0, 3).map((c) => (
-              <div
-                key={c.id}
-                className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 gap-3"
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{c.case_type}</p>
-                  <p className="text-xs text-gray-400">{formatDate(c.created_at)}</p>
-                </div>
-                <CaseStatusBadge status={c.status} />
-              </div>
-            ))}
-            {cases.length > 3 && (
-              <button
-                onClick={() => onTabChange("enquiries")}
-                className="mt-2 text-xs font-semibold text-csl-dark hover:underline"
-              >
-                View all {cases.length} enquiries
-              </button>
-            )}
-          </div>
-        )}
-      </Card>
     </div>
   );
 }
@@ -431,46 +599,7 @@ function MyMembershipTab({
   stripeSub: StripeSubData | null;
   payments: PortalPayment[];
 }) {
-  const [portalLoading, setPortalLoading] = useState(false);
-  const [portalError, setPortalError] = useState("");
-  const [manageLoading, setManageLoading] = useState(false);
-  const [manageError, setManageError] = useState("");
-
-  async function openBillingPortal() {
-    setPortalLoading(true);
-    setPortalError("");
-    try {
-      const res = await fetch("/api/billing-portal", { method: "POST" });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        setPortalLoading(false);
-        setPortalError(data.error ?? "Could not open billing portal.");
-      }
-    } catch {
-      setPortalLoading(false);
-      setPortalError("Network error. Please try again.");
-    }
-  }
-
-  async function openSubscriptionPortal() {
-    setManageLoading(true);
-    setManageError("");
-    try {
-      const res = await fetch("/api/stripe/portal", { method: "POST" });
-      const data = (await res.json()) as { url?: string; error?: string };
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        setManageLoading(false);
-        setManageError(data.error ?? "Could not open subscription portal.");
-      }
-    } catch {
-      setManageLoading(false);
-      setManageError("Network error. Please try again.");
-    }
-  }
+  const billingPortal = useBillingPortal();
 
   if (!member) {
     return (
@@ -500,9 +629,8 @@ function MyMembershipTab({
 
   return (
     <div className="space-y-5">
-      {/* Plan, status, next billing, manage */}
       <Card>
-        <h3 className="font-bold text-gray-900 mb-4">Current Subscription</h3>
+        <h3 className="font-bold text-gray-900 mb-4">My Membership</h3>
 
         <DetailRow label="Plan">{planDisplay(member)}</DetailRow>
         <DetailRow label="Status">
@@ -529,82 +657,54 @@ function MyMembershipTab({
         {!isLifetime && !stripeSub && (
           <DetailRow label="Payment details">
             <span className="text-gray-400 font-normal">
-              Payment details will appear after your next renewal.
+              Will appear after your next renewal.
             </span>
           </DetailRow>
         )}
 
         {isLifetime && (
-          <DetailRow label="Renewal">No renewal (lifetime membership)</DetailRow>
+          <DetailRow label="Renewal">No renewal required</DetailRow>
+        )}
+
+        {!isLifetime && stripeSub && (
+          <DetailRow label="Card on file">
+            {stripeSub.card_brand && stripeSub.card_last4 ? (
+              <span className="inline-flex items-center gap-2">
+                <span className="text-[0.65rem] font-bold uppercase bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-gray-600">
+                  {stripeSub.card_brand.slice(0, 4)}
+                </span>
+                &bull;&bull;&bull;&bull;&nbsp;{stripeSub.card_last4}
+                {cardExpiry && (
+                  <span className="text-gray-400 text-xs">&nbsp;· {cardExpiry}</span>
+                )}
+              </span>
+            ) : (
+              <span className="text-gray-400 font-normal">No card on file</span>
+            )}
+          </DetailRow>
         )}
 
         {!isLifetime && (
           <div className="pt-4 mt-2 border-t border-gray-100">
-            {manageError && (
+            {billingPortal.error && (
               <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
-                {manageError}
+                {billingPortal.error}
               </p>
             )}
             <button
-              onClick={openSubscriptionPortal}
-              disabled={manageLoading}
+              onClick={billingPortal.open}
+              disabled={billingPortal.loading}
               className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors disabled:opacity-60"
             >
-              {manageLoading ? "Opening..." : "Change or cancel subscription"}
+              {billingPortal.loading ? "Opening..." : "Manage subscription"}
             </button>
             <p className="text-xs text-gray-400 mt-2">
-              Secured by Stripe. You will be taken to a Stripe-hosted page.
+              Update your card, change plan, or cancel — all via Stripe.
             </p>
           </div>
         )}
       </Card>
 
-      {/* Card on file */}
-      {!isLifetime && stripeSub && (
-        <Card>
-          <h3 className="font-bold text-gray-900 mb-4">Payment Method</h3>
-
-          {stripeSub.card_brand && stripeSub.card_last4 ? (
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-7 rounded bg-gray-100 border border-gray-200 flex items-center justify-center text-[0.65rem] font-bold text-gray-600 uppercase tracking-wide">
-                {stripeSub.card_brand.slice(0, 4)}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">
-                  {capitalise(stripeSub.card_brand)} &bull;&bull;&bull;&bull;{" "}
-                  {stripeSub.card_last4}
-                </p>
-                {cardExpiry && (
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Expires {cardExpiry}
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400 mb-5">No card on file.</p>
-          )}
-
-          {portalError && (
-            <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
-              {portalError}
-            </p>
-          )}
-
-          <button
-            onClick={openBillingPortal}
-            disabled={portalLoading}
-            className="inline-block bg-csl-dark text-white font-semibold px-5 py-2.5 rounded-lg text-sm hover:bg-csl-mid transition-colors disabled:opacity-60"
-          >
-            {portalLoading ? "Opening..." : "Update payment method"}
-          </button>
-          <p className="text-xs text-gray-400 mt-2">
-            Secured by Stripe. You will be taken to a Stripe-hosted page.
-          </p>
-        </Card>
-      )}
-
-      {/* Payment history — Date, Plan, Amount, Status (no Ref) */}
       <Card>
         <h3 className="font-bold text-gray-900 mb-1">Payment History</h3>
         <p className="text-sm text-gray-400 mb-5">
@@ -627,11 +727,8 @@ function MyMembershipTab({
                   <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     Plan
                   </th>
-                  <th className="text-right py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <th className="text-right py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     Amount
-                  </th>
-                  <th className="text-left py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Status
                   </th>
                 </tr>
               </thead>
@@ -644,13 +741,8 @@ function MyMembershipTab({
                     <td className="py-3 pr-4 text-gray-700">
                       {p.plan_name ?? "-"}
                     </td>
-                    <td className="py-3 pr-4 text-gray-900 font-semibold text-right whitespace-nowrap">
+                    <td className="py-3 text-gray-900 font-semibold text-right whitespace-nowrap">
                       {formatPence(p.amount_pence)}
-                    </td>
-                    <td className="py-3">
-                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
-                        {p.status === "completed" ? "Paid" : p.status}
-                      </span>
                     </td>
                   </tr>
                 ))}
@@ -659,23 +751,6 @@ function MyMembershipTab({
           </div>
         )}
       </Card>
-
-      {/* Upgrade prompt */}
-      {!isLifetime && (
-        <Card>
-          <h3 className="font-bold text-gray-900 mb-2">Upgrade</h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Upgrade to Lifetime membership for a single one-off payment of
-            &pound;5,000.
-          </p>
-          <Link
-            href="/membership"
-            className="inline-block bg-csl-dark text-white font-semibold px-5 py-2.5 rounded-lg text-sm hover:bg-csl-mid transition-colors"
-          >
-            View membership options
-          </Link>
-        </Card>
-      )}
     </div>
   );
 }
@@ -685,7 +760,7 @@ function MyMembershipTab({
 function EnquiriesTab({ cases }: { cases: PortalCase[] }) {
   return (
     <Card>
-      <h3 className="font-bold text-gray-900 mb-1">My Share Enquiries</h3>
+      <h3 className="font-bold text-gray-900 mb-1">My Enquiries</h3>
       <p className="text-sm text-gray-400 mb-5">
         Track the progress of any share tracing or proxy assignment enquiries you
         have submitted.
@@ -1106,11 +1181,12 @@ type NavItem =
   | { kind: "link"; href: string; label: string; icon: string };
 
 const NAV_ITEMS: NavItem[] = [
-  { kind: "tab", tab: "dashboard",  label: "Dashboard",     icon: "&#9776;"   },
-  { kind: "tab", tab: "membership", label: "My Membership", icon: "&#128179;" },
-  { kind: "tab", tab: "documents",  label: "Documents",     icon: "&#128218;" },
-  { kind: "tab", tab: "enquiries",  label: "My Enquiries",  icon: "&#128269;" },
-  { kind: "tab", tab: "profile",    label: "Edit Profile",  icon: "&#9998;"   },
+  { kind: "tab",  tab: "dashboard",  label: "Dashboard",     icon: "&#9776;"   },
+  { kind: "tab",  tab: "membership", label: "My Membership", icon: "&#128179;" },
+  { kind: "tab",  tab: "documents",  label: "Documents",     icon: "&#128218;" },
+  { kind: "link", href: "/share-tracing", label: "Share Tracing", icon: "&#128270;" },
+  { kind: "tab",  tab: "enquiries",  label: "My Enquiries",  icon: "&#128269;" },
+  { kind: "tab",  tab: "profile",    label: "Edit Profile",  icon: "&#9998;"   },
 ];
 
 // ── Main portal component ─────────────────────────────────────────────────────
@@ -1125,6 +1201,10 @@ export default function PortalClient({
   documents,
   governanceCriteria,
   stripeSub,
+  activeCount,
+  agmDate,
+  sharesRepresented,
+  proxyCount,
   initialTab,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>(
@@ -1315,26 +1395,63 @@ export default function PortalClient({
                   documents={documents}
                   governanceCriteria={governanceCriteria}
                   onTabChange={setActiveTab}
+                  stripeSub={stripeSub}
+                  activeCount={activeCount}
+                  agmDate={agmDate}
+                  sharesRepresented={sharesRepresented}
+                  proxyCount={proxyCount}
                 />
               )}
               {activeTab === "membership" && (
                 <MyMembershipTab member={member} stripeSub={stripeSub} payments={payments} />
               )}
-              {activeTab === "documents" && (
-                <div className="space-y-4">
-                  {member?.is_admin && (
-                    <div className="flex justify-end">
-                      <Link
-                        href="/member-portal/admin/documents/new"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
-                      >
-                        + Add Document
-                      </Link>
-                    </div>
-                  )}
-                  <DocumentLibrary documents={documents} isAdmin={member?.is_admin === true} />
-                </div>
-              )}
+              {activeTab === "documents" && (() => {
+                // A3 — grace period: payment_failed members retain access for 7 days
+                const isPaymentFailed = member?.status === "payment_failed";
+                const failedAt = member?.payment_failed_at
+                  ? new Date(member.payment_failed_at).getTime()
+                  : null;
+                const gracePeriodExpired =
+                  isPaymentFailed &&
+                  failedAt !== null &&
+                  Date.now() - failedAt > 7 * 24 * 60 * 60 * 1000;
+
+                if (gracePeriodExpired) {
+                  return (
+                    <Card>
+                      <div className="text-center py-10">
+                        <div className="text-4xl mb-3">&#128274;</div>
+                        <h3 className="font-bold text-gray-900 mb-2">Document access paused</h3>
+                        <p className="text-gray-500 text-sm mb-5 max-w-sm mx-auto">
+                          Your membership payment is overdue. Please update your payment details to restore document access.
+                        </p>
+                        <button
+                          onClick={() => setActiveTab("membership")}
+                          className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
+                        >
+                          Update payment details
+                        </button>
+                      </div>
+                    </Card>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    {member?.is_admin && (
+                      <div className="flex justify-end">
+                        <Link
+                          href="/member-portal/admin/documents/new"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
+                        >
+                          + Add Document
+                        </Link>
+                      </div>
+                    )}
+                    <DocumentLibrary documents={documents} isAdmin={member?.is_admin === true} />
+                  </div>
+                );
+              })()}
               {activeTab === "enquiries" && (
                 <EnquiriesTab cases={cases} />
               )}

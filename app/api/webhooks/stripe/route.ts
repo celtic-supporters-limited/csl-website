@@ -203,6 +203,7 @@ export async function POST(req: NextRequest) {
             status: "active",
             membership_tier: tier,
             amount_pence: invoice.amount_paid ?? 0,
+            payment_failed_at: null,
           })
           .eq("stripe_customer_id", cid);
 
@@ -234,7 +235,7 @@ export async function POST(req: NextRequest) {
 
         const { data: member, error } = await db
           .from("members")
-          .update({ status: "payment_failed" })
+          .update({ status: "payment_failed", payment_failed_at: new Date().toISOString() })
           .eq("stripe_customer_id", cid)
           .select("email")
           .maybeSingle();

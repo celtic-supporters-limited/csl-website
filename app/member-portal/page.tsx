@@ -62,12 +62,16 @@ export default async function MemberPortalPage({
   let documents: MemberDocument[] = [];
   let governanceCriteria: GovernanceCriterion[] = [];
   let stripeSub: StripeSubData | null = null;
+  let activeCount = 0;
+  let agmDate: string | null = null;
+  let sharesRepresented = "15000";
+  let proxyCount = 0;
 
   try {
     const db = getSupabase();
 
-    // Batch 1 — member record, cases, documents, governance (parallel, independent)
-    const [memberRes, casesRes, documentsRes, governanceRes] = await Promise.all([
+    // Batch 1 — member record, cases, documents, governance, active count, site config, proxy count (parallel)
+    const [memberRes, casesRes, documentsRes, governanceRes, activeCountRes, siteConfigRes, proxyCountRes] = await Promise.all([
       db.from("members").select("*").eq("email", user.email).maybeSingle(),
       db
         .from("shareholder_cases")
@@ -82,12 +86,30 @@ export default async function MemberPortalPage({
       db
         .from("governance_criteria")
         .select("status, last_reviewed"),
+      db
+        .from("members")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "active"),
+      db
+        .from("site_config")
+        .select("key, value")
+        .in("key", ["agm_date", "shares_represented"]),
+      db
+        .from("shareholder_cases")
+        .select("*", { count: "exact", head: true })
+        .eq("case_type", "Proxy Assignment"),
     ]);
 
     member = memberRes.data ?? null;
     cases = casesRes.data ?? [];
     documents = (documentsRes.data ?? []) as MemberDocument[];
     governanceCriteria = (governanceRes.data ?? []) as GovernanceCriterion[];
+    activeCount = activeCountRes.count ?? 0;
+
+    const configRows = (siteConfigRes.data ?? []) as { key: string; value: string | null }[];
+    agmDate = configRows.find((r) => r.key === "agm_date")?.value ?? null;
+    sharesRepresented = configRows.find((r) => r.key === "shares_represented")?.value ?? "15000";
+    proxyCount = proxyCountRes.count ?? 0;
 
     // Batch 2 — requires stripe_customer_id and stripe_subscription_id from batch 1
     if (member) {
@@ -191,6 +213,10 @@ export default async function MemberPortalPage({
       documents={documents}
       governanceCriteria={governanceCriteria}
       stripeSub={stripeSub}
+      activeCount={activeCount}
+      agmDate={agmDate}
+      sharesRepresented={sharesRepresented}
+      proxyCount={proxyCount}
       initialTab={searchParams.tab}
     />
   );
