@@ -8,7 +8,7 @@ replace the existing WordPress site at celticsupporters.net, currently managed b
 
 The website is operated by two volunteers (Gary Phinn — Volunteer IT Lead, and Martin Kenny —
 Shareholder Register Manager) and four directors. All correspondence uses role-based shared
-mailboxes under `celticsupporterslimited.net` — **personal names and email addresses are
+mailboxes under `celticsupporters.net` — **personal names and email addresses are
 never exposed externally**.
 
 ## Demo Site Reference
@@ -268,8 +268,8 @@ use the "Forgot password" flow to set one — `signUp()` will reject already-reg
 ## Email (Resend)
 
 - All outbound email sent via Resend from verified `.co.uk` or `.com` domain (not `.net`)
-- Volunteer notification: new intake form → notify `shares@celticsupporterslimited.net` or `proxy@celticsupporterslimited.net`
-- Member welcome email: sent from `membership@celticsupporterslimited.net` after Stripe success
+- Volunteer notification: new intake form → notify `shares@celticsupporters.net` or `proxy@celticsupporters.net`
+- Member welcome email: sent from `membership@celticsupporters.net` after Stripe success
 - Env var: `RESEND_API_KEY`
 - All Resend calls wrapped in try/catch — email failure must never block a form submission
 - **Currently not implemented** — placeholder only. Implement when `RESEND_API_KEY` is set.
@@ -278,11 +278,11 @@ use the "Forgot password" flow to set one — `signUp()` will reject already-reg
 
 | Purpose | Address |
 |---------|---------|
-| General | `info@celticsupporterslimited.net` |
-| Membership | `membership@celticsupporterslimited.net` |
-| Press | `press@celticsupporterslimited.net` |
-| Share re-tracing | `shares@celticsupporterslimited.net` |
-| Proxy | `proxy@celticsupporterslimited.net` |
+| General | `info@celticsupporters.net` |
+| Membership | `membership@celticsupporters.net` |
+| Press | `press@celticsupporters.net` |
+| Share re-tracing | `shares@celticsupporters.net` |
+| Proxy | `proxy@celticsupporters.net` |
 
 ## Constraints
 

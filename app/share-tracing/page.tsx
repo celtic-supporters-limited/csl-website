@@ -5,7 +5,7 @@ import { Container } from "@/components/Container";
 export const metadata = {
   title: "Share Tracing - Celtic Supporters Limited",
   description:
-    "Celtic PLC has over 37,000 registered shareholders. Many have lost certificates or inherited shares. CSL helps you find your shares and decide what to do with them.",
+    "Celtic PLC has tens of thousands of shareholders. Many have lost certificates or inherited shares. CSL helps you find your shares and decide what to do with them.",
 };
 
 export default function ShareTracingPage() {
@@ -24,7 +24,7 @@ export default function ShareTracingPage() {
               Reunite With<br />Your Celtic Shares
             </h1>
             <p className="text-[1.1rem] text-white/85 mb-9 max-w-[540px] leading-[1.7]">
-              Celtic PLC has over 37,000 registered shareholders. Many have lost their
+              Celtic PLC has tens of thousands of shareholders. Many have lost their
               certificates, moved home, or inherited shares from a family member. CSL
               helps you find your shares and decide what to do with them.
             </p>

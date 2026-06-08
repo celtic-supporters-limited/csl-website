@@ -980,10 +980,10 @@ function EditProfileTab({
             <p className="text-xs text-gray-400 mt-1">
               Email cannot be changed here. Contact{" "}
               <a
-                href="mailto:membership@celticsupporterslimited.net"
+                href="mailto:membership@celticsupporters.net"
                 className="text-csl-dark hover:underline"
               >
-                membership@celticsupporterslimited.net
+                membership@celticsupporters.net
               </a>{" "}
               if you need to update it.
             </p>

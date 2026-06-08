@@ -21,7 +21,7 @@ export async function sendPaymentFailedEmail(to: string): Promise<void> {
 
   // The from domain must be verified in the Resend Dashboard before this sends.
   await resend.emails.send({
-    from: "CSL Membership <membership@celticsupporterslimited.net>",
+    from: "CSL Membership <membership@celticsupporters.net>",
     to,
     subject: "Action required: your CSL membership payment failed",
     html: `
@@ -29,7 +29,7 @@ export async function sendPaymentFailedEmail(to: string): Promise<void> {
       <p>We were unable to collect your Celtic Supporters Limited membership payment. This may be because your card has expired or your bank declined the charge.</p>
       <p>To keep your membership active, please update your payment details as soon as possible:</p>
       <p><a href="${SITE_URL}/member-portal/subscription">Update your payment details</a></p>
-      <p>If you have any questions, contact us at <a href="mailto:membership@celticsupporterslimited.net">membership@celticsupporterslimited.net</a>.</p>
+      <p>If you have any questions, contact us at <a href="mailto:membership@celticsupporters.net">membership@celticsupporters.net</a>.</p>
       <p>Celtic Supporters Limited</p>
     `,
   });

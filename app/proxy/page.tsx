@@ -74,7 +74,7 @@ export default function ProxyPage() {
             <div className="bg-csl-light rounded-2xl p-9">
               <h3 className="font-bold text-csl-dark mb-5">Why It Matters</h3>
               {[
-                { label: "Celtic PLC shareholders", value: "37,000+", highlight: true },
+                { label: "Celtic PLC shareholders", value: "Tens of thousands", highlight: true },
                 { label: "Typical AGM votes cast", value: "~20-30%", highlight: false },
                 { label: "CSL shares held", value: "Growing", highlight: true },
                 { label: "Proxy votes coordinated", value: "Active campaign", highlight: true },
