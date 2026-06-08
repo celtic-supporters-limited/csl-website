@@ -23,7 +23,7 @@ const FAQ = [
   },
   {
     q: "Can I change my subscription amount?",
-    a: "Yes. You can upgrade or change your plan at any time from within your member portal. Contact info@celticsupporterslimited.net if you would like to discuss a bespoke arrangement.",
+    a: "Yes. You can upgrade or change your plan at any time from within your member portal. Contact info@celticsupporters.net if you would like to discuss a bespoke arrangement.",
   },
 ];
 
@@ -47,10 +47,10 @@ export default function MembershipPage() {
               funding our governance campaign. To discuss other membership options,
               email{" "}
               <a
-                href="mailto:info@celticsupporterslimited.net"
+                href="mailto:info@celticsupporters.net"
                 className="underline underline-offset-2 hover:text-white"
               >
-                info@celticsupporterslimited.net
+                info@celticsupporters.net
               </a>
               .
             </p>

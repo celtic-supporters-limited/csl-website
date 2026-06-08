@@ -38,8 +38,8 @@ export default function PrivacyPage() {
               </p>
               <p>
                 Contact:{" "}
-                <a href="mailto:info@celticsupporterslimited.net" className="text-csl-dark hover:underline">
-                  info@celticsupporterslimited.net
+                <a href="mailto:info@celticsupporters.net" className="text-csl-dark hover:underline">
+                  info@celticsupporters.net
                 </a>
               </p>
             </Section>
@@ -138,8 +138,8 @@ export default function PrivacyPage() {
             <Section number="11" title="Contact">
               <p>
                 For privacy requests:{" "}
-                <a href="mailto:info@celticsupporterslimited.net" className="text-csl-dark hover:underline">
-                  info@celticsupporterslimited.net
+                <a href="mailto:info@celticsupporters.net" className="text-csl-dark hover:underline">
+                  info@celticsupporters.net
                 </a>
               </p>
             </Section>

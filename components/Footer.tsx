@@ -39,10 +39,10 @@ export default function Footer() {
               change at Celtic FC, owned and run by supporters.
             </p>
             <a
-              href="mailto:info@celticsupporterslimited.net"
+              href="mailto:info@celticsupporters.net"
               className="text-[0.83rem] text-white/60 hover:text-white transition-colors duration-150 block mb-4"
             >
-              info@celticsupporterslimited.net
+              info@celticsupporters.net
             </a>
             <div className="flex gap-4">
               <a
@@ -145,7 +145,7 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <a href="mailto:info@celticsupporterslimited.net" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                <a href="mailto:info@celticsupporters.net" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
                   Contact Us
                 </a>
               </li>

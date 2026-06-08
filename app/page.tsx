@@ -165,7 +165,7 @@ export default function HomePage() {
               Shareholder Influence Through Collective Action
             </h2>
             <p className="text-[1.05rem] text-csl-muted max-w-[600px] mx-auto">
-              Celtic PLC has over 37,000 registered shareholders. CSL coordinates their
+              Celtic PLC has tens of thousands of shareholders. CSL coordinates their
               voice to create real governance accountability.
             </p>
           </div>
@@ -343,26 +343,26 @@ export default function HomePage() {
         </Container>
       </section>
 
-      {/* ACTIVATE. ACCUMULATE. AGGREGATE. */}
+      {/* AGGREGATE. ACCUMULATE. ACTIVATE. */}
       <section className="py-[72px] bg-csl-light">
         <Container>
           <div className="max-w-[800px] mx-auto">
             <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-10 text-center">
-              Activate. Accumulate. Aggregate.
+              Aggregate. Accumulate. Activate.
             </h2>
             <ul className="space-y-4 list-none">
               {[
                 {
-                  word: "Activate",
-                  body: "supporters and shareholders who care deeply about Celtic but want a constructive, credible way to engage.",
+                  word: "Aggregate",
+                  body: "voting power so supporters can act together with legitimacy and purpose.",
                 },
                 {
                   word: "Accumulate",
                   body: "share ownership and reconnect untraced shares back to their rightful owners.",
                 },
                 {
-                  word: "Aggregate",
-                  body: "voting power so supporters can act together with legitimacy and purpose.",
+                  word: "Activate",
+                  body: "supporters and shareholders who care deeply about Celtic but want a constructive, credible way to engage.",
                 },
               ].map(({ word, body }) => (
                 <li
