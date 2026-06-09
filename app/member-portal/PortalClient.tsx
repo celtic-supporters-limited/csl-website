@@ -1002,6 +1002,8 @@ function EditProfileTab({
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [cancellingPending, setCancellingPending] = useState(false);
+  const [cancelError, setCancelError] = useState(false);
 
   useEffect(() => {
     if (emailSuccessBanner) {
@@ -1081,11 +1083,17 @@ function EditProfileTab({
       }
 
       // Store pending email so the auth callback can find this members row
-      await fetch("/api/profile", {
+      const pendingPatchRes = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pending_email: trimmedNewEmail }),
       });
+
+      if (!pendingPatchRes.ok) {
+        setErrorMsg("Something went wrong saving your change. Please try again.");
+        setSaving(false);
+        return;
+      }
 
       setEmailPending(trimmedNewEmail);
       setSaving(false);
@@ -1097,6 +1105,23 @@ function EditProfileTab({
     setSaving(false);
     router.refresh();
     setTimeout(() => setSavedMsg(""), 3000);
+  }
+
+  async function handleCancelPending() {
+    setCancellingPending(true);
+    setCancelError(false);
+    const res = await fetch("/api/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pending_email: null }),
+    });
+    if (!res.ok) {
+      setCancelError(true);
+      setCancellingPending(false);
+      return;
+    }
+    setCancellingPending(false);
+    router.refresh();
   }
 
   return (
@@ -1115,12 +1140,25 @@ function EditProfileTab({
         </div>
       )}
       {member?.pending_email && !emailPending && (
-        <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-          <span>
-            <strong>Email change pending.</strong> A confirmation link was sent to{" "}
-            <strong>{member.pending_email}</strong>. Check your inbox and click the link to
-            complete the change. Your current email remains active until then.
-          </span>
+        <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+          <div className="flex items-start justify-between gap-3">
+            <span>
+              <strong>Email change pending.</strong> A confirmation link was sent to{" "}
+              <strong>{member.pending_email}</strong>. Check your inbox and click the link to
+              complete the change. Your current email remains active until then.
+            </span>
+            <button
+              type="button"
+              onClick={handleCancelPending}
+              disabled={cancellingPending}
+              className="flex-shrink-0 text-amber-700 hover:text-amber-900 underline text-xs whitespace-nowrap disabled:opacity-50"
+            >
+              {cancellingPending ? "Cancelling..." : "Cancel pending change"}
+            </button>
+          </div>
+          {cancelError && (
+            <p className="mt-2 text-xs text-amber-900">Could not cancel — please try again.</p>
+          )}
         </div>
       )}
       {emailPending && (
