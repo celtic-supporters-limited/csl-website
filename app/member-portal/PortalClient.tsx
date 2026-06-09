@@ -1057,12 +1057,11 @@ function EditProfileTab({
       }
 
       const supabase = createBrowserSupabase();
-      const siteUrl =
-        process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
-        window.location.origin;
       const { error: updateErr } = await supabase.auth.updateUser(
         { email: trimmedNewEmail },
-        { emailRedirectTo: `${siteUrl}/auth/callback?type=email_change` }
+        {
+          emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?type=email_change`,
+        }
       );
 
       if (updateErr) {
