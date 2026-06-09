@@ -667,6 +667,14 @@ returns, never throws. Called fire-and-forget (IIFE with try/catch) in
 `app/api/share-tracing/route.ts` and `app/api/proxy/route.ts` immediately after the
 successful Supabase insert — a failed notification never blocks the form response.
 
+**Phase 14 — Welcome email on membership checkout**
+`lib/resend.ts` gains `sendWelcomeEmail({ name, email, planName })`. Subject: "Welcome to
+Celtic Supporters Limited". Body greets member by name (falls back to "Member" if Stripe
+returns null), confirms their plan, links to `/member-portal`, and closes with the mission
+line "Together we are building the shareholder voice Celtic FC needs." Called fire-and-forget
+in `app/api/webhooks/stripe/route.ts` inside `checkout.session.completed` immediately after
+the successful upsert — a failed email never affects the webhook `200` response.
+
 ## Document Library
 
 - **Route:** `/member-portal/documents` — members only (middleware auth guard)

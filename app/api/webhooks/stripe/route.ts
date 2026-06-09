@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
-import { sendPaymentFailedEmail } from "@/lib/resend";
+import { sendPaymentFailedEmail, sendWelcomeEmail } from "@/lib/resend";
 
 // ── Derivation helpers ────────────────────────────────────────────────────────
 
@@ -174,6 +174,19 @@ export async function POST(req: NextRequest) {
         }
 
         console.log(`[stripe-webhook] Member upserted: ${email} plan=${planName}`);
+
+        // Welcome email: fire-and-forget, never block or throw
+        (async () => {
+          try {
+            await sendWelcomeEmail({
+              name: session.customer_details?.name ?? null,
+              email,
+              planName,
+            });
+          } catch (err) {
+            console.error("[stripe-webhook] Welcome email error (non-blocking):", err);
+          }
+        })();
 
         break;
       }
