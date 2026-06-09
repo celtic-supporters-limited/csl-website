@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 
+// In-memory rate limiter — resets on cold starts; best-effort deterrent only.
+const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
+const RATE_LIMIT = 3;
+const WINDOW_MS = 15 * 60 * 1000;
+
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (entry && now - entry.windowStart < WINDOW_MS) {
+    entry.count += 1;
+    if (entry.count > RATE_LIMIT) {
+      return NextResponse.json({ sent: true }, { status: 200 });
+    }
+  } else {
+    rateLimitMap.set(ip, { count: 1, windowStart: now });
+  }
+
   const body = await req.json();
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : null;
 

@@ -467,7 +467,7 @@ export default function MembershipPlans() {
             </button>
           </div>
           <p className="text-[0.8rem] text-gray-400 mt-4">
-            🔒 Secured by Stripe &nbsp;&middot;&nbsp; Test mode: use card 4242 4242 4242 4242
+            🔒 Secured by Stripe
           </p>
         </div>
       )}
