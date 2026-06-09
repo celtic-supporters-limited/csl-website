@@ -273,7 +273,6 @@ function DashboardTab({
   activeCount,
   agmDate,
   sharesRepresented,
-  proxyCount,
 }: {
   member: Member | null;
   cases: PortalCase[];
@@ -284,7 +283,6 @@ function DashboardTab({
   activeCount: number;
   agmDate: string | null;
   sharesRepresented: string;
-  proxyCount: number;
 }) {
   const billingPortal = useBillingPortal();
 
@@ -1216,7 +1214,6 @@ export default function PortalClient({
   activeCount,
   agmDate,
   sharesRepresented,
-  proxyCount,
   initialTab,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>(
@@ -1411,7 +1408,6 @@ export default function PortalClient({
                   activeCount={activeCount}
                   agmDate={agmDate}
                   sharesRepresented={sharesRepresented}
-                  proxyCount={proxyCount}
                 />
               )}
               {activeTab === "membership" && (
