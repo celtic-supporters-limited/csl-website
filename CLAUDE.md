@@ -675,6 +675,26 @@ line "Together we are building the shareholder voice Celtic FC needs." Called fi
 in `app/api/webhooks/stripe/route.ts` inside `checkout.session.completed` immediately after
 the successful upsert — a failed email never affects the webhook `200` response.
 
+**Phase 15 — Member activity audit log and admin member lookup**
+`member_events` table tracks 8 event types for support triage: `checkout.completed`,
+`invoice.paid`, `payment.failed`, `subscription.cancelled`, `email_change.initiated`,
+`email_change.confirmed`, `password_reset.requested`, `profile.updated`. Columns: `id`,
+`member_id` (FK, survives email changes), `event_type`, `detail` (jsonb), `stripe_event_id`
+(unique — prevents webhook replay duplicates), `event_email`, `is_test`, `created_at`.
+`lib/member-events.ts` exports `logMemberEvent()` — resolves `member_id` from email when
+needed, silently ignores duplicate Stripe event IDs, never throws. All 8 event types are
+written fire-and-forget across 4 routes. `is_test = true` set automatically when
+`STRIPE_SECRET_KEY` starts with `sk_test_` — flips to false at go-live with no code change.
+`get_member_auth_events(p_user_id uuid)` RPC function queries `auth.audit_log_entries`
+(security definer, service_role execute only — never callable from anon/authenticated keys).
+Admin page at `/member-portal/admin/members` (is_admin guard): search by email (exact) or
+name (ILIKE); single match shows full timeline merging member_events + shareholder_cases +
+auth events; multiple matches show disambiguation list. `components/MemberTimeline.tsx`
+client component: member summary, "Copy as text" (clipboard), "Export CSV" (download),
+reverse-chronological table. "Show test events" checkbox appears only when test events exist
+— off by default; test rows shown at 60% opacity with amber TEST badge.
+SQL: `sql/add-member-events.sql` then `sql/add-member-events-is-test.sql` (run in order).
+
 ## Document Library
 
 - **Route:** `/member-portal/documents` — members only (middleware auth guard)

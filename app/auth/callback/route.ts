@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { getStripe } from "@/lib/stripe";
+import { logMemberEvent } from "@/lib/member-events";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -75,6 +76,12 @@ export async function GET(request: NextRequest) {
               console.log(
                 `[auth/callback] email_change: members.email updated to ${newEmail}`
               );
+              logMemberEvent({
+                memberId: memberRow.id,
+                eventType: "email_change.confirmed",
+                detail: { old_email: previousEmail, new_email: newEmail },
+                eventEmail: previousEmail,
+              }).catch((err) => console.error("[auth/callback] Event log error (email_change.confirmed):", err));
             }
 
             // Update Stripe customer email — log failure prominently, do not throw

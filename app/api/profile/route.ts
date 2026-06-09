@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
+import { logMemberEvent } from "@/lib/member-events";
 
 const FAN_STATUS_VALUES = [
   "Season Ticket",
@@ -73,6 +74,27 @@ export async function PATCH(req: NextRequest) {
   if (error) {
     console.error("[profile] Supabase update error:", error.message);
     return NextResponse.json({ error: "Failed to save changes." }, { status: 500 });
+  }
+
+  // Log email_change.initiated when pending_email is being set to a new address
+  if (update.pending_email && typeof update.pending_email === "string") {
+    logMemberEvent({
+      memberEmail: user.email,
+      eventType: "email_change.initiated",
+      detail: { new_email: update.pending_email },
+      eventEmail: user.email ?? null,
+    }).catch((err) => console.error("[profile] Event log error (email_change.initiated):", err));
+  }
+
+  // Log profile.updated for any non-pending_email field changes
+  const profileFields = Object.keys(update).filter((k) => k !== "pending_email");
+  if (profileFields.length > 0) {
+    logMemberEvent({
+      memberEmail: user.email,
+      eventType: "profile.updated",
+      detail: { changed_fields: profileFields },
+      eventEmail: user.email ?? null,
+    }).catch((err) => console.error("[profile] Event log error (profile.updated):", err));
   }
 
   return NextResponse.json({ success: true });

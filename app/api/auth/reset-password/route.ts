@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { logMemberEvent } from "@/lib/member-events";
 
 // In-memory rate limiter — resets on cold starts; best-effort deterrent only.
 const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
@@ -39,6 +40,11 @@ export async function POST(req: NextRequest) {
       // then redirect to the update-password page.
       redirectTo: `${origin}/auth/callback?redirectTo=/auth/update-password`,
     });
+    logMemberEvent({
+      memberEmail: email,
+      eventType: "password_reset.requested",
+      eventEmail: email,
+    }).catch((err) => console.error("[reset-password] Event log error:", err));
   } catch (err) {
     console.error("[reset-password] Error:", err);
   }

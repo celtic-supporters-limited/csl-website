@@ -4,6 +4,7 @@ import { getStripe } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
 import { sendPaymentFailedEmail, sendWelcomeEmail } from "@/lib/resend";
+import { logMemberEvent } from "@/lib/member-events";
 
 // ── Derivation helpers ────────────────────────────────────────────────────────
 
@@ -82,6 +83,9 @@ export async function POST(req: NextRequest) {
   // ── 3. Event handling ─────────────────────────────────────────────────────
 
   const db = getSupabase();
+  // Events generated while using a Stripe test key are marked is_test = true
+  // so they can be filtered out of production support timelines.
+  const isTestMode = process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ?? false;
 
   try {
     switch (event.type) {
@@ -152,7 +156,8 @@ export async function POST(req: NextRequest) {
         // Conflict on stripe_customer_id: immutable and unique per customer.
         // A second checkout by the same Stripe customer (e.g. plan change)
         // updates their record; a brand-new customer always inserts.
-        const { error: upsertError } = await db
+        const tier = deriveTier(session);
+        const { data: upsertedMember, error: upsertError } = await db
           .from("members")
           .upsert(
             {
@@ -160,13 +165,15 @@ export async function POST(req: NextRequest) {
               name: session.customer_details?.name ?? null,
               stripe_customer_id: stripeCustomerId,
               stripe_subscription_id: subscriptionId(session.subscription),
-              membership_tier: deriveTier(session),
+              membership_tier: tier,
               plan_name: planName,
               amount_pence: session.amount_total ?? 0,
               status: "active",
             },
             { onConflict: "stripe_customer_id" }
-          );
+          )
+          .select("id")
+          .maybeSingle();
 
         if (upsertError) {
           console.error("[stripe-webhook] Supabase upsert error:", upsertError.message);
@@ -174,6 +181,15 @@ export async function POST(req: NextRequest) {
         }
 
         console.log(`[stripe-webhook] Member upserted: ${email} plan=${planName}`);
+
+        logMemberEvent({
+          memberId: upsertedMember?.id ?? null,
+          eventType: "checkout.completed",
+          detail: { plan_name: planName, membership_tier: tier, amount_pence: session.amount_total ?? 0 },
+          stripeEventId: event.id,
+          eventEmail: email,
+          isTest: isTestMode,
+        }).catch((err) => console.error("[stripe-webhook] Event log error (checkout.completed):", err));
 
         // Welcome email: fire-and-forget, never block or throw
         (async () => {
@@ -210,7 +226,7 @@ export async function POST(req: NextRequest) {
           (invoice.period_end - invoice.period_start) / 86400;
         const tier = daysInPeriod > 300 ? "annual" : "monthly";
 
-        const { error } = await db
+        const { data: paidMember, error } = await db
           .from("members")
           .update({
             status: "active",
@@ -218,7 +234,9 @@ export async function POST(req: NextRequest) {
             amount_pence: invoice.amount_paid ?? 0,
             payment_failed_at: null,
           })
-          .eq("stripe_customer_id", cid);
+          .eq("stripe_customer_id", cid)
+          .select("id, email")
+          .maybeSingle();
 
         if (error) {
           console.error(
@@ -229,6 +247,14 @@ export async function POST(req: NextRequest) {
           console.log(
             `[stripe-webhook] invoice.paid processed for customer ${cid}`
           );
+          logMemberEvent({
+            memberId: paidMember?.id ?? null,
+            eventType: "invoice.paid",
+            detail: { amount_pence: invoice.amount_paid ?? 0, membership_tier: tier },
+            stripeEventId: event.id,
+            eventEmail: paidMember?.email ?? null,
+            isTest: isTestMode,
+          }).catch((err) => console.error("[stripe-webhook] Event log error (invoice.paid):", err));
         }
         break;
       }
@@ -250,7 +276,7 @@ export async function POST(req: NextRequest) {
           .from("members")
           .update({ status: "payment_failed", payment_failed_at: new Date().toISOString() })
           .eq("stripe_customer_id", cid)
-          .select("email")
+          .select("id, email")
           .maybeSingle();
 
         if (error) {
@@ -261,6 +287,14 @@ export async function POST(req: NextRequest) {
         }
 
         if (member?.email) {
+          logMemberEvent({
+            memberId: member.id ?? null,
+            eventType: "payment.failed",
+            stripeEventId: event.id,
+            eventEmail: member.email,
+            isTest: isTestMode,
+          }).catch((err) => console.error("[stripe-webhook] Event log error (payment.failed):", err));
+
           try {
             await sendPaymentFailedEmail(member.email);
           } catch (emailErr) {
@@ -318,10 +352,12 @@ export async function POST(req: NextRequest) {
         const sub = event.data.object as Stripe.Subscription;
         const cid = customerId(sub.customer);
 
-        const { error } = await db
+        const { data: cancelledMember, error } = await db
           .from("members")
           .update({ status: "cancelled" })
-          .eq("stripe_customer_id", cid);
+          .eq("stripe_customer_id", cid)
+          .select("id, email")
+          .maybeSingle();
 
         if (error) {
           console.error(
@@ -332,6 +368,13 @@ export async function POST(req: NextRequest) {
           console.log(
             `[stripe-webhook] customer.subscription.deleted processed for customer ${cid}`
           );
+          logMemberEvent({
+            memberId: cancelledMember?.id ?? null,
+            eventType: "subscription.cancelled",
+            stripeEventId: event.id,
+            eventEmail: cancelledMember?.email ?? null,
+            isTest: isTestMode,
+          }).catch((err) => console.error("[stripe-webhook] Event log error (subscription.cancelled):", err));
         }
         break;
       }
