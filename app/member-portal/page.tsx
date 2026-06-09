@@ -70,9 +70,27 @@ export default async function MemberPortalPage({
   try {
     const db = getSupabase();
 
-    // Batch 1 — member record, cases, documents, governance, active count, site config, proxy count (parallel)
-    const [memberRes, casesRes, documentsRes, governanceRes, activeCountRes, siteConfigRes, proxyCountRes] = await Promise.all([
-      db.from("members").select("*").eq("email", user.email).maybeSingle(),
+    // Member lookup: try user_id first, fall back to email for unmigrated rows
+    const primaryMemberRes = await db
+      .from("members")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    let memberRes = primaryMemberRes;
+    if (!memberRes.data && !memberRes.error) {
+      console.warn(
+        `[member-portal] No member for user_id=${user.id}, falling back to email lookup`
+      );
+      memberRes = await db
+        .from("members")
+        .select("*")
+        .eq("email", user.email)
+        .maybeSingle();
+    }
+
+    // Batch 1 — cases, documents, governance, active count, site config, proxy count (parallel)
+    const [casesRes, documentsRes, governanceRes, activeCountRes, siteConfigRes, proxyCountRes] = await Promise.all([
       db
         .from("shareholder_cases")
         .select("id, contact_name, email, case_type, status, created_at")

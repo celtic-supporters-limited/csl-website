@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   const { data: member } = await db
     .from("members")
     .select("is_admin")
-    .eq("email", user.email)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (!member?.is_admin) {

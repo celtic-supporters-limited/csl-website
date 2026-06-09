@@ -68,7 +68,7 @@ export async function PATCH(req: NextRequest) {
   const { error } = await getSupabase()
     .from("members")
     .update(update)
-    .eq("email", user.email);
+    .eq("user_id", user.id);
 
   if (error) {
     console.error("[profile] Supabase update error:", error.message);
