@@ -1223,7 +1223,6 @@ const NAV_ITEMS: NavItem[] = [
   { kind: "tab",  tab: "dashboard",  label: "Dashboard",     icon: "&#9776;"   },
   { kind: "tab",  tab: "membership", label: "My Membership", icon: "&#128179;" },
   { kind: "tab",  tab: "documents",  label: "Documents",     icon: "&#128218;" },
-  { kind: "link", href: "/share-tracing", label: "Share Tracing", icon: "&#128270;" },
   { kind: "tab",  tab: "enquiries",  label: "My Enquiries",  icon: "&#128269;" },
   { kind: "tab",  tab: "profile",    label: "Edit Profile",  icon: "&#9998;"   },
 ];
