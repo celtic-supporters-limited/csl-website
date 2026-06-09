@@ -435,43 +435,43 @@ function DashboardTab({
           Your Actions
         </p>
 
-        {/* Aggregate — Proxy Assignment */}
-        <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-csl-dark shadow-sm p-4 sm:p-5 flex flex-col mb-4">
-          <div className="flex items-center gap-2 mb-2 sm:mb-3">
-            <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-csl-light flex items-center justify-center text-csl-dark text-sm sm:text-base leading-none">
-              &#128717;
-            </div>
-            <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-csl-dark leading-none">
-              Aggregate
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 mb-3 max-w-xs">
-            <div className="bg-csl-light rounded-lg px-3 py-2.5 text-center">
-              <p className="text-xl font-black leading-none text-csl-dark">{activeCount.toLocaleString()}</p>
-              <p className="text-[0.6rem] font-bold uppercase tracking-wider text-csl-dark/60 mt-1">Members</p>
-            </div>
-            <div className="bg-csl-light rounded-lg px-3 py-2.5 text-center">
-              <p className="text-xl font-black leading-none text-csl-dark">{sharesNum > 0 ? sharesNum.toLocaleString() : "-"}</p>
-              <p className="text-[0.6rem] font-bold uppercase tracking-wider text-csl-dark/60 mt-1">Shares Held</p>
-            </div>
-          </div>
-          <h4 className="hidden sm:block font-bold text-gray-900 text-sm mb-1 leading-tight">
-            Assign Your Proxy Vote
-          </h4>
-          <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-3 leading-relaxed">
-            Authorise CSL to vote on your behalf at Celtic FC general meetings. Every proxy
-            strengthens our mandate at the boardroom table.
-          </p>
-          <Link
-            href="/proxy"
-            className="mt-auto inline-flex items-center justify-center px-3 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors min-h-[44px]"
-          >
-            Assign proxy vote &#8594;
-          </Link>
-        </div>
+        {/* All three pillars — 3-col on desktop, stacked on mobile */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
-        {/* Accumulate + Activate — 2-col grid */}
-        <div className="grid grid-cols-2 gap-4">
+          {/* Aggregate */}
+          <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-csl-dark shadow-sm p-4 sm:p-5 flex flex-col">
+            <div className="flex items-center gap-2 mb-2 sm:mb-3">
+              <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-csl-light flex items-center justify-center text-csl-dark text-sm sm:text-base leading-none">
+                &#128717;
+              </div>
+              <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-csl-dark leading-none">
+                Aggregate
+              </p>
+            </div>
+            <div className="hidden sm:grid grid-cols-2 gap-2 mb-3">
+              <div className="bg-csl-light rounded-lg px-3 py-2.5 text-center">
+                <p className="text-xl font-black leading-none text-csl-dark">{activeCount.toLocaleString()}</p>
+                <p className="text-[0.6rem] font-bold uppercase tracking-wider text-csl-dark/60 mt-1">Members</p>
+              </div>
+              <div className="bg-csl-light rounded-lg px-3 py-2.5 text-center">
+                <p className="text-xl font-black leading-none text-csl-dark">{sharesNum > 0 ? sharesNum.toLocaleString() : "-"}</p>
+                <p className="text-[0.6rem] font-bold uppercase tracking-wider text-csl-dark/60 mt-1">Shares Held</p>
+              </div>
+            </div>
+            <h4 className="hidden sm:block font-bold text-gray-900 text-sm mb-1 leading-tight">
+              Assign Your Proxy Vote
+            </h4>
+            <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-3 leading-relaxed">
+              Authorise CSL to vote on your behalf at Celtic FC general meetings. Every proxy
+              strengthens our mandate at the boardroom table.
+            </p>
+            <Link
+              href="/proxy"
+              className="mt-auto inline-flex items-center justify-center px-3 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors min-h-[44px]"
+            >
+              Assign proxy vote &#8594;
+            </Link>
+          </div>
 
           {/* Accumulate */}
           <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-csl-mid shadow-sm p-4 sm:p-5 flex flex-col">
