@@ -596,6 +596,15 @@ so the limit is not detectable by a caller. Resets on cold starts; best-effort d
 Test card hint ("Test mode: use card 4242 4242 4242 4242") removed from the checkout summary
 panel in `app/membership/MembershipPlans.tsx` — text was visible to all public visitors.
 
+**Phase 13 — Intake notification emails**
+`lib/resend.ts` gains `sendShareTracingNotification()` and `sendProxyNotification()`, both
+accepting `{ name, email, message, submittedAt }`. Shared `intakeHtml()` helper produces a
+simple HTML body with submitter details and a Supabase login prompt. Both send to
+`info@celticsupporters.net`. Missing `RESEND_API_KEY` is handled gracefully — logs and
+returns, never throws. Called fire-and-forget (IIFE with try/catch) in
+`app/api/share-tracing/route.ts` and `app/api/proxy/route.ts` immediately after the
+successful Supabase insert — a failed notification never blocks the form response.
+
 ## Document Library
 
 - **Route:** `/member-portal/documents` — members only (middleware auth guard)
