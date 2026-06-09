@@ -589,6 +589,13 @@ standalone route; active state via usePathname). Unauthenticated access redirect
 middleware. Drive URL transformation: `.../view?usp=...` -> `.../preview` at render time only;
 `drive_url` in DB stores the standard shareable link unchanged.
 
+**Phase 12 — Security hardening (architecture review P1 fixes)**
+Rate limiter added to `POST /api/auth/reset-password`: 3 requests per IP per 15 minutes.
+On breach the endpoint returns `200 { sent: true }` (identical to the legitimate response)
+so the limit is not detectable by a caller. Resets on cold starts; best-effort deterrent only.
+Test card hint ("Test mode: use card 4242 4242 4242 4242") removed from the checkout summary
+panel in `app/membership/MembershipPlans.tsx` — text was visible to all public visitors.
+
 ## Document Library
 
 - **Route:** `/member-portal/documents` — members only (middleware auth guard)
