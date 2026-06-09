@@ -454,6 +454,16 @@ function DashboardTab({
                 Authorise CSL to vote on your behalf at Celtic FC general meetings. Every proxy
                 strengthens our mandate at the boardroom table.
               </p>
+              <div className="grid grid-cols-2 gap-3 mb-4 max-w-xs">
+                <div className="bg-white/10 rounded-lg px-3 py-2.5 text-center">
+                  <p className="text-xl font-black leading-none">{activeCount.toLocaleString()}</p>
+                  <p className="text-[0.6rem] font-bold uppercase tracking-wider text-white/60 mt-1">Members</p>
+                </div>
+                <div className="bg-white/10 rounded-lg px-3 py-2.5 text-center">
+                  <p className="text-xl font-black leading-none">{sharesNum > 0 ? sharesNum.toLocaleString() : "-"}</p>
+                  <p className="text-[0.6rem] font-bold uppercase tracking-wider text-white/60 mt-1">Shares Held</p>
+                </div>
+              </div>
               <Link
                 href="/proxy"
                 className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-bold bg-white text-csl-dark hover:bg-csl-light transition-colors min-h-[44px]"
@@ -546,31 +556,6 @@ function DashboardTab({
         </div>
       </div>
 
-      {/* Collective impact — scoreboard */}
-      {(() => {
-        const stats = [
-          { label: "Members",            value: activeCount.toLocaleString() },
-          { label: "Shares Represented", value: sharesNum > 0 ? sharesNum.toLocaleString() : "-" },
-          ...(proxyCount > 0 ? [{ label: "Proxies Held", value: proxyCount.toLocaleString() }] : []),
-        ];
-        return (
-          <div>
-            <p className="text-[0.65rem] font-black uppercase tracking-[0.15em] text-gray-400 mb-3">
-              Collective Impact
-            </p>
-            <div className={`grid gap-3 ${stats.length === 3 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
-              {stats.map(({ label, value }) => (
-                <div key={label} className="bg-csl-dark text-white rounded-xl p-4 sm:p-5 text-center shadow-sm">
-                  <p className="text-2xl sm:text-3xl font-black leading-none tracking-tight">{value}</p>
-                  <p className="text-[0.6rem] sm:text-[0.65rem] font-bold mt-2 text-white/70 uppercase tracking-wider leading-tight">
-                    {label}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Latest Documents */}
       {documents.length > 0 && (
