@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   const { data: member } = await getSupabase()
     .from("members")
     .select("stripe_customer_id")
-    .eq("email", user.email)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (!member?.stripe_customer_id) {

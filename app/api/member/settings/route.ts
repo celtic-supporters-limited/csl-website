@@ -23,7 +23,7 @@ export async function PATCH(req: NextRequest) {
   const { error: dbError } = await getSupabase()
     .from("members")
     .update({ name })
-    .eq("email", user.email);
+    .eq("user_id", user.id);
 
   if (dbError) {
     console.error("[member/settings] update error:", dbError.message);

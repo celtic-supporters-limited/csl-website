@@ -21,7 +21,7 @@ export default async function EditDocumentPage({
   const { data: member } = await db
     .from("members")
     .select("first_name, last_name, name, membership_tier, plan_name, status, is_admin")
-    .eq("email", user.email)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (!member?.is_admin) redirect("/member-portal");

@@ -35,7 +35,7 @@ async function verifyAdmin() {
   const { data: member } = await db
     .from("members")
     .select("is_admin")
-    .eq("email", user.email)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (!member?.is_admin) return { user: null, error: "Forbidden", status: 403 };
