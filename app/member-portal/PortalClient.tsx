@@ -42,7 +42,11 @@ export type PortalDocument = {
 };
 
 export type GovernanceCriterion = {
+  id: number;
+  tier: number;
+  demand: string;
   status: string;
+  commentary: string | null;
   last_reviewed: string | null;
 };
 
@@ -254,6 +258,18 @@ function useBillingPortal() {
 
 // ── Dashboard tab ─────────────────────────────────────────────────────────────
 
+const TIER_LABEL: Record<number, string> = {
+  1: "Tier 1 — Immediate Actions",
+  2: "Tier 2 — Medium-term Actions",
+  3: "Tier 3 — Structural Changes",
+};
+
+const GOV_STATUS: Record<string, { label: string; className: string }> = {
+  green: { label: "Met",     className: "bg-green-100 text-green-800" },
+  amber: { label: "Partial", className: "bg-amber-100 text-amber-800" },
+  red:   { label: "Not Met", className: "bg-red-100 text-red-800"    },
+};
+
 const DOC_BADGE: Record<string, string> = {
   "Meeting Minutes":    "bg-blue-100 text-blue-800",
   "Research & Papers":  "bg-purple-100 text-purple-800",
@@ -323,9 +339,9 @@ function DashboardTab({
 
   const latestTracing = cases.find((c) => c.case_type === "Share Tracing") ?? null;
 
-  const metCount     = governanceCriteria.filter((c) => c.status === "Met").length;
-  const partialCount = governanceCriteria.filter((c) => c.status === "Partial").length;
-  const notMetCount  = governanceCriteria.filter((c) => c.status === "Not Met").length;
+  const metCount     = governanceCriteria.filter((c) => c.status === "green").length;
+  const partialCount = governanceCriteria.filter((c) => c.status === "amber").length;
+  const notMetCount  = governanceCriteria.filter((c) => c.status === "red").length;
   const lastReviewed = governanceCriteria
     .map((c) => c.last_reviewed)
     .filter(Boolean)
@@ -435,8 +451,8 @@ function DashboardTab({
           Your Actions
         </p>
 
-        {/* All three pillars — 3-col on desktop, stacked on mobile */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Aggregate + Accumulate — 2-col on desktop, stacked on mobile */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
 
           {/* Aggregate */}
           <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-csl-dark shadow-sm p-4 sm:p-5 flex flex-col">
@@ -505,9 +521,13 @@ function DashboardTab({
             </Link>
           </div>
 
-          {/* Activate */}
-          <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-csl-gold shadow-sm p-4 sm:p-5 flex flex-col">
-            <div className="flex items-center gap-2 mb-2 sm:mb-3">
+        </div>
+
+        {/* Activate — full-width governance scorecard */}
+        <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-csl-gold shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="p-4 sm:p-5 border-b border-gray-100">
+            <div className="flex items-center gap-2 mb-3">
               <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-csl-light flex items-center justify-center text-csl-dark text-sm sm:text-base leading-none">
                 &#128202;
               </div>
@@ -515,40 +535,72 @@ function DashboardTab({
                 Activate
               </p>
             </div>
-            <h4 className="hidden sm:block font-bold text-gray-900 text-sm mb-1 leading-tight">
-              Accountability Score
+            <h4 className="font-bold text-gray-900 text-sm mb-3 leading-tight">
+              Celtic FC Accountability Score
             </h4>
             {governanceCriteria.length > 0 && (
-              <div className="hidden sm:block flex-1 mb-3">
-                <p className="text-xs text-gray-500 leading-relaxed mb-2">
-                  Celtic FC currently meets {metCount} of CSL&apos;s 12 governance criteria.
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
-                    &#9679; {metCount} Met
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                    &#9679; {partialCount} Partial
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
-                    &#9679; {notMetCount} Not Met
-                  </span>
-                </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100 text-green-800 text-sm font-semibold">
+                  <span className="font-bold tabular-nums">{metCount}</span> Met
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-800 text-sm font-semibold">
+                  <span className="font-bold tabular-nums">{partialCount}</span> Partial
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-100 text-red-800 text-sm font-semibold">
+                  <span className="font-bold tabular-nums">{notMetCount}</span> Not Met
+                </span>
+                <span className="text-gray-400 text-sm">out of 12 demands</span>
                 {lastReviewed && (
-                  <p className="text-[0.65rem] text-gray-400 mt-1.5">
-                    Updated {formatDate(lastReviewed)}
-                  </p>
+                  <span className="text-gray-400 text-xs ml-auto">
+                    Last reviewed: {formatDate(lastReviewed)}
+                  </span>
                 )}
               </div>
             )}
-            <Link
-              href="/governance"
-              className="mt-auto inline-flex items-center justify-center px-3 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors min-h-[44px]"
-            >
-              View scorecard &#8594;
-            </Link>
           </div>
 
+          {/* Criteria by tier */}
+          {governanceCriteria.length > 0 && (
+            <div className="p-4 sm:p-5 space-y-5">
+              {([1, 2, 3] as const).map((tier) => {
+                const tierCriteria = governanceCriteria.filter((c) => c.tier === tier);
+                if (tierCriteria.length === 0) return null;
+                return (
+                  <div key={tier}>
+                    <p className="text-[0.7rem] font-bold uppercase tracking-wider text-csl-dark mb-2.5 pb-2 border-b border-gray-200">
+                      {TIER_LABEL[tier]}
+                    </p>
+                    <div className="space-y-2.5">
+                      {tierCriteria.map((criterion) => {
+                        const s = GOV_STATUS[criterion.status] ?? { label: criterion.status, className: "bg-gray-100 text-gray-600" };
+                        return (
+                          <div key={criterion.id} className="flex items-start gap-2.5">
+                            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-csl-dark text-white text-[0.6rem] font-bold flex items-center justify-center mt-0.5">
+                              {criterion.id}
+                            </span>
+                            <p className="text-xs text-gray-700 flex-1 leading-relaxed">{criterion.demand}</p>
+                            <span className={`flex-shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${s.className}`}>
+                              {s.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* CTA */}
+          <div className="px-4 sm:px-5 pb-4 sm:pb-5">
+            <Link
+              href="/governance"
+              className="inline-flex items-center justify-center w-full px-3 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors min-h-[44px]"
+            >
+              View full scorecard &#8594;
+            </Link>
+          </div>
         </div>
       </div>
 
