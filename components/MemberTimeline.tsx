@@ -8,6 +8,7 @@ export type TimelineEntry = {
   type: string;
   label: string;
   detail: string;
+  isTest?: boolean;
 };
 
 type MemberSummary = {
@@ -46,8 +47,8 @@ function toPlainText(member: MemberSummary, entries: TimelineEntry[]): string {
   ];
   for (const e of entries) {
     const ts = formatDate(e.timestamp).padEnd(22);
-    const label = e.label.padEnd(32);
-    const row = `${ts}  ${label}  ${e.detail}`.trimEnd();
+    const label = (e.isTest ? "[TEST] " : "") + e.label;
+    const row = `${ts}  ${label.padEnd(32)}  ${e.detail}`.trimEnd();
     lines.push(row);
   }
   lines.push("-".repeat(72));
@@ -65,16 +66,20 @@ function toCsv(entries: TimelineEntry[]): string {
 
 export default function MemberTimeline({ member, entries }: Props) {
   const [copied, setCopied] = useState(false);
+  const [showTest, setShowTest] = useState(false);
+
+  const hasTestEvents = entries.some((e) => e.isTest);
+  const visible = showTest ? entries : entries.filter((e) => !e.isTest);
 
   function handleCopy() {
-    navigator.clipboard.writeText(toPlainText(member, entries)).then(() => {
+    navigator.clipboard.writeText(toPlainText(member, visible)).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
   }
 
   function handleExportCsv() {
-    const blob = new Blob([toCsv(entries)], { type: "text/csv" });
+    const blob = new Blob([toCsv(visible)], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -117,8 +122,8 @@ export default function MemberTimeline({ member, entries }: Props) {
         </div>
       </div>
 
-      {/* Export actions */}
-      <div className="flex gap-2 mb-5">
+      {/* Export actions + test toggle */}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
         <button
           onClick={handleCopy}
           className="text-sm px-3 py-1.5 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
@@ -131,10 +136,21 @@ export default function MemberTimeline({ member, entries }: Props) {
         >
           Export CSV
         </button>
+        {hasTestEvents && (
+          <label className="ml-2 flex items-center gap-1.5 text-sm text-gray-500 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showTest}
+              onChange={(e) => setShowTest(e.target.checked)}
+              className="rounded border-gray-300 text-csl-dark focus:ring-csl-dark"
+            />
+            Show test events
+          </label>
+        )}
       </div>
 
       {/* Timeline table */}
-      {entries.length === 0 ? (
+      {visible.length === 0 ? (
         <p className="text-sm text-gray-500">No events recorded for this member yet.</p>
       ) : (
         <div className="overflow-x-auto">
@@ -147,13 +163,21 @@ export default function MemberTimeline({ member, entries }: Props) {
               </tr>
             </thead>
             <tbody>
-              {entries.map((e) => (
-                <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50">
+              {visible.map((e) => (
+                <tr
+                  key={e.id}
+                  className={`border-b border-gray-100 hover:bg-gray-50 ${e.isTest ? "opacity-60" : ""}`}
+                >
                   <td className="py-2 pr-6 font-mono text-xs text-gray-400 whitespace-nowrap">
                     {formatDate(e.timestamp)}
                   </td>
                   <td className="py-2 pr-6 font-medium text-gray-900 whitespace-nowrap">
                     {e.label}
+                    {e.isTest && (
+                      <span className="ml-2 text-xs font-normal bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                        TEST
+                      </span>
+                    )}
                   </td>
                   <td className="py-2 text-gray-600">{e.detail}</td>
                 </tr>

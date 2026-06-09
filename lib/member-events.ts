@@ -7,6 +7,7 @@ export async function logMemberEvent({
   detail,
   stripeEventId,
   eventEmail,
+  isTest = false,
 }: {
   memberId?: string | null;
   memberEmail?: string | null;
@@ -14,6 +15,7 @@ export async function logMemberEvent({
   detail?: Record<string, unknown>;
   stripeEventId?: string | null;
   eventEmail?: string | null;
+  isTest?: boolean;
 }): Promise<void> {
   const db = getSupabase();
 
@@ -35,6 +37,7 @@ export async function logMemberEvent({
     detail: detail ?? null,
     stripe_event_id: stripeEventId ?? null,
     event_email: eventEmail ?? null,
+    is_test: isTest,
   });
 
   if (error) {

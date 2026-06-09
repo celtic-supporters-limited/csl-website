@@ -145,7 +145,7 @@ export default async function AdminMembersPage({
     const [eventsResult, casesResult] = await Promise.all([
       db
         .from("member_events")
-        .select("id, event_type, detail, event_email, created_at")
+        .select("id, event_type, detail, event_email, created_at, is_test")
         .eq("member_id", target.id)
         .order("created_at", { ascending: false })
         .limit(100),
@@ -179,6 +179,7 @@ export default async function AdminMembersPage({
           ev.event_type,
           (ev.detail ?? null) as Record<string, unknown> | null
         ),
+        isTest: ev.is_test ?? false,
       });
     }
 

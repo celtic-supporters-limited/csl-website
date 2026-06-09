@@ -83,6 +83,9 @@ export async function POST(req: NextRequest) {
   // ── 3. Event handling ─────────────────────────────────────────────────────
 
   const db = getSupabase();
+  // Events generated while using a Stripe test key are marked is_test = true
+  // so they can be filtered out of production support timelines.
+  const isTestMode = process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ?? false;
 
   try {
     switch (event.type) {
@@ -185,6 +188,7 @@ export async function POST(req: NextRequest) {
           detail: { plan_name: planName, membership_tier: tier, amount_pence: session.amount_total ?? 0 },
           stripeEventId: event.id,
           eventEmail: email,
+          isTest: isTestMode,
         }).catch((err) => console.error("[stripe-webhook] Event log error (checkout.completed):", err));
 
         // Welcome email: fire-and-forget, never block or throw
@@ -249,6 +253,7 @@ export async function POST(req: NextRequest) {
             detail: { amount_pence: invoice.amount_paid ?? 0, membership_tier: tier },
             stripeEventId: event.id,
             eventEmail: paidMember?.email ?? null,
+            isTest: isTestMode,
           }).catch((err) => console.error("[stripe-webhook] Event log error (invoice.paid):", err));
         }
         break;
@@ -287,6 +292,7 @@ export async function POST(req: NextRequest) {
             eventType: "payment.failed",
             stripeEventId: event.id,
             eventEmail: member.email,
+            isTest: isTestMode,
           }).catch((err) => console.error("[stripe-webhook] Event log error (payment.failed):", err));
 
           try {
@@ -367,6 +373,7 @@ export async function POST(req: NextRequest) {
             eventType: "subscription.cancelled",
             stripeEventId: event.id,
             eventEmail: cancelledMember?.email ?? null,
+            isTest: isTestMode,
           }).catch((err) => console.error("[stripe-webhook] Event log error (subscription.cancelled):", err));
         }
         break;
