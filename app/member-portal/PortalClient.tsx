@@ -1092,14 +1092,15 @@ function EditProfileTab({
               {userEmail}
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              Email cannot be changed here. Contact{" "}
+              Your email address is your login credential and is linked to your payment record.
+              To change it, contact{" "}
               <a
                 href="mailto:membership@celticsupporters.net"
                 className="text-csl-dark hover:underline"
               >
                 membership@celticsupporters.net
               </a>{" "}
-              if you need to update it.
+              and a volunteer will update it for you.
             </p>
           </div>
 
