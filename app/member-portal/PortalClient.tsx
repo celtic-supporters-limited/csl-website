@@ -323,10 +323,11 @@ function DashboardTab({
     ? Math.round((agmDateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
-  const latestProxy   = cases.find((c) => c.case_type === "Proxy Assignment") ?? null;
-  const latestTracing = cases.find((c) => c.case_type === "Share Tracing")    ?? null;
+  const latestTracing = cases.find((c) => c.case_type === "Share Tracing") ?? null;
 
   const metCount     = governanceCriteria.filter((c) => c.status === "Met").length;
+  const partialCount = governanceCriteria.filter((c) => c.status === "Partial").length;
+  const notMetCount  = governanceCriteria.filter((c) => c.status === "Not Met").length;
   const lastReviewed = governanceCriteria
     .map((c) => c.last_reviewed)
     .filter(Boolean)
@@ -453,14 +454,6 @@ function DashboardTab({
                 Authorise CSL to vote on your behalf at Celtic FC general meetings. Every proxy
                 strengthens our mandate at the boardroom table.
               </p>
-              {latestProxy && (
-                <div className="hidden sm:block mb-4 p-3 rounded-lg bg-white/10 border border-white/10">
-                  <p className="text-xs text-white/50 mb-1.5">
-                    Submitted {formatDate(latestProxy.created_at)}
-                  </p>
-                  <CaseStatusBadge status={latestProxy.status} />
-                </div>
-              )}
               <Link
                 href="/proxy"
                 className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-bold bg-white text-csl-dark hover:bg-csl-light transition-colors min-h-[44px]"
@@ -521,11 +514,22 @@ function DashboardTab({
             </h4>
             {governanceCriteria.length > 0 && (
               <div className="hidden sm:block flex-1 mb-3">
-                <p className="text-xs text-gray-500 leading-relaxed">
+                <p className="text-xs text-gray-500 leading-relaxed mb-2">
                   Celtic FC currently meets {metCount} of CSL&apos;s 12 governance criteria.
                 </p>
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+                    &#9679; {metCount} Met
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                    &#9679; {partialCount} Partial
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                    &#9679; {notMetCount} Not Met
+                  </span>
+                </div>
                 {lastReviewed && (
-                  <p className="text-[0.65rem] text-gray-400 mt-1">
+                  <p className="text-[0.65rem] text-gray-400 mt-1.5">
                     Updated {formatDate(lastReviewed)}
                   </p>
                 )}
