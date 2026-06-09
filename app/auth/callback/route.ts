@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
           // the change was initiated from the Edit Profile tab.
           const { data: memberRow, error: lookupErr } = await db
             .from("members")
-            .select("id, stripe_customer_id")
+            .select("id, email, stripe_customer_id")
             .eq("pending_email", newEmail)
             .maybeSingle();
 
@@ -58,6 +58,8 @@ export async function GET(request: NextRequest) {
               lookupErr.message
             );
           } else if (memberRow) {
+            const previousEmail = memberRow.email;
+
             // Update members.email and clear pending_email
             const { error: updateErr } = await db
               .from("members")
@@ -92,6 +94,26 @@ export async function GET(request: NextRequest) {
                     `${memberRow.stripe_customer_id} email not updated to ${newEmail}. ` +
                     `Manual fix required.`,
                   stripeErr
+                );
+              }
+            }
+
+            // Update shareholder_cases so enquiries remain visible after email change
+            if (previousEmail && previousEmail !== newEmail) {
+              const { error: casesErr } = await db
+                .from("shareholder_cases")
+                .update({ email: newEmail })
+                .eq("email", previousEmail);
+
+              if (casesErr) {
+                console.error(
+                  `[auth/callback] CASES EMAIL SYNC FAILURE — shareholder_cases with ` +
+                    `email=${previousEmail} not updated to ${newEmail}. Manual fix required.`,
+                  casesErr
+                );
+              } else {
+                console.log(
+                  `[auth/callback] email_change: shareholder_cases updated from ${previousEmail} to ${newEmail}`
                 );
               }
             }
