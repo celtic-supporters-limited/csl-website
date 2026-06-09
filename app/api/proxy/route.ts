@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { findOrCreateZohoContact, createZohoCase } from "@/lib/zoho";
+import { sendProxyNotification } from "@/lib/resend";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -111,6 +112,20 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+
+  // Notification email: fire-and-forget, never block or throw
+  (async () => {
+    try {
+      await sendProxyNotification({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        message: notes,
+        submittedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("[proxy] Notification email error (non-blocking):", err);
+    }
+  })();
 
   // Zoho: fire-and-forget, never block or throw
   (async () => {
