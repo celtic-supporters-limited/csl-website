@@ -98,6 +98,7 @@ type Props = {
   sharesRepresented: string;
   proxyCount: number;
   initialTab?: string;
+  emailUpdated?: boolean;
 };
 
 type Tab =
@@ -978,9 +979,11 @@ const FAN_STATUS_OPTIONS = [
 function EditProfileTab({
   member,
   userEmail,
+  emailUpdated,
 }: {
   member: Member | null;
   userEmail: string;
+  emailUpdated?: boolean;
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState(member?.first_name ?? "");
@@ -989,22 +992,29 @@ function EditProfileTab({
   const [countryIso, setCountryIso] = useState(parsedPhone.iso);
   const [localPhone, setLocalPhone] = useState(parsedPhone.local);
   const [fanStatus, setFanStatus] = useState(member?.fan_status ?? "");
-  const [contactEmail, setContactEmail] = useState(
-    member?.contact_email ?? true
-  );
+  const [contactEmail, setContactEmail] = useState(member?.contact_email ?? true);
   const [contactSms, setContactSms] = useState(member?.contact_sms ?? false);
-  const [contactTelephone, setContactTelephone] = useState(
-    member?.contact_telephone ?? false
-  );
+  const [contactTelephone, setContactTelephone] = useState(member?.contact_telephone ?? false);
+  const [newEmail, setNewEmail] = useState(userEmail);
+  const [emailPending, setEmailPending] = useState<string | null>(null);
+  const [emailSuccessBanner, setEmailSuccessBanner] = useState(emailUpdated ?? false);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    if (emailSuccessBanner) {
+      const t = setTimeout(() => setEmailSuccessBanner(false), 5000);
+      return () => clearTimeout(t);
+    }
+  }, [emailSuccessBanner]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setErrorMsg("");
     setSavedMsg("");
+    setEmailPending(null);
 
     const country = PHONE_ALL.find((c) => c.iso === countryIso) ?? PHONE_PRIORITY[0];
     const trimmedLocal = localPhone.trim();
@@ -1015,7 +1025,8 @@ function EditProfileTab({
     }
     const combinedPhone = trimmedLocal ? `${country.dial} ${trimmedLocal}` : "";
 
-    const res = await fetch("/api/profile", {
+    // Save profile fields immediately
+    const profileRes = await fetch("/api/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1029,21 +1040,96 @@ function EditProfileTab({
       }),
     });
 
-    setSaving(false);
-
-    if (!res.ok) {
-      const data = await res.json();
+    if (!profileRes.ok) {
+      const data = await profileRes.json();
       setErrorMsg(data.error ?? "Failed to save changes.");
+      setSaving(false);
+      return;
+    }
+
+    // Email change — separate confirmation flow
+    const trimmedNewEmail = newEmail.trim().toLowerCase();
+    if (trimmedNewEmail && trimmedNewEmail !== userEmail) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedNewEmail)) {
+        setErrorMsg("Please enter a valid email address.");
+        setSaving(false);
+        return;
+      }
+
+      const supabase = createBrowserSupabase();
+      const siteUrl =
+        process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
+        window.location.origin;
+      const { error: updateErr } = await supabase.auth.updateUser(
+        { email: trimmedNewEmail },
+        { emailRedirectTo: `${siteUrl}/auth/callback?type=email_change` }
+      );
+
+      if (updateErr) {
+        const alreadyInUse =
+          updateErr.message.toLowerCase().includes("already registered") ||
+          updateErr.message.toLowerCase().includes("already in use") ||
+          updateErr.message.toLowerCase().includes("user_already_exists") ||
+          updateErr.message.toLowerCase().includes("email address is already");
+        setErrorMsg(
+          alreadyInUse
+            ? "That email address is already associated with a CSL account."
+            : updateErr.message
+        );
+        setSaving(false);
+        return;
+      }
+
+      // Store pending email so the auth callback can find this members row
+      await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pending_email: trimmedNewEmail }),
+      });
+
+      setEmailPending(trimmedNewEmail);
+      setSaving(false);
+      router.refresh();
       return;
     }
 
     setSavedMsg("Profile updated.");
+    setSaving(false);
     router.refresh();
     setTimeout(() => setSavedMsg(""), 3000);
   }
 
   return (
     <div className="space-y-5">
+      {emailSuccessBanner && (
+        <div className="flex items-start justify-between gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+          <span>Your email address has been updated successfully.</span>
+          <button
+            type="button"
+            onClick={() => setEmailSuccessBanner(false)}
+            className="flex-shrink-0 text-green-600 hover:text-green-800 font-bold leading-none"
+            aria-label="Dismiss"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+      {emailPending && (
+        <div className="flex items-start justify-between gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+          <span>
+            Confirmation sent to <strong>{emailPending}</strong>. Your login email will update
+            once you click the link in that email. Until then your current email remains active.
+          </span>
+          <button
+            type="button"
+            onClick={() => setEmailPending(null)}
+            className="flex-shrink-0 text-blue-600 hover:text-blue-800 font-bold leading-none"
+            aria-label="Dismiss"
+          >
+            &times;
+          </button>
+        </div>
+      )}
       <Card>
         <h3 className="font-bold text-gray-900 mb-5">Edit Profile</h3>
         <form onSubmit={handleSave} className="space-y-4">
@@ -1085,22 +1171,27 @@ function EditProfileTab({
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+            <label
+              htmlFor="email-address"
+              className="block text-sm font-semibold text-gray-700 mb-1.5"
+            >
               Email address
             </label>
-            <p className="text-[0.95rem] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5">
-              {userEmail}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              Email cannot be changed here. Contact{" "}
-              <a
-                href="mailto:membership@celticsupporters.net"
-                className="text-csl-dark hover:underline"
-              >
-                membership@celticsupporters.net
-              </a>{" "}
-              if you need to update it.
-            </p>
+            <input
+              id="email-address"
+              type="email"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              disabled={saving}
+              autoComplete="email"
+              className={inputCls}
+            />
+            {newEmail.trim().toLowerCase() !== userEmail && newEmail.trim() !== "" && (
+              <p className="text-xs text-amber-700 mt-1">
+                Changing your email will send a confirmation link to the new address. Your
+                current email remains active until you confirm.
+              </p>
+            )}
           </div>
 
           <div>
@@ -1265,6 +1356,7 @@ export default function PortalClient({
   agmDate,
   sharesRepresented,
   initialTab,
+  emailUpdated,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>(
     VALID_TABS.has(initialTab as Tab) ? (initialTab as Tab) : "dashboard"
@@ -1514,7 +1606,7 @@ export default function PortalClient({
                 <EnquiriesTab cases={cases} />
               )}
               {activeTab === "profile" && (
-                <EditProfileTab member={member} userEmail={user.email} />
+                <EditProfileTab member={member} userEmail={user.email} emailUpdated={emailUpdated} />
               )}
             </div>
           </div>
