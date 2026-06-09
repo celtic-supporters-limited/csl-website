@@ -327,8 +327,6 @@ function DashboardTab({
   const latestTracing = cases.find((c) => c.case_type === "Share Tracing")    ?? null;
 
   const metCount     = governanceCriteria.filter((c) => c.status === "Met").length;
-  const partialCount = governanceCriteria.filter((c) => c.status === "Partial").length;
-  const notMetCount  = governanceCriteria.filter((c) => c.status === "Not Met").length;
   const lastReviewed = governanceCriteria
     .map((c) => c.last_reviewed)
     .filter(Boolean)
