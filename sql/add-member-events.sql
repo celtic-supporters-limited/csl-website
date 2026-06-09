@@ -43,3 +43,33 @@ create policy "Admins can read member_events"
       and    members.is_admin = true
     )
   );
+
+-- ── Auth event lookup ─────────────────────────────────────────────────────────
+-- security definer + search_path = auth lets the function read auth.audit_log_entries.
+-- execute is restricted to service_role only — never callable from anon or authenticated keys.
+-- Called via: getSupabase().rpc("get_member_auth_events", { p_user_id: member.user_id })
+create or replace function public.get_member_auth_events(p_user_id uuid)
+returns table (
+  id         uuid,
+  action     text,
+  ip_address varchar,
+  created_at timestamptz
+)
+language sql
+security definer
+set search_path = auth, public
+as $$
+  select
+    id,
+    (payload->>'action')::text as action,
+    ip_address,
+    created_at
+  from auth.audit_log_entries
+  where payload->>'actor_id' = p_user_id::text
+    and payload->>'action' in ('login', 'logout', 'user_updated', 'password_recovery')
+  order by created_at desc
+  limit 100;
+$$;
+
+revoke execute on function public.get_member_auth_events(uuid) from public, anon, authenticated;
+grant  execute on function public.get_member_auth_events(uuid) to service_role;
