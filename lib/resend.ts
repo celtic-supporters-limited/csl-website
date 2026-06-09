@@ -15,6 +15,57 @@ function getResend(): Resend | null {
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://csl-website-ten.vercel.app";
 
+type IntakeNotificationParams = {
+  name: string;
+  email: string;
+  message: string;
+  submittedAt: string;
+};
+
+function intakeHtml({
+  name,
+  email,
+  message,
+  submittedAt,
+}: IntakeNotificationParams): string {
+  return `
+    <p><strong>Name:</strong> ${name}</p>
+    <p><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>
+    ${message ? `<p><strong>Details:</strong><br>${message.replace(/\n/g, "<br>")}</p>` : ""}
+    <p><strong>Submitted:</strong> ${submittedAt}</p>
+    <hr>
+    <p style="color:#666;font-size:0.9em">Log in to Supabase to view the full submission.</p>
+  `;
+}
+
+export async function sendShareTracingNotification(
+  params: IntakeNotificationParams
+): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  await resend.emails.send({
+    from: "CSL Website <info@celticsupporters.net>",
+    to: "info@celticsupporters.net",
+    subject: `New Share Tracing Enquiry - ${params.name}`,
+    html: intakeHtml(params),
+  });
+}
+
+export async function sendProxyNotification(
+  params: IntakeNotificationParams
+): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  await resend.emails.send({
+    from: "CSL Website <info@celticsupporters.net>",
+    to: "info@celticsupporters.net",
+    subject: `New Proxy Assignment Request - ${params.name}`,
+    html: intakeHtml(params),
+  });
+}
+
 export async function sendPaymentFailedEmail(to: string): Promise<void> {
   const resend = getResend();
   if (!resend) return;
