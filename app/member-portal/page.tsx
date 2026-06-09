@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 export default async function MemberPortalPage({
   searchParams,
 }: {
-  searchParams: { tab?: string };
+  searchParams: { tab?: string; email_updated?: string };
 }) {
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -219,6 +219,7 @@ export default async function MemberPortalPage({
       sharesRepresented={sharesRepresented}
       proxyCount={proxyCount}
       initialTab={searchParams.tab}
+      emailUpdated={searchParams.email_updated === "true"}
     />
   );
 }

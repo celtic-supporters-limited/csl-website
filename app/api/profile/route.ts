@@ -53,6 +53,13 @@ export async function PATCH(req: NextRequest) {
     update.contact_sms = body.contact_sms === true;
   if ("contact_telephone" in body)
     update.contact_telephone = body.contact_telephone === true;
+  if ("pending_email" in body) {
+    const pe = typeof body.pending_email === "string" ? body.pending_email.trim().toLowerCase() : "";
+    if (pe && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pe)) {
+      return NextResponse.json({ error: "Invalid email address." }, { status: 400 });
+    }
+    update.pending_email = pe || null;
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "No valid fields provided." }, { status: 400 });
