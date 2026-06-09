@@ -66,6 +66,36 @@ export async function sendProxyNotification(
   });
 }
 
+export async function sendWelcomeEmail({
+  name,
+  email,
+  planName,
+}: {
+  name: string | null;
+  email: string;
+  planName: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const displayName = name ?? "Member";
+
+  await resend.emails.send({
+    from: "CSL Membership <membership@celticsupporters.net>",
+    to: email,
+    subject: "Welcome to Celtic Supporters Limited",
+    html: `
+      <p>Hello ${displayName},</p>
+      <p>Thank you for joining Celtic Supporters Limited. Your membership is now active.</p>
+      <p><strong>Your plan:</strong> ${planName}</p>
+      <p>You can log in to your member portal at any time to manage your membership, view documents, and track your enquiries:</p>
+      <p><a href="${SITE_URL}/member-portal">${SITE_URL}/member-portal</a></p>
+      <p>Together we are building the shareholder voice Celtic FC needs.</p>
+      <p>Celtic Supporters Limited</p>
+    `,
+  });
+}
+
 export async function sendPaymentFailedEmail(to: string): Promise<void> {
   const resend = getResend();
   if (!resend) return;
