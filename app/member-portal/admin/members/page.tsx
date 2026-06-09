@@ -139,7 +139,7 @@ export default async function AdminMembersPage({
   // ── Timeline fetch (only when exactly one result) ────────────────────────
 
   const target = results.length === 1 ? results[0] : null;
-  let entries: TimelineEntry[] = [];
+  const entries: TimelineEntry[] = [];
 
   if (target) {
     const [eventsResult, casesResult] = await Promise.all([
