@@ -138,7 +138,11 @@ Run migrations in Supabase Dashboard > SQL Editor. Files in `sql/` directory.
 
 ```sql
 -- Members enrolled after successful Stripe payment
--- Migration: sql/phase-5-schema.sql + sql/phase-5b-schema.sql
+-- Migrations: sql/phase-5-schema.sql, sql/phase-5b-schema.sql,
+--             sql/add-is-admin-column.sql, sql/add-payment-failed-at.sql,
+--             sql/add-pending-email.sql, sql/add-user-id-to-members.sql,
+--             sql/rls-members-user-id.sql
+-- RLS: SELECT and UPDATE use auth.uid() = user_id (set by rls-members-user-id.sql)
 members (
   id                     uuid primary key default gen_random_uuid(),
   email                  text unique not null,
@@ -156,7 +160,11 @@ members (
   fan_status             text,      -- 'Season Ticket' | 'Away Member' | 'Home Only' | 'Supporter (no match)'
   contact_email          boolean default true,
   contact_sms            boolean default false,
-  contact_telephone      boolean default false
+  contact_telephone      boolean default false,
+  is_admin               boolean default false,
+  payment_failed_at      timestamptz,                     -- set on invoice.payment_failed; cleared on invoice.paid
+  pending_email          text,                            -- set on email change initiation; cleared after confirmation
+  user_id                uuid references auth.users(id)   -- backfilled from auth.users by email; RLS uses auth.uid() = user_id
 )
 
 -- Payments table (legacy — no longer written to or queried by the portal)
@@ -218,6 +226,16 @@ documents (
   members_only  boolean not null default true,
   is_published  boolean not null default false,  -- legacy column
   created_at    timestamptz not null default now()
+)
+
+-- Runtime-editable key/value settings (AGM date, shares represented count, etc.)
+-- Migration: sql/add-site-config.sql
+-- Default values: agm_date=NULL, shares_represented='15000'
+-- RLS: authenticated users can SELECT; no member UPDATE (admin-only via service role)
+site_config (
+  key        text primary key,
+  value      text,
+  updated_at timestamptz not null default now()
 )
 ```
 
@@ -369,6 +387,12 @@ git push origin develop
 3. `sql/add-members-library.sql` — extends `events` with `minutes_url`/`description`; creates `documents` table + RLS; seeds 14th Members Meeting and The Celtic Paradox paper
 4. `sql/add-governance-criteria.sql` — creates `governance_criteria` table + RLS; seeds all 12 demands
 5. `sql/add-document-library-columns.sql` — adds `category`, `drive_url`, `file_type`, `members_only` to `documents`; updates RLS; fixes Celtic Paradox stub URL; seeds April 2026 meeting minutes
+6. `sql/add-is-admin-column.sql` — adds `is_admin boolean default false` to `members`
+7. `sql/add-payment-failed-at.sql` — adds `payment_failed_at timestamptz` to `members`
+8. `sql/add-site-config.sql` — creates `site_config` table + RLS; seeds `agm_date` and `shares_represented`
+9. `sql/add-pending-email.sql` — adds `pending_email text` to `members` (self-service email change)
+10. `sql/add-user-id-to-members.sql` — adds `user_id uuid references auth.users(id)` to `members`; backfills by email match; creates index
+11. `sql/rls-members-user-id.sql` — replaces email-based RLS policies with `auth.uid() = user_id` policies
 
 **Stripe webhook registration:**
 URL: `https://csl-website-ten.vercel.app/api/webhooks/stripe`
@@ -588,6 +612,44 @@ Portal sidebar (`PortalClient.tsx`) gains a "Document Library" Link item (naviga
 standalone route; active state via usePathname). Unauthenticated access redirects to /login via
 middleware. Drive URL transformation: `.../view?usp=...` -> `.../preview` at render time only;
 `drive_url` in DB stores the standard shareable link unchanged.
+
+**Session 2026-06-09 — Self-service email change + user_id alignment**
+
+*PR #8 — Self-service email change (core)*
+Members can change their login email from the Edit Profile tab without contacting a volunteer.
+Flow: `supabase.auth.updateUser({ email, emailRedirectTo })` triggers Supabase to send a
+confirmation email to the new address. `emailRedirectTo` must use `NEXT_PUBLIC_SITE_URL`
+directly — never `window.location.origin` — because Supabase only honours whitelisted redirect
+URLs and preview subdomain URLs are not on that list. On confirmation click, `/auth/callback`
+detects `type=email_change`, looks up the member row by `pending_email`, and performs four
+updates atomically: `members.email`, clears `members.pending_email`, updates the Stripe
+customer email, and bulk-updates `shareholder_cases.email` so My Enquiries remains populated.
+SQL: `sql/add-pending-email.sql`.
+
+*PR #9 — user_id alignment*
+Added `user_id UUID REFERENCES auth.users(id)` to `members`. SQL migration backfills by
+email match. RLS policies replaced with `auth.uid() = user_id`. Portal page tries user_id
+lookup first, falls back to email with `console.warn` for unmigrated rows (safe until Supabase
+confirms the backfill). All portal queries changed from `.eq("email", user.email)` to
+`.eq("user_id", user.id)`. Note: `auth.admin.getUserByEmail()` does not exist in the installed
+`@supabase/auth-js` version — the webhook does not set `user_id` on new members (handled by
+the backfill migration + fallback guard). SQL: `sql/add-user-id-to-members.sql`,
+`sql/rls-members-user-id.sql`.
+
+*PR #10 — Persistent pending banner + enquiry visibility*
+Added `pending_email` to `Member` type. Edit Profile tab shows an amber banner whenever
+`member.pending_email` is non-null (reads from DB — survives page reload). Banner reads:
+"Email change pending. A confirmation link was sent to [address]. Check your inbox..."
+`/auth/callback` updated to capture `previousEmail` before overwriting `members.email`, then
+bulk-updates `shareholder_cases.email` so member enquiries remain visible post-change.
+
+*PR #11 — PATCH response guard + cancel pending change*
+The `pending_email` PATCH was fire-and-forget; now checks response and shows `errorMsg` on
+failure before suppressing the confirmation banner. Added "Cancel pending change" button
+inside the amber banner — PATCHes `{ pending_email: null }`, calls `router.refresh()` on
+success, shows inline `cancelError` on failure. Two new state vars: `cancellingPending`,
+`cancelError`. `/api/profile` already handles `null` correctly via `pe || null` coercion —
+no API changes needed.
 
 **Phase 12 — Security hardening (architecture review P1 fixes)**
 Rate limiter added to `POST /api/auth/reset-password`: 3 requests per IP per 15 minutes.
