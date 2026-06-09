@@ -13,11 +13,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
   }
 
-  const { data: member } = await getSupabase()
+  const db = getSupabase();
+
+  let memberRes = await db
     .from("members")
     .select("stripe_customer_id")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  if (!memberRes.data && !memberRes.error) {
+    memberRes = await db
+      .from("members")
+      .select("stripe_customer_id")
+      .eq("email", user.email)
+      .maybeSingle();
+  }
+
+  const member = memberRes.data;
 
   if (!member?.stripe_customer_id) {
     return NextResponse.json(
