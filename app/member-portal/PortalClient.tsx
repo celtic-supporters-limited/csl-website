@@ -481,7 +481,7 @@ function DashboardTab({
               Trace Your Celtic Shares
             </h4>
             <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-3 leading-relaxed">
-              Reconnect with Celtic FC shares and strengthen the collective voting bloc.
+              Lost your Celtic share certificate? Our team will guide you through reconnecting with your shareholding. Register your interest and we&apos;ll be in touch.
             </p>
             {latestTracing && (
               <div className="hidden sm:block mb-3 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
