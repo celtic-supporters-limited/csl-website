@@ -465,9 +465,9 @@ function DashboardTab({
               )}
               <Link
                 href="/proxy"
-                className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-bold bg-csl-gold text-csl-dark hover:brightness-110 transition-all min-h-[44px]"
+                className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-bold bg-white text-csl-dark hover:bg-csl-light transition-colors min-h-[44px]"
               >
-                {latestProxy ? "Update proxy assignment" : "Assign proxy vote"} &#8594;
+                Assign proxy vote &#8594;
               </Link>
             </div>
           </div>
@@ -490,7 +490,7 @@ function DashboardTab({
               Trace Your Celtic Shares
             </h4>
             <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-3 leading-relaxed">
-              Reconnect with Celtic FC shares and strengthen the collective voting block.
+              Reconnect with Celtic FC shares and strengthen the collective voting bloc.
             </p>
             {latestTracing && (
               <div className="hidden sm:block mb-3 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
@@ -502,13 +502,9 @@ function DashboardTab({
             )}
             <Link
               href="/share-tracing"
-              className={`mt-auto inline-flex items-center justify-center px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors min-h-[44px] ${
-                latestTracing
-                  ? "border border-csl-dark text-csl-dark hover:bg-csl-light"
-                  : "bg-csl-dark text-white hover:bg-csl-mid"
-              }`}
+              className="mt-auto inline-flex items-center justify-center px-3 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors min-h-[44px]"
             >
-              {latestTracing ? "View status" : "Start trace"} &#8594;
+              Trace My Shares &#8594;
             </Link>
           </div>
 
@@ -525,22 +521,13 @@ function DashboardTab({
             <h4 className="hidden sm:block font-bold text-gray-900 text-sm mb-1 leading-tight">
               Accountability Score
             </h4>
-            <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-3 leading-relaxed">
-              Track CSL&apos;s 12-point governance framework and Celtic FC&apos;s response.
-            </p>
             {governanceCriteria.length > 0 && (
-              <div className="hidden sm:flex flex-wrap gap-1.5 mb-3">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
-                  &#9679; {metCount} Met
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                  &#9679; {partialCount} Partial
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
-                  &#9679; {notMetCount} Not Met
-                </span>
+              <div className="hidden sm:block flex-1 mb-3">
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Celtic FC currently meets {metCount} of CSL&apos;s 12 governance criteria.
+                </p>
                 {lastReviewed && (
-                  <p className="text-[0.65rem] text-gray-400 w-full mt-0.5">
+                  <p className="text-[0.65rem] text-gray-400 mt-1">
                     Updated {formatDate(lastReviewed)}
                   </p>
                 )}
