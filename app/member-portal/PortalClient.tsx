@@ -29,6 +29,7 @@ export type Member = {
   contact_telephone: boolean | null;
   is_admin: boolean | null;
   payment_failed_at: string | null;
+  pending_email: string | null;
 };
 
 export type PortalDocument = {
@@ -1111,6 +1112,15 @@ function EditProfileTab({
           >
             &times;
           </button>
+        </div>
+      )}
+      {member?.pending_email && !emailPending && (
+        <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+          <span>
+            <strong>Email change pending.</strong> A confirmation link was sent to{" "}
+            <strong>{member.pending_email}</strong>. Check your inbox and click the link to
+            complete the change. Your current email remains active until then.
+          </span>
         </div>
       )}
       {emailPending && (
