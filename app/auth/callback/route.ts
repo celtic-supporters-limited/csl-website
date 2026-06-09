@@ -8,6 +8,7 @@ import { getStripe } from "@/lib/stripe";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  const type = searchParams.get("type");
   const rawRedirect = searchParams.get("redirectTo") ?? "";
   const redirectTo =
     rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
@@ -35,59 +36,83 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-    if (!error && data.user?.email) {
-      const newEmail = data.user.email;
+    if (!error) {
+      // ── Email change confirmation ───────────────────────────────────────────
+      if (type === "email_change" && data.user?.email) {
+        const newEmail = data.user.email;
 
-      // Detect email change: look for a members row where pending_email matches the
-      // confirmed email. This is set by the portal when updateUser({ email }) is called.
-      try {
-        const db = getSupabase();
-        const { data: memberRow, error: lookupErr } = await db
-          .from("members")
-          .select("id, stripe_customer_id")
-          .eq("pending_email", newEmail)
-          .maybeSingle();
+        try {
+          const db = getSupabase();
 
-        if (lookupErr) {
-          console.error("[auth/callback] pending_email lookup error:", lookupErr.message);
-        } else if (memberRow) {
-          // This is an email change confirmation — update members and Stripe.
-          const { error: updateErr } = await db
+          // Find the member row that was tagged with this pending email when
+          // the change was initiated from the Edit Profile tab.
+          const { data: memberRow, error: lookupErr } = await db
             .from("members")
-            .update({ email: newEmail, pending_email: null })
-            .eq("id", memberRow.id);
+            .select("id, stripe_customer_id")
+            .eq("pending_email", newEmail)
+            .maybeSingle();
 
-          if (updateErr) {
-            console.error("[auth/callback] members email update error:", updateErr.message);
-          }
+          if (lookupErr) {
+            console.error(
+              "[auth/callback] email_change pending_email lookup error:",
+              lookupErr.message
+            );
+          } else if (memberRow) {
+            // Update members.email and clear pending_email
+            const { error: updateErr } = await db
+              .from("members")
+              .update({ email: newEmail, pending_email: null })
+              .eq("id", memberRow.id);
 
-          if (memberRow.stripe_customer_id) {
-            try {
-              await getStripe().customers.update(memberRow.stripe_customer_id, {
-                email: newEmail,
-              });
-            } catch (stripeErr) {
-              // Log prominently — members table and Stripe are now out of sync.
-              // The members.email has been updated but Stripe still has the old email.
-              // Manual fix required: update customer email in Stripe Dashboard.
+            if (updateErr) {
               console.error(
-                `[auth/callback] STRIPE EMAIL SYNC FAILURE — customer ${memberRow.stripe_customer_id} ` +
-                  `email not updated to ${newEmail}. Manual fix required.`,
-                stripeErr
+                "[auth/callback] email_change members update error:",
+                updateErr.message
+              );
+            } else {
+              console.log(
+                `[auth/callback] email_change: members.email updated to ${newEmail}`
               );
             }
-          }
 
-          // Redirect through session-init so csl-auth-alive is set, then to Edit Profile
-          const portalNext = "/member-portal?tab=profile&email_updated=true";
-          const initUrl = `${origin}/auth/session-init?next=${encodeURIComponent(portalNext)}`;
-          return NextResponse.redirect(initUrl);
+            // Update Stripe customer email — log failure prominently, do not throw
+            if (memberRow.stripe_customer_id) {
+              try {
+                await getStripe().customers.update(memberRow.stripe_customer_id, {
+                  email: newEmail,
+                });
+                console.log(
+                  `[auth/callback] email_change: Stripe customer ${memberRow.stripe_customer_id} updated`
+                );
+              } catch (stripeErr) {
+                // members.email has been updated but Stripe still has the old email.
+                // Manual fix: update customer email in Stripe Dashboard.
+                console.error(
+                  `[auth/callback] STRIPE EMAIL SYNC FAILURE — customer ` +
+                    `${memberRow.stripe_customer_id} email not updated to ${newEmail}. ` +
+                    `Manual fix required.`,
+                  stripeErr
+                );
+              }
+            }
+          } else {
+            console.warn(
+              `[auth/callback] email_change: no member found with pending_email=${newEmail}. ` +
+                `members table not updated — check sql/add-pending-email.sql has been run.`
+            );
+          }
+        } catch (dbErr) {
+          console.error("[auth/callback] email_change DB error:", dbErr);
         }
-      } catch (dbErr) {
-        console.error("[auth/callback] email change handling error:", dbErr);
+
+        // Always redirect to the portal Edit Profile tab — the Supabase auth
+        // change succeeded regardless of whether the DB/Stripe updates did.
+        const portalNext = "/member-portal?tab=profile&email_updated=true";
+        const initUrl = `${origin}/auth/session-init?next=${encodeURIComponent(portalNext)}`;
+        return NextResponse.redirect(initUrl);
       }
 
-      // Standard flow: magic link login or password reset
+      // ── Standard flow: magic link login or password reset ──────────────────
       const initUrl = `${origin}/auth/session-init?next=${encodeURIComponent(redirectTo)}`;
       return NextResponse.redirect(initUrl);
     }
