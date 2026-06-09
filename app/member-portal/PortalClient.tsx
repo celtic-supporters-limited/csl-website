@@ -42,7 +42,11 @@ export type PortalDocument = {
 };
 
 export type GovernanceCriterion = {
+  id: number;
+  tier: number;
+  demand: string;
   status: string;
+  commentary: string | null;
   last_reviewed: string | null;
 };
 
@@ -254,6 +258,18 @@ function useBillingPortal() {
 
 // ── Dashboard tab ─────────────────────────────────────────────────────────────
 
+const TIER_LABEL: Record<number, string> = {
+  1: "Tier 1 — Immediate Actions",
+  2: "Tier 2 — Medium-term Actions",
+  3: "Tier 3 — Structural Changes",
+};
+
+const GOV_STATUS: Record<string, { label: string; className: string }> = {
+  green: { label: "Met",     className: "bg-green-100 text-green-800" },
+  amber: { label: "Partial", className: "bg-amber-100 text-amber-800" },
+  red:   { label: "Not Met", className: "bg-red-100 text-red-800"    },
+};
+
 const DOC_BADGE: Record<string, string> = {
   "Meeting Minutes":    "bg-blue-100 text-blue-800",
   "Research & Papers":  "bg-purple-100 text-purple-800",
@@ -273,7 +289,6 @@ function DashboardTab({
   activeCount,
   agmDate,
   sharesRepresented,
-  proxyCount,
 }: {
   member: Member | null;
   cases: PortalCase[];
@@ -284,13 +299,12 @@ function DashboardTab({
   activeCount: number;
   agmDate: string | null;
   sharesRepresented: string;
-  proxyCount: number;
 }) {
   const billingPortal = useBillingPortal();
 
   if (!member) {
     return (
-      <Card>
+      <Card className="shadow-sm">
         <div className="text-center py-8">
           <div className="text-4xl mb-3">&#9752;</div>
           <h3 className="font-bold text-gray-900 mb-2">No active membership found</h3>
@@ -323,12 +337,11 @@ function DashboardTab({
     ? Math.round((agmDateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
-  const latestProxy   = cases.find((c) => c.case_type === "Proxy Assignment") ?? null;
-  const latestTracing = cases.find((c) => c.case_type === "Share Tracing")    ?? null;
+  const latestTracing = cases.find((c) => c.case_type === "Share Tracing") ?? null;
 
-  const metCount     = governanceCriteria.filter((c) => c.status === "Met").length;
-  const partialCount = governanceCriteria.filter((c) => c.status === "Partial").length;
-  const notMetCount  = governanceCriteria.filter((c) => c.status === "Not Met").length;
+  const metCount     = governanceCriteria.filter((c) => c.status === "green").length;
+  const partialCount = governanceCriteria.filter((c) => c.status === "amber").length;
+  const notMetCount  = governanceCriteria.filter((c) => c.status === "red").length;
   const lastReviewed = governanceCriteria
     .map((c) => c.last_reviewed)
     .filter(Boolean)
@@ -338,12 +351,13 @@ function DashboardTab({
   const sharesNum = parseInt(sharesRepresented, 10) || 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
+
       {/* Payment failed banner */}
       {member.status === "payment_failed" && (
-        <div className="rounded-xl border border-red-300 bg-red-50 px-5 py-4">
+        <div className="rounded-xl border border-red-300 bg-red-50 px-5 py-4 shadow-sm">
           <div className="flex gap-3 items-start">
-            <span className="flex-shrink-0 text-red-500 text-lg leading-none mt-0.5">&#9888;</span>
+            <span className="flex-shrink-0 text-red-500 text-xl leading-none mt-0.5">&#9888;</span>
             <div className="flex-1">
               <p className="text-sm font-semibold text-red-800 mb-2">
                 Your last payment failed. Please update your payment details to keep your membership active.
@@ -354,7 +368,7 @@ function DashboardTab({
               <button
                 onClick={billingPortal.open}
                 disabled={billingPortal.loading}
-                className="inline-flex items-center px-4 py-2 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60"
+                className="inline-flex items-center px-4 py-2.5 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60 min-h-[44px]"
               >
                 {billingPortal.loading ? "Opening..." : "Update payment method"}
               </button>
@@ -363,60 +377,39 @@ function DashboardTab({
         </div>
       )}
 
-      {/* Section 1 — Membership status bar */}
-      <div className="bg-white rounded-xl border border-gray-200 px-5 py-3.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-[0.75rem] font-semibold uppercase tracking-wider text-gray-400">
-            Your membership
-          </p>
-          <div className="flex flex-wrap items-center gap-2 mt-0.5">
-            <span className="font-bold text-gray-900 text-sm">{planDisplay(member)}</span>
-            <StatusPill status={member.status} />
-            {showNextRenewal && (
-              <span className="text-xs text-gray-400">
-                &middot; Renews {formatDate(stripeSub!.current_period_end)}
-              </span>
-            )}
-          </div>
-        </div>
-        {!isLifetime && (
-          <div className="flex-shrink-0 flex flex-col items-end gap-1">
-            <button
-              onClick={billingPortal.open}
-              disabled={billingPortal.loading}
-              className="text-xs font-semibold text-csl-dark hover:underline disabled:opacity-60"
-            >
-              {billingPortal.loading ? "Opening..." : "Manage subscription"}
-            </button>
-            {billingPortal.error && member.status !== "payment_failed" && (
-              <p className="text-xs text-red-600">{billingPortal.error}</p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Section 2 — AGM alert banner (only rendered when date is set) */}
+      {/* AGM banner — breaking news treatment, only rendered when date is set */}
       {agmDate && agmDateObj && (
-        <div className="bg-csl-dark text-white rounded-xl px-6 py-5">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="rounded-xl overflow-hidden shadow-md">
+          <div className="bg-csl-gold px-5 py-2 flex items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-csl-dark animate-pulse flex-shrink-0" />
+            <span className="text-[0.6rem] font-black uppercase tracking-[0.15em] text-csl-dark">
+              {daysToGo != null && daysToGo >= 0 && daysToGo <= 60
+                ? daysToGo === 0
+                  ? "Celtic FC AGM — Today"
+                  : `Celtic FC AGM — ${daysToGo} days to go`
+                : "Celtic FC AGM"}
+            </span>
+          </div>
+          <div className="bg-csl-dark text-white px-6 py-5 flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-white/60 mb-1">
-                Celtic FC AGM
-              </p>
-              <p className="text-xl font-extrabold">{formatDate(agmDate)}</p>
+              <p className="text-2xl sm:text-3xl font-extrabold leading-tight">{formatDate(agmDate)}</p>
               {daysToGo != null && daysToGo > 0 && (
-                <p className="text-white/75 text-sm mt-0.5">{daysToGo} days to go</p>
+                <p className="text-white/70 text-sm mt-1.5 max-w-xs">
+                  Assign your proxy vote before the deadline to ensure your voice is counted.
+                </p>
               )}
               {daysToGo === 0 && (
-                <p className="text-csl-gold text-sm font-semibold mt-0.5">Today</p>
+                <p className="text-csl-gold font-bold text-sm mt-1.5">
+                  The AGM is today — it&apos;s not too late to act.
+                </p>
               )}
               {daysToGo != null && daysToGo < 0 && (
-                <p className="text-white/60 text-sm mt-0.5">AGM has taken place</p>
+                <p className="text-white/60 text-sm mt-1.5">The AGM has taken place.</p>
               )}
             </div>
             <Link
               href="/proxy"
-              className="flex-shrink-0 inline-flex items-center px-5 py-2.5 rounded-lg bg-csl-gold text-csl-dark font-bold text-sm hover:brightness-110 transition-all"
+              className="flex-shrink-0 inline-flex items-center px-6 py-3 rounded-lg bg-csl-gold text-csl-dark font-bold text-sm hover:brightness-110 transition-all min-h-[44px]"
             >
               Assign your proxy vote &#8594;
             </Link>
@@ -424,143 +417,211 @@ function DashboardTab({
         </div>
       )}
 
-      {/* Section 3 — Collective impact stats */}
-      {(() => {
-        const stats = [
-          { label: "Members",            value: activeCount.toLocaleString(),                        sub: "holding Celtic accountable" },
-          { label: "Shares Represented", value: sharesNum > 0 ? sharesNum.toLocaleString() : "-",   sub: "votes at the AGM"           },
-          ...(proxyCount > 0 ? [{ label: "Proxy Assignments", value: proxyCount.toLocaleString(), sub: "votes assigned to CSL" }] : []),
-        ];
-        return (
-          <div className={`grid gap-3 ${stats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
-            {stats.map(({ label, value, sub }) => (
-              <div key={label} className="bg-csl-dark text-white rounded-xl p-4 text-center">
-                <p className="text-xl sm:text-2xl font-extrabold leading-none">{value}</p>
-                <p className="text-[0.7rem] sm:text-xs font-semibold mt-1.5 text-white/90 uppercase tracking-wide">
-                  {label}
-                </p>
-                <p className="text-[0.65rem] sm:text-xs text-white/50 mt-0.5 leading-tight">
-                  {sub}
-                </p>
+      {/* Membership status bar — status · plan · renewal · one action */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-3.5">
+        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+          <StatusPill status={member.status} />
+          <span className="font-semibold text-sm text-gray-900">{planDisplay(member)}</span>
+          {showNextRenewal && (
+            <span className="text-sm text-gray-400 hidden sm:inline">
+              Renews {formatDate(stripeSub!.current_period_end)}
+            </span>
+          )}
+          {isLifetime && (
+            <span className="text-sm text-gray-400">Lifetime membership</span>
+          )}
+          {!isLifetime && (
+            <button
+              onClick={billingPortal.open}
+              disabled={billingPortal.loading}
+              className="ml-auto text-sm font-semibold text-csl-dark hover:underline disabled:opacity-60 min-h-[44px]"
+            >
+              {billingPortal.loading ? "Opening..." : "Manage"}
+            </button>
+          )}
+        </div>
+        {billingPortal.error && member.status !== "payment_failed" && (
+          <p className="text-xs text-red-600 mt-1.5">{billingPortal.error}</p>
+        )}
+      </div>
+
+      {/* Three pillar action cards — hero of the dashboard */}
+      <div>
+        <p className="text-[0.65rem] font-black uppercase tracking-[0.15em] text-gray-400 mb-3">
+          Your Actions
+        </p>
+
+        {/* Aggregate + Accumulate — 2-col on desktop, stacked on mobile */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+
+          {/* Aggregate */}
+          <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-csl-dark shadow-sm p-4 sm:p-5 flex flex-col">
+            <div className="flex items-center gap-2 mb-2 sm:mb-3">
+              <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-csl-light flex items-center justify-center text-csl-dark text-sm sm:text-base leading-none">
+                &#128717;
               </div>
-            ))}
+              <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-csl-dark leading-none">
+                Aggregate
+              </p>
+            </div>
+            <div className="hidden sm:grid grid-cols-2 gap-2 mb-3">
+              <div className="bg-csl-light rounded-lg px-3 py-2.5 text-center">
+                <p className="text-xl font-black leading-none text-csl-dark">{activeCount.toLocaleString()}</p>
+                <p className="text-[0.6rem] font-bold uppercase tracking-wider text-csl-dark/60 mt-1">Members</p>
+              </div>
+              <div className="bg-csl-light rounded-lg px-3 py-2.5 text-center">
+                <p className="text-xl font-black leading-none text-csl-dark">{sharesNum > 0 ? sharesNum.toLocaleString() : "-"}</p>
+                <p className="text-[0.6rem] font-bold uppercase tracking-wider text-csl-dark/60 mt-1">Shares Held</p>
+              </div>
+            </div>
+            <h4 className="hidden sm:block font-bold text-gray-900 text-sm mb-1 leading-tight">
+              Assign Your Proxy Vote
+            </h4>
+            <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-3 leading-relaxed">
+              Authorise CSL to vote on your behalf at Celtic FC general meetings. Every proxy
+              strengthens our mandate at the boardroom table.
+            </p>
+            <Link
+              href="/proxy"
+              className="mt-auto inline-flex items-center justify-center px-3 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors min-h-[44px]"
+            >
+              Assign proxy vote &#8594;
+            </Link>
           </div>
-        );
-      })()}
 
-      {/* Section 4 — Three pillar action cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Aggregate */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
-          <p className="text-[0.7rem] font-bold uppercase tracking-widest text-csl-dark mb-2">
-            Aggregate
-          </p>
-          <h4 className="font-bold text-gray-900 text-sm mb-1">Assign Your Proxy Vote</h4>
-          <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-4">
-            Authorise CSL to vote on your behalf at the Celtic FC AGM and all general meetings.
-          </p>
-          {latestProxy && (
-            <div className="mb-3 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
-              <p className="text-xs text-gray-400 mb-1.5">
-                Submitted {formatDate(latestProxy.created_at)}
+          {/* Accumulate */}
+          <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-csl-mid shadow-sm p-4 sm:p-5 flex flex-col">
+            <div className="flex items-center gap-2 mb-2 sm:mb-3">
+              <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-csl-light flex items-center justify-center text-csl-dark text-sm sm:text-base leading-none">
+                &#128200;
+              </div>
+              <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-csl-mid leading-none">
+                Accumulate
               </p>
-              <CaseStatusBadge status={latestProxy.status} />
             </div>
-          )}
-          <Link
-            href="/proxy"
-            className={`mt-auto inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
-              latestProxy
-                ? "border border-csl-dark text-csl-dark hover:bg-csl-light"
-                : "bg-csl-dark text-white hover:bg-csl-mid"
-            }`}
-          >
-            {latestProxy ? "Update proxy assignment" : "Assign proxy"} &#8594;
-          </Link>
-        </div>
-
-        {/* Accumulate */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
-          <p className="text-[0.7rem] font-bold uppercase tracking-widest text-csl-dark mb-2">
-            Accumulate
-          </p>
-          <h4 className="font-bold text-gray-900 text-sm mb-1">Trace Your Celtic Shares</h4>
-          <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-4">
-            Reconnect with Celtic FC shares and strengthen the voting block CSL holds on your behalf.
-          </p>
-          {latestTracing && (
-            <div className="mb-3 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
-              <p className="text-xs text-gray-400 mb-1.5">
-                Submitted {formatDate(latestTracing.created_at)}
-              </p>
-              <CaseStatusBadge status={latestTracing.status} />
-            </div>
-          )}
-          <Link
-            href="/share-tracing"
-            className={`mt-auto inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
-              latestTracing
-                ? "border border-csl-dark text-csl-dark hover:bg-csl-light"
-                : "bg-csl-dark text-white hover:bg-csl-mid"
-            }`}
-          >
-            {latestTracing ? "View trace status" : "Start share trace"} &#8594;
-          </Link>
-        </div>
-
-        {/* Activate */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
-          <p className="text-[0.7rem] font-bold uppercase tracking-widest text-csl-dark mb-2">
-            Activate
-          </p>
-          <h4 className="font-bold text-gray-900 text-sm mb-1">Celtic FC Accountability Score</h4>
-          <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-4">
-            Track CSL&apos;s 12-point governance framework and see how Celtic FC is responding to shareholder demands.
-          </p>
-          {governanceCriteria.length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
-                &#9679; {metCount} Met
-              </span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                &#9679; {partialCount} Partial
-              </span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
-                &#9679; {notMetCount} Not Met
-              </span>
-              {lastReviewed && (
-                <p className="text-[0.65rem] text-gray-400 w-full mt-0.5">
-                  Updated {formatDate(lastReviewed)}
+            <h4 className="hidden sm:block font-bold text-gray-900 text-sm mb-1 leading-tight">
+              Trace Your Celtic Shares
+            </h4>
+            <p className="hidden sm:block text-xs text-gray-500 flex-1 mb-3 leading-relaxed">
+              Lost your Celtic share certificate? Our team will guide you through reconnecting with your shareholding. Register your interest and we&apos;ll be in touch.
+            </p>
+            {latestTracing && (
+              <div className="hidden sm:block mb-3 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+                <p className="text-xs text-gray-400 mb-1.5">
+                  Submitted {formatDate(latestTracing.created_at)}
                 </p>
-              )}
+                <CaseStatusBadge status={latestTracing.status} />
+              </div>
+            )}
+            <Link
+              href="/share-tracing"
+              className="mt-auto inline-flex items-center justify-center px-3 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors min-h-[44px]"
+            >
+              Trace My Shares &#8594;
+            </Link>
+          </div>
+
+        </div>
+
+        {/* Activate — full-width governance scorecard */}
+        <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-csl-gold shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="p-4 sm:p-5 border-b border-gray-100">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-csl-light flex items-center justify-center text-csl-dark text-sm sm:text-base leading-none">
+                &#128202;
+              </div>
+              <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-csl-dark leading-none">
+                Activate
+              </p>
+            </div>
+            <h4 className="font-bold text-gray-900 text-sm mb-3 leading-tight">
+              Celtic FC Accountability Score
+            </h4>
+            {governanceCriteria.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100 text-green-800 text-sm font-semibold">
+                  <span className="font-bold tabular-nums">{metCount}</span> Met
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-800 text-sm font-semibold">
+                  <span className="font-bold tabular-nums">{partialCount}</span> Partial
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-100 text-red-800 text-sm font-semibold">
+                  <span className="font-bold tabular-nums">{notMetCount}</span> Not Met
+                </span>
+                <span className="text-gray-400 text-sm">out of 12 demands</span>
+                {lastReviewed && (
+                  <span className="text-gray-400 text-xs ml-auto">
+                    Last reviewed: {formatDate(lastReviewed)}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Criteria by tier */}
+          {governanceCriteria.length > 0 && (
+            <div className="p-4 sm:p-5 space-y-5">
+              {([1, 2, 3] as const).map((tier) => {
+                const tierCriteria = governanceCriteria.filter((c) => c.tier === tier);
+                if (tierCriteria.length === 0) return null;
+                return (
+                  <div key={tier}>
+                    <p className="text-[0.7rem] font-bold uppercase tracking-wider text-csl-dark mb-2.5 pb-2 border-b border-gray-200">
+                      {TIER_LABEL[tier]}
+                    </p>
+                    <div className="space-y-2.5">
+                      {tierCriteria.map((criterion) => {
+                        const s = GOV_STATUS[criterion.status] ?? { label: criterion.status, className: "bg-gray-100 text-gray-600" };
+                        return (
+                          <div key={criterion.id} className="flex items-start gap-2.5">
+                            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-csl-dark text-white text-[0.6rem] font-bold flex items-center justify-center mt-0.5">
+                              {criterion.id}
+                            </span>
+                            <p className="text-xs text-gray-700 flex-1 leading-relaxed">{criterion.demand}</p>
+                            <span className={`flex-shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${s.className}`}>
+                              {s.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
-          <Link
-            href="/governance"
-            className="mt-auto inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
-          >
-            View full scorecard &#8594;
-          </Link>
+
+          {/* CTA */}
+          <div className="px-4 sm:px-5 pb-4 sm:pb-5">
+            <Link
+              href="/governance"
+              className="inline-flex items-center justify-center w-full px-3 py-2.5 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors min-h-[44px]"
+            >
+              View full scorecard &#8594;
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* Section 5 — Latest Documents */}
+
+      {/* Latest Documents */}
       {documents.length > 0 && (
-        <Card>
+        <Card className="shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-gray-900">Latest Documents</h3>
             <button
               onClick={() => onTabChange("documents")}
-              className="text-csl-dark text-xs font-semibold hover:underline"
+              className="text-csl-dark text-xs font-semibold hover:underline min-h-[44px] flex items-center"
             >
-              View all documents
+              View all
             </button>
           </div>
           <div className="space-y-0">
             {documents.slice(0, 3).map((doc) => (
               <div
                 key={doc.id}
-                className="flex items-center justify-between gap-4 py-2.5 border-b border-gray-100 last:border-0"
+                className="flex items-center justify-between gap-4 py-3 border-b border-gray-100 last:border-0"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-0.5">
@@ -575,7 +636,7 @@ function DashboardTab({
                   href={doc.drive_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-shrink-0 text-xs font-semibold text-csl-dark hover:text-csl-mid"
+                  className="flex-shrink-0 text-xs font-semibold text-csl-dark hover:text-csl-mid min-h-[44px] flex items-center"
                 >
                   View
                 </a>
@@ -1184,7 +1245,6 @@ const NAV_ITEMS: NavItem[] = [
   { kind: "tab",  tab: "dashboard",  label: "Dashboard",     icon: "&#9776;"   },
   { kind: "tab",  tab: "membership", label: "My Membership", icon: "&#128179;" },
   { kind: "tab",  tab: "documents",  label: "Documents",     icon: "&#128218;" },
-  { kind: "link", href: "/share-tracing", label: "Share Tracing", icon: "&#128270;" },
   { kind: "tab",  tab: "enquiries",  label: "My Enquiries",  icon: "&#128269;" },
   { kind: "tab",  tab: "profile",    label: "Edit Profile",  icon: "&#9998;"   },
 ];
@@ -1204,7 +1264,6 @@ export default function PortalClient({
   activeCount,
   agmDate,
   sharesRepresented,
-  proxyCount,
   initialTab,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>(
@@ -1399,7 +1458,6 @@ export default function PortalClient({
                   activeCount={activeCount}
                   agmDate={agmDate}
                   sharesRepresented={sharesRepresented}
-                  proxyCount={proxyCount}
                 />
               )}
               {activeTab === "membership" && (

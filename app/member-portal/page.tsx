@@ -85,7 +85,8 @@ export default async function MemberPortalPage({
         .order("created_at", { ascending: false }),
       db
         .from("governance_criteria")
-        .select("status, last_reviewed"),
+        .select("id, tier, demand, status, commentary, last_reviewed")
+        .order("id", { ascending: true }),
       db
         .from("members")
         .select("*", { count: "exact", head: true })
