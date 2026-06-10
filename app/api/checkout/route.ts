@@ -36,7 +36,13 @@ export async function POST(req: NextRequest) {
     rateLimitMap.set(ip, { count: 1, windowStart: now });
   }
 
-  const body = await req.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
   const plan = body.plan as PlanType;
   const amount = typeof body.amount === "number" ? body.amount : undefined;
   const email =
