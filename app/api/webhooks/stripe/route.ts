@@ -9,9 +9,19 @@ import { logMemberEvent } from "@/lib/member-events";
 // ── Derivation helpers ────────────────────────────────────────────────────────
 
 function deriveTier(session: Stripe.Checkout.Session): string {
-  if (session.mode === "payment") return "lifetime";
-  const interval = session.line_items?.data[0]?.price?.recurring?.interval;
-  return interval === "year" ? "annual" : "monthly";
+  if (session.mode === "payment") return "Lifetime";
+  const item = session.line_items?.data[0];
+  const amount = item?.price?.unit_amount ? item.price.unit_amount / 100 : 0;
+  const interval = item?.price?.recurring?.interval;
+  if (interval === "month") {
+    if (amount === 10) return "Monthly 10";
+    if (amount === 25) return "Monthly 25";
+    return `PWYW Monthly ${Math.round(amount)}`;
+  }
+  if (interval === "year") {
+    return `PWYW Annual ${Math.round(amount)}`;
+  }
+  return "monthly";
 }
 
 function derivePlanName(session: Stripe.Checkout.Session): string {
@@ -169,6 +179,7 @@ export async function POST(req: NextRequest) {
               plan_name: planName,
               amount_pence: session.amount_total ?? 0,
               status: "active",
+              is_lifetime: tier === "lifetime",
             },
             { onConflict: "stripe_customer_id" }
           )
@@ -220,21 +231,15 @@ export async function POST(req: NextRequest) {
           break;
         }
 
-        // Derive tier from billing period duration (annual invoices span ~365 days).
-        // InvoiceLineItem.price was removed in Stripe SDK v22; period duration is reliable.
-        const daysInPeriod =
-          (invoice.period_end - invoice.period_start) / 86400;
-        const tier = daysInPeriod > 300 ? "annual" : "monthly";
-
         const { data: paidMember, error } = await db
           .from("members")
           .update({
             status: "active",
-            membership_tier: tier,
             amount_pence: invoice.amount_paid ?? 0,
             payment_failed_at: null,
           })
           .eq("stripe_customer_id", cid)
+          .eq("is_lifetime", false)
           .select("id, email")
           .maybeSingle();
 
@@ -250,7 +255,7 @@ export async function POST(req: NextRequest) {
           logMemberEvent({
             memberId: paidMember?.id ?? null,
             eventType: "invoice.paid",
-            detail: { amount_pence: invoice.amount_paid ?? 0, membership_tier: tier },
+            detail: { amount_pence: invoice.amount_paid ?? 0 },
             stripeEventId: event.id,
             eventEmail: paidMember?.email ?? null,
             isTest: isTestMode,
@@ -332,7 +337,8 @@ export async function POST(req: NextRequest) {
         const { error } = await db
           .from("members")
           .update({ membership_tier: tier, amount_pence: amountPence })
-          .eq("stripe_customer_id", cid);
+          .eq("stripe_customer_id", cid)
+          .eq("is_lifetime", false);
 
         if (error) {
           console.error(
@@ -356,6 +362,7 @@ export async function POST(req: NextRequest) {
           .from("members")
           .update({ status: "cancelled" })
           .eq("stripe_customer_id", cid)
+          .eq("is_lifetime", false)
           .select("id, email")
           .maybeSingle();
 
