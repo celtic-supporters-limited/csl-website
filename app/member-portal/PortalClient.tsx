@@ -1512,16 +1512,24 @@ export default function PortalClient({
                     );
                   })}
                   {member?.is_admin && (
-                    <Link
-                      href="/member-portal/admin/members"
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                        pathname === "/member-portal/admin/members"
-                          ? "bg-csl-dark text-white"
-                          : "text-gray-600 hover:bg-gray-100"
-                      }`}
-                    >
-                      Member Events
-                    </Link>
+                    <>
+                      {[
+                        { href: "/member-portal/admin/members",       label: "Member Events" },
+                        { href: "/member-portal/admin/documents/new", label: "Add Document"  },
+                      ].map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                            pathname === item.href
+                              ? "bg-csl-dark text-white"
+                              : "text-gray-600 hover:bg-gray-100"
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </>
                   )}
                 </div>
               </div>
@@ -1572,16 +1580,26 @@ export default function PortalClient({
                     <p className="text-[0.6rem] font-bold uppercase tracking-wider text-gray-400 px-3 mb-1">
                       Admin
                     </p>
-                    <Link
-                      href="/member-portal/admin/members"
-                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
-                        pathname === "/member-portal/admin/members"
-                          ? "bg-csl-light text-csl-dark font-semibold"
-                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                      }`}
-                    >
-                      <span>&#128203;</span>&nbsp;Member Events
-                    </Link>
+                    <ul className="space-y-0.5">
+                      {[
+                        { href: "/member-portal/admin/members",       icon: "&#128203;", label: "Member Events" },
+                        { href: "/member-portal/admin/documents/new", icon: "&#128196;", label: "Add Document"   },
+                      ].map((item) => (
+                        <li key={item.href}>
+                          <Link
+                            href={item.href}
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                              pathname === item.href
+                                ? "bg-csl-light text-csl-dark font-semibold"
+                                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                            }`}
+                          >
+                            <span dangerouslySetInnerHTML={{ __html: item.icon }} />
+                            &nbsp;{item.label}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
