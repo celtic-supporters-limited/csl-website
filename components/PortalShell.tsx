@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 
 export type ShellMember = {
@@ -12,6 +12,7 @@ export type ShellMember = {
   membership_tier: string | null;
   plan_name: string | null;
   status: string | null;
+  is_admin?: boolean | null;
 };
 
 type Props = {
@@ -66,12 +67,11 @@ function StatusPill({ status }: { status: string | null }) {
 }
 
 const NAV_LINKS = [
-  { href: "/member-portal", label: "Dashboard",    icon: "&#9776;" },
-  { href: "/member-portal", label: "Subscription", icon: "&#128179;" },
-  { href: "/member-portal", label: "Payments",     icon: "&#128196;" },
-  { href: "/member-portal", label: "Documents",    icon: "&#128218;" },
-  { href: "/member-portal", label: "My Enquiries", icon: "&#128269;" },
-  { href: "/member-portal", label: "Edit Profile", icon: "&#9998;" },
+  { href: "/member-portal",                label: "Dashboard",     icon: "&#9776;"   },
+  { href: "/member-portal?tab=membership", label: "My Membership", icon: "&#128179;" },
+  { href: "/member-portal?tab=documents",  label: "Documents",     icon: "&#128218;" },
+  { href: "/member-portal?tab=enquiries",  label: "My Enquiries",  icon: "&#128269;" },
+  { href: "/member-portal?tab=profile",    label: "Edit Profile",  icon: "&#9998;"   },
 ];
 
 const INACTIVITY_MS = 30 * 60 * 1000;
@@ -79,6 +79,7 @@ const INACTIVITY_MS = 30 * 60 * 1000;
 export default function PortalShell({ user, member, children }: Props) {
   const [signingOut, setSigningOut] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -161,6 +162,26 @@ export default function PortalShell({ user, member, children }: Props) {
                       {item.label}
                     </Link>
                   ))}
+                  {member?.is_admin && (
+                    <>
+                      {[
+                        { href: "/member-portal/admin/members",       label: "Member Events" },
+                        { href: "/member-portal/admin/documents/new", label: "Add Document"  },
+                      ].map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                            pathname === item.href
+                              ? "bg-csl-dark text-white"
+                              : "text-gray-600 hover:bg-gray-100"
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -190,6 +211,34 @@ export default function PortalShell({ user, member, children }: Props) {
                     ))}
                   </ul>
                 </nav>
+
+                {member?.is_admin && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <p className="text-[0.6rem] font-bold uppercase tracking-wider text-gray-400 px-3 mb-1">
+                      Admin
+                    </p>
+                    <ul className="space-y-0.5">
+                      {[
+                        { href: "/member-portal/admin/members",       icon: "&#128203;", label: "Member Events" },
+                        { href: "/member-portal/admin/documents/new", icon: "&#128196;", label: "Add Document"   },
+                      ].map((item) => (
+                        <li key={item.href}>
+                          <Link
+                            href={item.href}
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                              pathname === item.href
+                                ? "bg-csl-light text-csl-dark font-semibold"
+                                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                            }`}
+                          >
+                            <span dangerouslySetInnerHTML={{ __html: item.icon }} />
+                            &nbsp;{item.label}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 <div className="mt-5 pt-4 border-t border-gray-100 space-y-1">
                   <Link
