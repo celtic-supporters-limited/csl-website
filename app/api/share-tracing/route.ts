@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { findOrCreateZohoContact, createZohoCase } from "@/lib/zoho";
+import { sendShareTracingNotification } from "@/lib/resend";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -111,6 +112,20 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+
+  // Notification email: fire-and-forget, never block or throw
+  (async () => {
+    try {
+      await sendShareTracingNotification({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        message: combinedNotes,
+        submittedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("[share-tracing] Notification email error (non-blocking):", err);
+    }
+  })();
 
   // Zoho: fire-and-forget, never block or throw
   (async () => {

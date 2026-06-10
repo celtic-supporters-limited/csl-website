@@ -164,7 +164,8 @@ members (
   is_admin               boolean default false,
   payment_failed_at      timestamptz,                     -- set on invoice.payment_failed; cleared on invoice.paid
   pending_email          text,                            -- set on email change initiation; cleared after confirmation
-  user_id                uuid references auth.users(id)   -- backfilled from auth.users by email; RLS uses auth.uid() = user_id
+  user_id                uuid references auth.users(id),  -- backfilled from auth.users by email; RLS uses auth.uid() = user_id
+  is_lifetime            boolean not null default false   -- set on checkout.session.completed when tier='lifetime'; guards billing portal and cancellation
 )
 
 -- Payments table (legacy — no longer written to or queried by the portal)
@@ -393,6 +394,7 @@ git push origin develop
 9. `sql/add-pending-email.sql` — adds `pending_email text` to `members` (self-service email change)
 10. `sql/add-user-id-to-members.sql` — adds `user_id uuid references auth.users(id)` to `members`; backfills by email match; creates index
 11. `sql/rls-members-user-id.sql` — replaces email-based RLS policies with `auth.uid() = user_id` policies
+12. `sql/add-is-lifetime.sql` — adds `is_lifetime boolean not null default false`; backfills from `membership_tier = 'lifetime'`
 
 **Stripe webhook registration:**
 URL: `https://csl-website-ten.vercel.app/api/webhooks/stripe`
@@ -650,6 +652,50 @@ inside the amber banner — PATCHes `{ pending_email: null }`, calls `router.ref
 success, shows inline `cancelError` on failure. Two new state vars: `cancellingPending`,
 `cancelError`. `/api/profile` already handles `null` correctly via `pe || null` coercion —
 no API changes needed.
+
+**Phase 12 — Security hardening (architecture review P1 fixes)**
+Rate limiter added to `POST /api/auth/reset-password`: 3 requests per IP per 15 minutes.
+On breach the endpoint returns `200 { sent: true }` (identical to the legitimate response)
+so the limit is not detectable by a caller. Resets on cold starts; best-effort deterrent only.
+Test card hint ("Test mode: use card 4242 4242 4242 4242") removed from the checkout summary
+panel in `app/membership/MembershipPlans.tsx` — text was visible to all public visitors.
+
+**Phase 13 — Intake notification emails**
+`lib/resend.ts` gains `sendShareTracingNotification()` and `sendProxyNotification()`, both
+accepting `{ name, email, message, submittedAt }`. Shared `intakeHtml()` helper produces a
+simple HTML body with submitter details and a Supabase login prompt. Both send to
+`info@celticsupporters.net`. Missing `RESEND_API_KEY` is handled gracefully — logs and
+returns, never throws. Called fire-and-forget (IIFE with try/catch) in
+`app/api/share-tracing/route.ts` and `app/api/proxy/route.ts` immediately after the
+successful Supabase insert — a failed notification never blocks the form response.
+
+**Phase 14 — Welcome email on membership checkout**
+`lib/resend.ts` gains `sendWelcomeEmail({ name, email, planName })`. Subject: "Welcome to
+Celtic Supporters Limited". Body greets member by name (falls back to "Member" if Stripe
+returns null), confirms their plan, links to `/member-portal`, and closes with the mission
+line "Together we are building the shareholder voice Celtic FC needs." Called fire-and-forget
+in `app/api/webhooks/stripe/route.ts` inside `checkout.session.completed` immediately after
+the successful upsert — a failed email never affects the webhook `200` response.
+
+**Phase 15 — Member activity audit log and admin member lookup**
+`member_events` table tracks 8 event types for support triage: `checkout.completed`,
+`invoice.paid`, `payment.failed`, `subscription.cancelled`, `email_change.initiated`,
+`email_change.confirmed`, `password_reset.requested`, `profile.updated`. Columns: `id`,
+`member_id` (FK, survives email changes), `event_type`, `detail` (jsonb), `stripe_event_id`
+(unique — prevents webhook replay duplicates), `event_email`, `is_test`, `created_at`.
+`lib/member-events.ts` exports `logMemberEvent()` — resolves `member_id` from email when
+needed, silently ignores duplicate Stripe event IDs, never throws. All 8 event types are
+written fire-and-forget across 4 routes. `is_test = true` set automatically when
+`STRIPE_SECRET_KEY` starts with `sk_test_` — flips to false at go-live with no code change.
+`get_member_auth_events(p_user_id uuid)` RPC function queries `auth.audit_log_entries`
+(security definer, service_role execute only — never callable from anon/authenticated keys).
+Admin page at `/member-portal/admin/members` (is_admin guard): search by email (exact) or
+name (ILIKE); single match shows full timeline merging member_events + shareholder_cases +
+auth events; multiple matches show disambiguation list. `components/MemberTimeline.tsx`
+client component: member summary, "Copy as text" (clipboard), "Export CSV" (download),
+reverse-chronological table. "Show test events" checkbox appears only when test events exist
+— off by default; test rows shown at 60% opacity with amber TEST badge.
+SQL: `sql/add-member-events.sql` then `sql/add-member-events-is-test.sql` (run in order).
 
 ## Document Library
 
