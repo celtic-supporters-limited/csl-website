@@ -1511,6 +1511,18 @@ export default function PortalClient({
                       </button>
                     );
                   })}
+                  {member?.is_admin && (
+                    <Link
+                      href="/member-portal/admin/members"
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                        pathname === "/member-portal/admin/members"
+                          ? "bg-csl-dark text-white"
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      Member Events
+                    </Link>
+                  )}
                 </div>
               </div>
 
@@ -1554,6 +1566,24 @@ export default function PortalClient({
                     })}
                   </ul>
                 </nav>
+
+                {member?.is_admin && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <p className="text-[0.6rem] font-bold uppercase tracking-wider text-gray-400 px-3 mb-1">
+                      Admin
+                    </p>
+                    <Link
+                      href="/member-portal/admin/members"
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                        pathname === "/member-portal/admin/members"
+                          ? "bg-csl-light text-csl-dark font-semibold"
+                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                      }`}
+                    >
+                      <span>&#128203;</span>&nbsp;Member Events
+                    </Link>
+                  </div>
+                )}
 
                 <div className="mt-5 pt-4 border-t border-gray-100 space-y-1">
                   <Link
