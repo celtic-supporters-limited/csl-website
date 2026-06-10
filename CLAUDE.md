@@ -164,7 +164,8 @@ members (
   is_admin               boolean default false,
   payment_failed_at      timestamptz,                     -- set on invoice.payment_failed; cleared on invoice.paid
   pending_email          text,                            -- set on email change initiation; cleared after confirmation
-  user_id                uuid references auth.users(id)   -- backfilled from auth.users by email; RLS uses auth.uid() = user_id
+  user_id                uuid references auth.users(id),  -- backfilled from auth.users by email; RLS uses auth.uid() = user_id
+  is_lifetime            boolean not null default false   -- set on checkout.session.completed when tier='lifetime'; guards billing portal and cancellation
 )
 
 -- Payments table (legacy — no longer written to or queried by the portal)
@@ -393,6 +394,7 @@ git push origin develop
 9. `sql/add-pending-email.sql` — adds `pending_email text` to `members` (self-service email change)
 10. `sql/add-user-id-to-members.sql` — adds `user_id uuid references auth.users(id)` to `members`; backfills by email match; creates index
 11. `sql/rls-members-user-id.sql` — replaces email-based RLS policies with `auth.uid() = user_id` policies
+12. `sql/add-is-lifetime.sql` — adds `is_lifetime boolean not null default false`; backfills from `membership_tier = 'lifetime'`
 
 **Stripe webhook registration:**
 URL: `https://csl-website-ten.vercel.app/api/webhooks/stripe`

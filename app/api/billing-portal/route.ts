@@ -17,19 +17,27 @@ export async function POST(req: NextRequest) {
 
   let memberRes = await db
     .from("members")
-    .select("stripe_customer_id")
+    .select("stripe_customer_id, is_lifetime")
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (!memberRes.data && !memberRes.error) {
     memberRes = await db
       .from("members")
-      .select("stripe_customer_id")
+      .select("stripe_customer_id, is_lifetime")
       .eq("email", user.email)
       .maybeSingle();
   }
 
   const member = memberRes.data;
+
+  if (member?.is_lifetime) {
+    return NextResponse.json(
+      { error: "Lifetime members do not have a subscription to manage." },
+      { status: 400 }
+    );
+  }
+
 
   if (!member?.stripe_customer_id) {
     return NextResponse.json(
