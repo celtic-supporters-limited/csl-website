@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
     rateLimitMap.set(ip, { count: 1, windowStart: now });
   }
 
-  let body: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let body: any;
   try {
     body = await req.json();
   } catch {
