@@ -329,14 +329,11 @@ export async function POST(req: NextRequest) {
           break;
         }
 
-        const item = sub.items.data[0];
-        const interval = item?.price?.recurring?.interval;
-        const tier = interval === "year" ? "annual" : "monthly";
-        const amountPence = item?.price?.unit_amount ?? 0;
+        const amountPence = sub.items.data[0]?.price?.unit_amount ?? 0;
 
         const { error } = await db
           .from("members")
-          .update({ membership_tier: tier, amount_pence: amountPence })
+          .update({ amount_pence: amountPence })
           .eq("stripe_customer_id", cid)
           .eq("is_lifetime", false);
 
