@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
+
   if (!member?.stripe_customer_id) {
     return NextResponse.json(
       { error: "No Stripe customer record found for this account." },
