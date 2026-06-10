@@ -121,14 +121,18 @@ function formatDatetime(iso: string): string {
 
 function filterUrl(
   state: { q: string; type: TypeFilter; period: PeriodFilter; test: boolean },
-  override: Partial<typeof state>
+  override: Partial<typeof state>,
+  testModeDefault: boolean
 ): string {
   const m = { ...state, ...override };
   const p = new URLSearchParams();
-  if (m.q)              p.set("q", m.q);
-  if (m.type !== "all") p.set("type", m.type);
-  if (m.period !== "30d") p.set("period", m.period);
-  if (m.test)           p.set("test", "1");
+  if (m.q)                        p.set("q", m.q);
+  if (m.type !== "all")           p.set("type", m.type);
+  if (m.period !== "30d")         p.set("period", m.period);
+  // Only encode test when it differs from the mode default so URLs stay clean.
+  // test=0 is needed in test mode to explicitly override the default-show behaviour.
+  if (m.test && !testModeDefault)   p.set("test", "1");
+  if (!m.test && testModeDefault)   p.set("test", "0");
   const qs = p.toString();
   return `/member-portal/admin/members${qs ? `?${qs}` : ""}`;
 }
@@ -164,8 +168,8 @@ export default async function AdminMembersPage({
   const q          = searchParams.q?.trim() ?? "";
   const typeFilter = (searchParams.type  ?? "all")  as TypeFilter;
   const period     = (searchParams.period ?? "30d") as PeriodFilter;
-  const showTest   = searchParams.test !== undefined
-    ? searchParams.test === "1"
+  const showTest   = searchParams.test === "1" ? true
+    : searchParams.test === "0" ? false
     : isTestMode;
   const filterState = { q, type: typeFilter, period, test: showTest };
 
@@ -181,21 +185,26 @@ export default async function AdminMembersPage({
     : period === "30d" ? new Date(now - 30 * 86400000).toISOString()
     : null;
 
-  // ── Stats (fixed, no filter applied) ─────────────────────────────────────
+  // ── Stats — respect showTest so cards match the visible table ───────────
+
+  let todayQ = db.from("member_events")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", todayStart.toISOString());
+  let weekQ = db.from("member_events")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", new Date(now - 7 * 86400000).toISOString())
+    .eq("event_type", "checkout.completed");
+  if (!showTest) {
+    todayQ = todayQ.eq("is_test", false);
+    weekQ  = weekQ.eq("is_test", false);
+  }
 
   const [todayEventsRes, failuresRes, weekJoinsRes] = await Promise.all([
-    db.from("member_events")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", todayStart.toISOString())
-      .eq("is_test", false),
+    todayQ,
     db.from("members")
       .select("id", { count: "exact", head: true })
       .eq("status", "payment_failed"),
-    db.from("member_events")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", new Date(now - 7 * 86400000).toISOString())
-      .eq("event_type", "checkout.completed")
-      .eq("is_test", false),
+    weekQ,
   ]);
 
   const todayCount   = todayEventsRes.count ?? 0;
@@ -400,7 +409,7 @@ export default async function AdminMembersPage({
           </button>
           {q && (
             <Link
-              href={filterUrl(filterState, { q: "" })}
+              href={filterUrl(filterState, { q: "" }, isTestMode)}
               className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
             >
               Clear
@@ -460,7 +469,7 @@ export default async function AdminMembersPage({
               {TYPE_OPTIONS.map((opt) => (
                 <Link
                   key={opt.value}
-                  href={filterUrl(filterState, { type: opt.value })}
+                  href={filterUrl(filterState, { type: opt.value }, isTestMode)}
                   className={`${pillBase} ${typeFilter === opt.value ? pillActive : pillInactive}`}
                 >
                   {opt.label}
@@ -473,17 +482,17 @@ export default async function AdminMembersPage({
               {PERIOD_OPTIONS.map((opt) => (
                 <Link
                   key={opt.value}
-                  href={filterUrl(filterState, { period: opt.value })}
+                  href={filterUrl(filterState, { period: opt.value }, isTestMode)}
                   className={`${pillBase} ${period === opt.value ? pillActive : pillInactive}`}
                 >
                   {opt.label}
                 </Link>
               ))}
               <Link
-                href={filterUrl(filterState, { test: !showTest })}
+                href={filterUrl(filterState, { test: !showTest }, isTestMode)}
                 className={`ml-2 ${pillBase} ${showTest ? pillActive : pillInactive}`}
               >
-                {showTest ? "Hiding test events" : "Show test events"}
+                {showTest ? "Hide test events" : "Show test events"}
               </Link>
             </div>
 
