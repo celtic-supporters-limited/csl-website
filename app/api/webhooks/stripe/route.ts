@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
               plan_name: planName,
               amount_pence: session.amount_total ?? 0,
               status: "active",
-              is_lifetime: tier === "lifetime",
+              is_lifetime: tier === "Lifetime",
             },
             { onConflict: "stripe_customer_id" }
           )
@@ -331,11 +331,13 @@ export async function POST(req: NextRequest) {
 
         const amountPence = sub.items.data[0]?.price?.unit_amount ?? 0;
 
-        const { error } = await db
+        const { data: updatedMember, error } = await db
           .from("members")
           .update({ amount_pence: amountPence })
           .eq("stripe_customer_id", cid)
-          .eq("is_lifetime", false);
+          .eq("is_lifetime", false)
+          .select("id, email")
+          .maybeSingle();
 
         if (error) {
           console.error(
@@ -346,6 +348,14 @@ export async function POST(req: NextRequest) {
           console.log(
             `[stripe-webhook] customer.subscription.updated processed for customer ${cid}`
           );
+          logMemberEvent({
+            memberId: updatedMember?.id ?? null,
+            eventType: "subscription.updated",
+            detail: { amount_pence: amountPence },
+            stripeEventId: event.id,
+            eventEmail: updatedMember?.email ?? null,
+            isTest: isTestMode,
+          }).catch((err) => console.error("[stripe-webhook] Event log error (subscription.updated):", err));
         }
         break;
       }

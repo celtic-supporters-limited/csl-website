@@ -325,7 +325,7 @@ function DashboardTab({
     );
   }
 
-  const isLifetime = member.membership_tier === "lifetime";
+  const isLifetime = member.membership_tier === "Lifetime";
   const showNextRenewal =
     !isLifetime &&
     member.status === "active" &&
@@ -680,7 +680,7 @@ function MyMembershipTab({
     );
   }
 
-  const isLifetime = member.membership_tier === "lifetime";
+  const isLifetime = member.membership_tier === "Lifetime";
   const statusToShow = stripeSub?.status ?? member.status;
 
   const cardExpiry =

@@ -38,6 +38,7 @@ const EVENT_BADGE: Record<string, { label: string; cls: string }> = {
   "checkout.completed":       { label: "Joined",          cls: "bg-green-100 text-green-800 border-green-200" },
   "invoice.paid":             { label: "Invoice paid",    cls: "bg-green-50 text-green-700 border-green-100"  },
   "payment.failed":           { label: "Payment failed",  cls: "bg-red-100 text-red-800 border-red-200"       },
+  "subscription.updated":     { label: "Sub updated",     cls: "bg-gray-50 text-gray-600 border-gray-200"    },
   "subscription.cancelled":   { label: "Cancelled",       cls: "bg-gray-100 text-gray-700 border-gray-200"   },
   "email_change.initiated":   { label: "Email change",    cls: "bg-blue-100 text-blue-800 border-blue-200"    },
   "email_change.confirmed":   { label: "Email confirmed", cls: "bg-blue-100 text-blue-800 border-blue-200"    },
@@ -59,6 +60,7 @@ function eventLabel(type: string): string {
     "checkout.completed":       "Joined CSL",
     "invoice.paid":             "Invoice paid",
     "payment.failed":           "Payment failed",
+    "subscription.updated":     "Subscription amount updated",
     "subscription.cancelled":   "Membership cancelled",
     "email_change.initiated":   "Email change requested",
     "email_change.confirmed":   "Email change confirmed",
@@ -79,6 +81,7 @@ function eventDetail(type: string, detail: Record<string, unknown> | null): stri
           : null,
       ].filter(Boolean).join(" — ");
     case "invoice.paid":
+    case "subscription.updated":
       return detail.amount_pence != null
         ? `£${((detail.amount_pence as number) / 100).toFixed(2)}`
         : "";
@@ -155,10 +158,15 @@ export default async function AdminMembersPage({
 
   // ── Parse filter params ───────────────────────────────────────────────────
 
+  // In test mode (sk_test_* key) default to showing test events, since all
+  // events will be tagged is_test=true and the log would otherwise appear empty.
+  const isTestMode  = process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ?? false;
   const q          = searchParams.q?.trim() ?? "";
   const typeFilter = (searchParams.type  ?? "all")  as TypeFilter;
   const period     = (searchParams.period ?? "30d") as PeriodFilter;
-  const showTest   = searchParams.test === "1";
+  const showTest   = searchParams.test !== undefined
+    ? searchParams.test === "1"
+    : isTestMode;
   const filterState = { q, type: typeFilter, period, test: showTest };
 
   // ── Date bounds ───────────────────────────────────────────────────────────
