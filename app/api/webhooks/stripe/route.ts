@@ -335,13 +335,9 @@ export async function POST(req: NextRequest) {
           .from("members")
           .update({ amount_pence: amountPence })
           .eq("stripe_customer_id", cid)
-<<<<<<< HEAD
           .eq("is_lifetime", false)
           .select("id, email")
           .maybeSingle();
-=======
-          .eq("is_lifetime", false);
->>>>>>> origin/main
 
         if (error) {
           console.error(
