@@ -136,10 +136,7 @@ export async function POST(req: NextRequest) {
     // Fail open — a database hiccup should not block legitimate checkouts.
   }
 
-  const origin =
-    req.headers.get("origin") ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "http://localhost:3000";
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
   const successUrl = `${origin}/membership/success?session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = `${origin}/membership`;
