@@ -351,11 +351,11 @@ export default async function AdminMembersPage({
     if (!showTest)   evQ = evQ.eq("is_test", false);
     if (periodStart) evQ = evQ.gte("created_at", periodStart);
 
-    if      (typeFilter === "join")      evQ = evQ.eq("event_type", "checkout.completed");
+    if      (typeFilter === "join")      evQ = evQ.in("event_type", ["checkout.completed", "subscription.migrated"]);
     else if (typeFilter === "payment")   evQ = evQ.in("event_type", ["invoice.paid", "payment.failed"]);
     else if (typeFilter === "failure")   evQ = evQ.eq("event_type", "payment.failed");
     else if (typeFilter === "cancelled") evQ = evQ.eq("event_type", "subscription.cancelled");
-    else if (typeFilter === "auth")      evQ = evQ.in("event_type", ["password_reset.requested", "email_change.initiated", "email_change.confirmed"]);
+    else if (typeFilter === "auth")      evQ = evQ.in("event_type", ["password_reset.requested", "email_change.initiated", "email_change.confirmed", "auth.account_created"]);
     else if (typeFilter === "profile")   evQ = evQ.eq("event_type", "profile.updated");
 
     const { data } = await evQ;
