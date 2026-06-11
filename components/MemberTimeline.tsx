@@ -22,6 +22,7 @@ type MemberSummary = {
 type Props = {
   member: MemberSummary;
   entries: TimelineEntry[];
+  defaultShowTest?: boolean;
 };
 
 function formatDate(iso: string): string {
@@ -64,9 +65,9 @@ function toCsv(entries: TimelineEntry[]): string {
   return ["Timestamp,Type,Label,Detail", ...rows].join("\n");
 }
 
-export default function MemberTimeline({ member, entries }: Props) {
+export default function MemberTimeline({ member, entries, defaultShowTest }: Props) {
   const [copied, setCopied] = useState(false);
-  const [showTest, setShowTest] = useState(false);
+  const [showTest, setShowTest] = useState(defaultShowTest ?? false);
 
   const hasTestEvents = entries.some((e) => e.isTest);
   const visible = showTest ? entries : entries.filter((e) => !e.isTest);

@@ -456,6 +456,7 @@ export default async function AdminMembersPage({
                   joinedAt: target.created_at,
                 }}
                 entries={entries}
+                defaultShowTest={isTestMode}
               />
             )}
           </div>
