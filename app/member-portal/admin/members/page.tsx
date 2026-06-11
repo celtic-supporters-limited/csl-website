@@ -346,7 +346,7 @@ export default async function AdminMembersPage({
       .from("member_events")
       .select("id, event_type, detail, event_email, is_test, created_at")
       .order(sortBy, { ascending: sortDir === "asc" })
-      .limit(500);
+      .limit(2000);
 
     if (!showTest)   evQ = evQ.eq("is_test", false);
     if (periodStart) evQ = evQ.gte("created_at", periodStart);
