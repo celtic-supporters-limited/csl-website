@@ -119,22 +119,35 @@ function formatDatetime(iso: string): string {
   });
 }
 
+type SortBy  = "created_at" | "event_email" | "event_type";
+type SortDir = "asc" | "desc";
+
 function filterUrl(
-  state: { q: string; type: TypeFilter; period: PeriodFilter; test: boolean },
+  state: { q: string; type: TypeFilter; period: PeriodFilter; test: boolean; sortBy: SortBy; sortDir: SortDir },
   override: Partial<typeof state>,
   testModeDefault: boolean
 ): string {
   const m = { ...state, ...override };
   const p = new URLSearchParams();
-  if (m.q)                        p.set("q", m.q);
-  if (m.type !== "all")           p.set("type", m.type);
-  if (m.period !== "30d")         p.set("period", m.period);
-  // Only encode test when it differs from the mode default so URLs stay clean.
-  // test=0 is needed in test mode to explicitly override the default-show behaviour.
-  if (m.test && !testModeDefault)   p.set("test", "1");
-  if (!m.test && testModeDefault)   p.set("test", "0");
+  if (m.q)                           p.set("q", m.q);
+  if (m.type !== "all")              p.set("type", m.type);
+  if (m.period !== "30d")            p.set("period", m.period);
+  if (m.test && !testModeDefault)    p.set("test", "1");
+  if (!m.test && testModeDefault)    p.set("test", "0");
+  if (m.sortBy !== "created_at")     p.set("sortBy", m.sortBy);
+  if (m.sortDir !== "desc")          p.set("sortDir", m.sortDir);
   const qs = p.toString();
   return `/member-portal/admin/members${qs ? `?${qs}` : ""}`;
+}
+
+function sortUrl(
+  state: { q: string; type: TypeFilter; period: PeriodFilter; test: boolean; sortBy: SortBy; sortDir: SortDir },
+  col: SortBy,
+  testModeDefault: boolean
+): string {
+  const newDir: SortDir =
+    state.sortBy === col && state.sortDir === "desc" ? "asc" : "desc";
+  return filterUrl(state, { sortBy: col, sortDir: newDir }, testModeDefault);
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -142,7 +155,7 @@ function filterUrl(
 export default async function AdminMembersPage({
   searchParams,
 }: {
-  searchParams: { q?: string; type?: string; period?: string; test?: string };
+  searchParams: { q?: string; type?: string; period?: string; test?: string; sortBy?: string; sortDir?: string };
 }) {
   const authClient = createServerSupabase();
   const {
@@ -171,7 +184,10 @@ export default async function AdminMembersPage({
   const showTest   = searchParams.test === "1" ? true
     : searchParams.test === "0" ? false
     : isTestMode;
-  const filterState = { q, type: typeFilter, period, test: showTest };
+  const sortBy  = (["created_at", "event_email", "event_type"].includes(searchParams.sortBy ?? "")
+    ? searchParams.sortBy : "created_at") as SortBy;
+  const sortDir = (searchParams.sortDir === "asc" ? "asc" : "desc") as SortDir;
+  const filterState = { q, type: typeFilter, period, test: showTest, sortBy, sortDir };
 
   // ── Date bounds ───────────────────────────────────────────────────────────
 
@@ -329,17 +345,17 @@ export default async function AdminMembersPage({
     let evQ = db
       .from("member_events")
       .select("id, event_type, detail, event_email, is_test, created_at")
-      .order("created_at", { ascending: false })
-      .limit(200);
+      .order(sortBy, { ascending: sortDir === "asc" })
+      .limit(2000);
 
     if (!showTest)   evQ = evQ.eq("is_test", false);
     if (periodStart) evQ = evQ.gte("created_at", periodStart);
 
-    if      (typeFilter === "join")      evQ = evQ.eq("event_type", "checkout.completed");
+    if      (typeFilter === "join")      evQ = evQ.in("event_type", ["checkout.completed", "subscription.migrated"]);
     else if (typeFilter === "payment")   evQ = evQ.in("event_type", ["invoice.paid", "payment.failed"]);
     else if (typeFilter === "failure")   evQ = evQ.eq("event_type", "payment.failed");
     else if (typeFilter === "cancelled") evQ = evQ.eq("event_type", "subscription.cancelled");
-    else if (typeFilter === "auth")      evQ = evQ.in("event_type", ["password_reset.requested", "email_change.initiated", "email_change.confirmed"]);
+    else if (typeFilter === "auth")      evQ = evQ.in("event_type", ["password_reset.requested", "email_change.initiated", "email_change.confirmed", "auth.account_created"]);
     else if (typeFilter === "profile")   evQ = evQ.eq("event_type", "profile.updated");
 
     const { data } = await evQ;
@@ -394,6 +410,8 @@ export default async function AdminMembersPage({
         {/* Search form */}
         <form className="flex gap-2 mb-5" method="GET">
           {!showTest ? null : <input type="hidden" name="test" value="1" />}
+          {sortBy !== "created_at" && <input type="hidden" name="sortBy" value={sortBy} />}
+          {sortDir !== "desc"      && <input type="hidden" name="sortDir" value={sortDir} />}
           <input
             name="q"
             defaultValue={q}
@@ -456,6 +474,7 @@ export default async function AdminMembersPage({
                   joinedAt: target.created_at,
                 }}
                 entries={entries}
+                defaultShowTest={isTestMode}
               />
             )}
           </div>
@@ -518,9 +537,18 @@ export default async function AdminMembersPage({
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50">
-                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">When</th>
-                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Member</th>
-                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Event</th>
+                        {(["created_at", "event_email", "event_type"] as SortBy[]).map((col) => {
+                          const labels: Record<SortBy, string> = { created_at: "When", event_email: "Member", event_type: "Event" };
+                          const isActive = sortBy === col;
+                          const chevron = isActive ? (sortDir === "desc" ? " ↓" : " ↑") : " ↕";
+                          return (
+                            <th key={col} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                              <Link href={sortUrl(filterState, col, isTestMode)} className={`hover:text-gray-800 transition-colors ${isActive ? "text-csl-dark" : ""}`}>
+                                {labels[col]}<span className="opacity-50">{chevron}</span>
+                              </Link>
+                            </th>
+                          );
+                        })}
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Detail</th>
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
                       </tr>
