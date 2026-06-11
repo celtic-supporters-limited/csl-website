@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
   if (entry && now - entry.windowStart < WINDOW_MS) {
     entry.count += 1;
-    if (entry.count > RATE_LIMIT) {
+    if (entry.count >= RATE_LIMIT) {
       return NextResponse.json({ sent: true }, { status: 200 });
     }
   } else {
