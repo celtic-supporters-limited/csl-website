@@ -49,8 +49,16 @@ export async function POST(req: NextRequest) {
     typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const turnstileToken =
     typeof body.turnstileToken === "string" ? body.turnstileToken : "";
+  const honeypot =
+    typeof body.website === "string" ? body.website : "";
 
-  // ── 2. Turnstile verification ──────────────────────────────────────────────
+  // ── 2. Honeypot check ──────────────────────────────────────────────────────
+  // Bots fill hidden fields; humans never see or touch this field.
+  if (honeypot) {
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
+
+  // ── 3. Turnstile verification ──────────────────────────────────────────────
   if (!turnstileToken) {
     return NextResponse.json(
       { error: "Bot detection token missing." },

@@ -61,6 +61,7 @@ export default function MembershipPlans() {
   const [customAnnualError, setCustomAnnualError] = useState("");
   const [email, setEmail] = useState("");
   const [emailError, setEmailError] = useState("");
+  const [honeypot, setHoneypot] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileError, setTurnstileError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -112,6 +113,9 @@ export default function MembershipPlans() {
   async function proceedToStripe() {
     if (!selected) return;
 
+    // Honeypot — bots fill hidden fields, humans don't
+    if (honeypot) return;
+
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       setEmailError("Please enter a valid email address.");
@@ -136,6 +140,7 @@ export default function MembershipPlans() {
           amount: selected.amount,
           email: trimmedEmail,
           turnstileToken,
+          website: honeypot,
         }),
       });
       const data = await res.json();
@@ -399,6 +404,18 @@ export default function MembershipPlans() {
             Your payment is processed securely by Stripe. CSL never stores your
             card details.
           </p>
+
+          {/* Honeypot — hidden from humans, bots fill it; submission silently swallowed */}
+          <div style={{ display: "none" }} aria-hidden="true">
+            <input
+              type="text"
+              name="website"
+              tabIndex={-1}
+              autoComplete="off"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+            />
+          </div>
 
           <div className="mb-5 text-left">
             <label
