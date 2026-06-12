@@ -1005,12 +1005,67 @@ function EditProfileTab({
   const [cancellingPending, setCancellingPending] = useState(false);
   const [cancelError, setCancelError] = useState(false);
 
+  // ── Password change state ────────────────────────────────────────────────
+  const [currentPwd, setCurrentPwd] = useState("");
+  const [newPwd, setNewPwd]         = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
+  const [pwdSaving, setPwdSaving]   = useState(false);
+  const [pwdError, setPwdError]     = useState("");
+  const [pwdSuccess, setPwdSuccess] = useState(false);
+
   useEffect(() => {
     if (emailSuccessBanner) {
       const t = setTimeout(() => setEmailSuccessBanner(false), 5000);
       return () => clearTimeout(t);
     }
   }, [emailSuccessBanner]);
+
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault();
+    setPwdError("");
+    setPwdSuccess(false);
+
+    if (newPwd.length < 8) {
+      setPwdError("New password must be at least 8 characters.");
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      setPwdError("Passwords do not match.");
+      return;
+    }
+
+    setPwdSaving(true);
+    const supabase = createBrowserSupabase();
+
+    // If a current password was supplied, verify it before updating.
+    // Members who signed in via a magic link and have never set a password
+    // should leave this field blank.
+    if (currentPwd) {
+      const { error: verifyErr } = await supabase.auth.signInWithPassword({
+        email: userEmail,
+        password: currentPwd,
+      });
+      if (verifyErr) {
+        setPwdError("Current password is incorrect.");
+        setPwdSaving(false);
+        return;
+      }
+    }
+
+    const { error: updateErr } = await supabase.auth.updateUser({ password: newPwd });
+    if (updateErr) {
+      setPwdError(updateErr.message);
+      setPwdSaving(false);
+      return;
+    }
+
+    setCurrentPwd("");
+    setNewPwd("");
+    setConfirmPwd("");
+    setPwdSaving(false);
+    setPwdSuccess(true);
+    setTimeout(() => setPwdSuccess(false), 5000);
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -1366,6 +1421,93 @@ function EditProfileTab({
             className="bg-csl-dark text-white font-semibold px-6 py-2.5 rounded-lg text-sm hover:bg-csl-mid transition-colors disabled:opacity-60"
           >
             {saving ? "Saving..." : "Save changes"}
+          </button>
+        </form>
+      </Card>
+
+      <Card>
+        <h3 className="font-bold text-gray-900 mb-1">Password</h3>
+        <p className="text-sm text-gray-400 mb-5">
+          Update your portal password. If you signed in via an email link and
+          have not previously set a password, leave the current password field
+          blank.
+        </p>
+        <form onSubmit={handlePasswordChange} className="space-y-4">
+          <div>
+            <label
+              htmlFor="current-password"
+              className="block text-sm font-semibold text-gray-700 mb-1.5"
+            >
+              Current password
+            </label>
+            <input
+              id="current-password"
+              type="password"
+              value={currentPwd}
+              onChange={(e) => setCurrentPwd(e.target.value)}
+              disabled={pwdSaving}
+              autoComplete="current-password"
+              placeholder="Leave blank if you have not yet set a password"
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="new-portal-password"
+              className="block text-sm font-semibold text-gray-700 mb-1.5"
+            >
+              New password
+            </label>
+            <input
+              id="new-portal-password"
+              type="password"
+              required
+              value={newPwd}
+              onChange={(e) => setNewPwd(e.target.value)}
+              disabled={pwdSaving}
+              autoComplete="new-password"
+              className={inputCls}
+            />
+            <p className="text-xs text-gray-400 mt-1">Minimum 8 characters.</p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="confirm-portal-password"
+              className="block text-sm font-semibold text-gray-700 mb-1.5"
+            >
+              Confirm new password
+            </label>
+            <input
+              id="confirm-portal-password"
+              type="password"
+              required
+              value={confirmPwd}
+              onChange={(e) => setConfirmPwd(e.target.value)}
+              disabled={pwdSaving}
+              autoComplete="new-password"
+              className={inputCls}
+            />
+          </div>
+
+          {pwdError && (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+              {pwdError}
+            </p>
+          )}
+          {pwdSuccess && (
+            <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-2.5">
+              Password updated successfully.
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={pwdSaving}
+            className="bg-csl-dark text-white font-semibold px-6 py-2.5 rounded-lg text-sm hover:bg-csl-mid transition-colors disabled:opacity-60"
+          >
+            {pwdSaving ? "Updating..." : "Update password"}
           </button>
         </form>
       </Card>
