@@ -185,10 +185,8 @@ test.describe("/auth/update-password page", () => {
 test.describe("In-portal password change", () => {
 
   test.beforeEach(({}, testInfo) => {
-    skip(testInfo, "TEST_USER_EMAIL",           SMOKE_EMAIL);
-    skip(testInfo, "TEST_USER_PASSWORD",         SMOKE_PASSWORD);
-    skip(testInfo, "NEXT_PUBLIC_SUPABASE_URL",  SUPABASE_URL);
-    skip(testInfo, "SUPABASE_SERVICE_ROLE_KEY", SERVICE_KEY);
+    skip(testInfo, "TEST_USER_EMAIL",    SMOKE_EMAIL);
+    skip(testInfo, "TEST_USER_PASSWORD", SMOKE_PASSWORD);
   });
 
   async function loginAndGoToProfile(page: Page): Promise<void> {
@@ -198,7 +196,8 @@ test.describe("In-portal password change", () => {
     await page.fill("#password", SMOKE_PASSWORD);
     await page.locator('button[type="submit"]').click();
     await page.waitForURL(/\/member-portal/, { timeout: 20_000 });
-    await page.locator("button", { hasText: /edit profile/i }).first().click();
+    // Use the desktop sidebar nav to avoid matching the hidden mobile nav button.
+    await page.locator("aside nav button").filter({ hasText: /edit profile/i }).click();
     await page.waitForSelector("#current-password", { timeout: 10_000 });
   }
 
