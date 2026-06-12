@@ -49,8 +49,16 @@ export async function POST(req: NextRequest) {
     typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const turnstileToken =
     typeof body.turnstileToken === "string" ? body.turnstileToken : "";
+  const honeypot =
+    typeof body.website === "string" ? body.website : "";
 
-  // ── 2. Turnstile verification ──────────────────────────────────────────────
+  // ── 2. Honeypot check ──────────────────────────────────────────────────────
+  // Bots fill hidden fields; humans never see or touch this field.
+  if (honeypot) {
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
+
+  // ── 3. Turnstile verification ──────────────────────────────────────────────
   if (!turnstileToken) {
     return NextResponse.json(
       { error: "Bot detection token missing." },
@@ -128,10 +136,7 @@ export async function POST(req: NextRequest) {
     // Fail open — a database hiccup should not block legitimate checkouts.
   }
 
-  const origin =
-    req.headers.get("origin") ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "http://localhost:3000";
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
   const successUrl = `${origin}/membership/success?session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = `${origin}/membership`;

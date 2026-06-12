@@ -21,17 +21,21 @@ export async function POST(req: NextRequest) {
     rateLimitMap.set(ip, { count: 1, windowStart: now });
   }
 
-  const body = await req.json();
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : null;
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  const email = typeof (body as Record<string, unknown>).email === "string"
+    ? ((body as Record<string, unknown>).email as string).trim().toLowerCase()
+    : null;
 
   if (!email) {
     return NextResponse.json({ error: "Email is required." }, { status: 400 });
   }
 
-  const origin =
-    req.headers.get("origin") ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "http://localhost:3000";
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
   try {
     const supabase = createServerSupabase();
