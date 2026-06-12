@@ -733,3 +733,7 @@ SQL: `sql/add-member-events.sql` then `sql/add-member-events-is-test.sql` (run i
 - Implement Resend welcome email on `checkout.session.completed`
 - Implement Zoho CRM integration (replace stubs in `lib/zoho.ts`)
 - Confirm `SUPABASE_SERVICE_ROLE_KEY` is set in Vercel production environment
+- Configure custom SMTP in Supabase (Authentication > SMTP Settings) so all auth
+  emails send from `membership@celticsupporters.net` with CSL branding — requires
+  DNS records (SPF, DKIM) from hosting provider and SMTP credentials from email
+  provider; currently blocked on DNS access
