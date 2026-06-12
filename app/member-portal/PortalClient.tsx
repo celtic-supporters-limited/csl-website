@@ -1066,10 +1066,18 @@ function EditProfileTab({
     setPwdSuccess(true);
     setTimeout(() => setPwdSuccess(false), 5000);
 
-    // Fire-and-forget — a logging failure must never surface to the member.
-    fetch("/api/auth/password-changed", { method: "POST" }).catch((err) =>
-      console.error("[password-changed] log request failed:", err)
-    );
+    // Pass the new access token in the Authorization header — updateUser issues
+    // a fresh token that the SSR cookie does not yet reflect.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      fetch("/api/auth/password-changed", {
+        method: "POST",
+        headers: session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : {},
+      }).catch((err) =>
+        console.error("[password-changed] log request failed:", err)
+      );
+    });
   }
 
   async function handleSave(e: React.FormEvent) {
