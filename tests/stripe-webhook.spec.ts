@@ -106,6 +106,10 @@ async function postWebhook(
 
 // ── Guard ─────────────────────────────────────────────────────────────────────
 
+// Run all webhook tests serially — the Next.js dev server handles concurrent
+// requests fine but the in-process connection pool can exhaust under rapid parallel load.
+test.describe.configure({ mode: "serial" });
+
 test.beforeEach(({}, testInfo) => {
   if (!WEBHOOK_SECRET) testInfo.skip(true, "STRIPE_WEBHOOK_SECRET not set");
 });

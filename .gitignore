@@ -22,6 +22,16 @@
 .DS_Store
 *.pem
 
+# local session notes (never ship)
+.claude/NOTES.md
+
+# dev artifacts
+dev-server.log
+*.png
+chrome/
+CSL_Architecture_Review_*.md
+docs/Architecture.pdf
+
 # debug
 npm-debug.log*
 yarn-debug.log*

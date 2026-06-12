@@ -1,5 +1,18 @@
 # CSL Website — Claude Code Project Brief
 
+## Session Rules (read first, every session)
+
+- **This repo only.** Never read, write, or execute in `csl-migration` or any other
+  repo without an explicit instruction such as "switch to the migration repo".
+- **No cross-repo drift.** If a task requires changes in another repo, capture it in
+  `.claude/NOTES.md` and stop. Do not proceed.
+- **One initiative per session.** If a tangential idea comes up mid-session, add it
+  to `.claude/NOTES.md` and return to the current task.
+- **Check notes on start.** Read `.claude/NOTES.md` at the start of each session for
+  any resume notes or backlog items relevant to today's focus.
+
+---
+
 ## Organisation
 
 **Celtic Supporters Limited (CSL)** is a not-for-profit shareholder activism organisation
@@ -423,8 +436,9 @@ Events: `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, 
 > We are building the CSL public website using Next.js 14 (App Router), Tailwind CSS,
 > Stripe, Supabase (EU), Resend, and Zoho CRM. The CLAUDE.md in this folder has the full
 > brief. The HTML demo lives at `../CSL_Website_Demo/` — read the relevant HTML file before
-> building any page. Today's focus is [INSERT TODAY'S TASK HERE]. Please read CLAUDE.md
-> and confirm the component/route you are about to build before starting.
+> building any page. Read `.claude/NOTES.md` for any resume notes before starting.
+> Today's focus is [INSERT TODAY'S TASK HERE]. Please read CLAUDE.md and confirm the
+> component/route you are about to build before starting.
 
 ## Project Location
 
