@@ -1065,6 +1065,11 @@ function EditProfileTab({
     setPwdSaving(false);
     setPwdSuccess(true);
     setTimeout(() => setPwdSuccess(false), 5000);
+
+    // Fire-and-forget — a logging failure must never surface to the member.
+    fetch("/api/auth/password-changed", { method: "POST" }).catch((err) =>
+      console.error("[password-changed] log request failed:", err)
+    );
   }
 
   async function handleSave(e: React.FormEvent) {
