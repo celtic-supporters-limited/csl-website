@@ -19,6 +19,14 @@ const RATE_LIMIT = 5;
 const WINDOW_MS = 10 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
+  // ── 0. Membership gate ─────────────────────────────────────────────────────
+  if (process.env.MEMBERSHIP_OPEN !== "true") {
+    return NextResponse.json(
+      { error: "Membership sign-up is not currently open." },
+      { status: 403 }
+    );
+  }
+
   // ── 1. Rate limiting ───────────────────────────────────────────────────────
   const ip = req.headers.get("x-forwarded-for") ?? "unknown";
   const now = Date.now();
