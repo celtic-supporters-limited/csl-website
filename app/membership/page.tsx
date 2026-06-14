@@ -27,6 +27,8 @@ const FAQ = [
   },
 ];
 
+const membershipOpen = process.env.MEMBERSHIP_OPEN === "true";
+
 export default function MembershipPage() {
   return (
     <>
@@ -37,7 +39,7 @@ export default function MembershipPage() {
         <Container className="relative z-10">
           <div className="max-w-[680px]">
             <div className="inline-flex items-center gap-1.5 bg-white/15 border border-white/25 px-3.5 py-1.5 rounded-full text-[0.82rem] font-medium text-white/90 mb-5 backdrop-blur-sm">
-              Choose from the available options below
+              {membershipOpen ? "Choose from the available options below" : "Coming soon"}
             </div>
             <h1 className="text-[clamp(2rem,4vw,3.2rem)] font-extrabold leading-[1.15] tracking-tight mb-5">
               Join CSL. Fund<br />Real Change.
@@ -61,19 +63,49 @@ export default function MembershipPage() {
       {/* PLANS */}
       <section className="py-[72px]">
         <Container>
-          <div className="text-center mb-[52px]">
-            <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
-              Membership Plans
-            </span>
-            <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-3.5">
-              Choose Your Level of Support
-            </h2>
-            <p className="text-[1.05rem] text-gray-500 max-w-[600px] mx-auto">
-              All plans include full membership benefits. Monthly and annual plans
-              are recurring subscriptions managed securely via Stripe.
-            </p>
-          </div>
-          <MembershipPlans />
+          {membershipOpen ? (
+            <>
+              <div className="text-center mb-[52px]">
+                <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
+                  Membership Plans
+                </span>
+                <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-3.5">
+                  Choose Your Level of Support
+                </h2>
+                <p className="text-[1.05rem] text-gray-500 max-w-[600px] mx-auto">
+                  All plans include full membership benefits. Monthly and annual plans
+                  are recurring subscriptions managed securely via Stripe.
+                </p>
+              </div>
+              <MembershipPlans />
+            </>
+          ) : (
+            <div className="max-w-[600px] mx-auto text-center py-[48px]">
+              <div className="w-[64px] h-[64px] bg-csl-light rounded-2xl flex items-center justify-center text-3xl mx-auto mb-6">
+                ☘
+              </div>
+              <h2 className="text-[clamp(1.4rem,2.5vw,2rem)] font-extrabold tracking-tight mb-4">
+                Membership Opening Soon
+              </h2>
+              <p className="text-[1rem] text-gray-500 leading-[1.7] mb-6">
+                We are preparing to open public membership. To register your interest
+                or discuss joining, email{" "}
+                <a
+                  href="mailto:membership@celticsupporters.net"
+                  className="text-csl-dark font-medium underline underline-offset-2 hover:text-csl-mid"
+                >
+                  membership@celticsupporters.net
+                </a>
+                .
+              </p>
+              <a
+                href="/"
+                className="inline-flex items-center gap-2 text-[0.9rem] font-semibold text-csl-dark hover:text-csl-mid transition-colors"
+              >
+                ← Back to home
+              </a>
+            </div>
+          )}
         </Container>
       </section>
 
