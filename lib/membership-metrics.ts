@@ -255,7 +255,8 @@ export function computeWordPressMetrics(
     }
   }
 
-  return { metrics, wpPendingCount, legacyCount: legacyRows.length, spamCount: metrics.spam };
+  // Spam rows are in legacyRows but excluded from all meaningful counts — subtract them
+  return { metrics, wpPendingCount, legacyCount: legacyRows.length - metrics.spam, spamCount: metrics.spam };
 }
 
 // ── Combine into a full snapshot ──────────────────────────────────────────────

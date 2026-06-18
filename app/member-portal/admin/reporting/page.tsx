@@ -274,20 +274,6 @@ export default async function ReportingPage() {
             <h2 className="text-sm font-bold text-gray-900">Active members by plan</h2>
           </div>
           <PlanTable sb={liveMetrics} wp={wpData} />
-          <div className="px-4 py-3 border-t border-gray-100 flex justify-between text-sm">
-            <span className="text-gray-500">MRR — new platform</span>
-            <span className="font-semibold tabular-nums">{fmtGbp(liveMetrics.mrr_pence)}</span>
-          </div>
-          {hasWp && (
-            <div className="px-4 py-2 flex justify-between text-sm border-t border-gray-100">
-              <span className="text-gray-500">MRR — legacy (WP, approx.)</span>
-              <span className="font-semibold tabular-nums">{fmtGbp(wpData!.mrr_pence)}</span>
-            </div>
-          )}
-          <div className="px-4 py-3 border-t border-gray-200 flex justify-between text-sm bg-csl-light">
-            <span className="font-bold text-gray-900">Total MRR (excl. lifetime)</span>
-            <span className="font-black text-csl-dark tabular-nums">{fmtGbp(combinedMrr)}</span>
-          </div>
         </div>
 
         {/* Migration progress */}
