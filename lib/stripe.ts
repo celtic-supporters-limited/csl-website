@@ -14,6 +14,14 @@ export function getStripe(): Stripe {
   return client;
 }
 
+// US state abbreviations that sometimes appear in country field on legacy Stripe charges
+const US_STATE_CODES = new Set([
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+  "VA","WA","WV","WI","WY","DC",
+]);
+
 // Paginate all successful Stripe charges and return aggregate totals.
 // Only call from background contexts (cron, upload) — never on page load.
 export async function sweepStripeCharges(): Promise<{
@@ -33,7 +41,8 @@ export async function sweepStripeCharges(): Promise<{
     for (const charge of batch.data) {
       if (charge.paid && charge.status === "succeeded") {
         total += charge.amount - (charge.amount_refunded ?? 0);
-        const country = charge.billing_details?.address?.country ?? "Unknown";
+        const raw = charge.billing_details?.address?.country ?? "Unknown";
+        const country = US_STATE_CODES.has(raw) ? "US" : raw;
         countryTally[country] = (countryTally[country] ?? 0) + 1;
       }
       // charges.list is newest-first; last item in the final batch is the earliest
