@@ -236,14 +236,14 @@ export function computeWordPressMetrics(
     }
 
     const s = row.status;
-    if (s === "active" || s === "expiring")         metrics.active++;   // expiring = cancelled renewal but still within paid period
+    if (s === "active")                             metrics.active++;
     else if (s === "canceled" || s === "cancelled") metrics.cancelled++;
     else if (s === "expired")                       metrics.expired++;
     else if (s === "pending") { metrics.pending++; wpPendingCount++; }
     else                                            metrics.other++;
 
-    // Only count plan breakdown and MRR for active members (including expiring)
-    if (s === "active" || s === "expiring") {
+    // Only count plan breakdown and MRR for active members
+    if (s === "active") {
       const plan = row.plan_name;
       metrics.by_plan[plan] = (metrics.by_plan[plan] ?? 0) + 1;
       if (!isKnownPlan(plan) && !metrics.unknown_plans.includes(plan)) {
@@ -251,7 +251,7 @@ export function computeWordPressMetrics(
       }
     }
 
-    if ((s === "active" || s === "expiring") && !LIFETIME_PLAN_NAMES.has(row.plan_name)) {
+    if (s === "active" && !LIFETIME_PLAN_NAMES.has(row.plan_name)) {
       const amountPence = Math.round(row.billing_amount * 100);
       metrics.mrr_pence += row.billing_unit === "year"
         ? Math.round(amountPence / 12)
