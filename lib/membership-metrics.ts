@@ -153,6 +153,7 @@ function isGibberishName(first: string, last: string): boolean {
 export type WordPressRow = {
   email: string;
   status: string;
+  raw_status: string;
   plan_name: string;
   billing_amount: number;
   billing_unit: string;  // 'month' | 'year'
@@ -202,9 +203,11 @@ export function parseWordPressCsv(csvText: string): WordPressRow[] {
     if (!email) return [];
     const firstName = (cols[firstNameIdx] ?? "").trim();
     const lastName  = (cols[lastNameIdx]  ?? "").trim();
+    const rawStatus = cols[statusIdx] ?? "";
     return [{
       email,
-      status:         (cols[statusIdx] ?? "").toLowerCase().trim(),
+      status:         rawStatus.toLowerCase().trim(),
+      raw_status:     rawStatus,  // preserved for diagnostics
       plan_name:      cols[nameIdx]   ?? "Unknown",
       billing_amount: parseFloat(cols[amountIdx] ?? "0") || 0,
       billing_unit:   (cols[unitIdx]  ?? "month").toLowerCase(),
