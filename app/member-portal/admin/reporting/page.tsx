@@ -202,44 +202,42 @@ export default async function ReportingPage() {
   // ── ARPM ─────────────────────────────────────────────────────────────────
   const arpmPence = combinedActive > 0 ? Math.round(combinedMrr / combinedActive) : 0;
 
-  // ── Growth trend (last 6 months from member_events) ──────────────────────
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-  sixMonthsAgo.setDate(1);
-
-  const { data: growthEvents } = await db
-    .from("member_events")
-    .select("event_type, created_at")
-    .in("event_type", ["checkout.completed", "subscription.cancelled"])
-    .eq("is_test", false)
-    .gte("created_at", sixMonthsAgo.toISOString())
-    .order("created_at", { ascending: true });
-
-  // Build monthly buckets
-  const growthMonths = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date();
-    d.setDate(1);
-    d.setMonth(d.getMonth() - (5 - i));
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    return { key, label: d.toLocaleDateString("en-GB", { month: "short", year: "numeric" }) };
+  // ── Growth trend — snapshot-to-snapshot combined active deltas ───────────
+  // Snapshots are the only source that covers the full membership (WP + new platform).
+  // We fetch up to 10 above; reverse to show oldest → newest for the trend table.
+  const snapChronological = (snapshots ?? []).slice().reverse();
+  const snapshotGrowth = snapChronological.map((s, i) => {
+    const m = s.metrics as MembershipSnapshot;
+    const active = m.combined?.active_total ?? (m.supabase.active + (m.wordpress_legacy?.active ?? 0));
+    const prev   = i === 0 ? null : (() => {
+      const pm = snapChronological[i - 1].metrics as MembershipSnapshot;
+      return pm.combined?.active_total ?? (pm.supabase.active + (pm.wordpress_legacy?.active ?? 0));
+    })();
+    return {
+      date:   fmtDate(s.snapshotted_at),
+      active,
+      delta:  prev !== null ? active - prev : null,
+    };
   });
 
-  // Use members.created_at for joins (reliable for all members).
-  // member_events only has checkout.completed since Phase 15 deployment, so
-  // it would under-count historical joins. created_at exists on every row.
-  const monthlyGrowth = growthMonths.map(({ key, label }) => {
-    const joined    = (supabaseMembers ?? []).filter(r => (r.created_at as string | null)?.startsWith(key)).length;
-    const cancelled = (growthEvents ?? []).filter(e => e.event_type === "subscription.cancelled" && e.created_at.startsWith(key)).length;
-    return { label, joined, cancelled, net: joined - cancelled };
-  });
+  // Net growth: first recorded → current live count
+  const firstSnapshotActive = snapshotGrowth[0]?.active ?? null;
+  const netGrowthSinceFirst = firstSnapshotActive !== null ? combinedActive - firstSnapshotActive : null;
 
-  // Churn rate: cancellations in last 30 days as % of active base
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const recentCancellations = (growthEvents ?? []).filter(
-    e => e.event_type === "subscription.cancelled" && e.created_at >= thirtyDaysAgo
-  ).length;
-  const monthlyChurnPct = combinedActive > 0
-    ? Math.round((recentCancellations / combinedActive) * 1000) / 10
+  // Churn: infer from snapshot deltas where combined active fell between consecutive
+  // snapshots. Positive deltas represent net growth; negative imply net loss.
+  // This covers both platforms — no dependency on member_events.
+  const inferredChurnEvents = snapshotGrowth
+    .filter(s => s.delta !== null && s.delta < 0)
+    .reduce((sum, s) => sum + Math.abs(s.delta!), 0);
+  const snapshotSpanDays = snapChronological.length > 1
+    ? (new Date(snapChronological[snapChronological.length - 1].snapshotted_at).getTime() -
+       new Date(snapChronological[0].snapshotted_at).getTime()) / (1000 * 60 * 60 * 24)
+    : null;
+  // Annualise churn as monthly rate: (net losses / avg active) / months observed
+  const avgActive = snapshotGrowth.reduce((s, r) => s + r.active, 0) / (snapshotGrowth.length || 1);
+  const monthlyChurnPct = snapshotSpanDays && snapshotSpanDays > 0 && avgActive > 0
+    ? Math.round((inferredChurnEvents / avgActive) / (snapshotSpanDays / 30.44) * 1000) / 10
     : 0;
 
   // ── Member tenure distribution (active new-platform members only) ─────────
@@ -372,7 +370,7 @@ export default async function ReportingPage() {
               {monthlyChurnPct}%
             </p>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Monthly churn rate</p>
-            <p className="text-xs text-gray-400 mt-0.5">Cancellations last 30 days / active</p>
+            <p className="text-xs text-gray-400 mt-0.5">Net losses between snapshots / avg active</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
             <p className={`text-3xl font-black tabular-nums ${
@@ -390,12 +388,14 @@ export default async function ReportingPage() {
             </p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
-            <p className="text-3xl font-black text-csl-dark tabular-nums">
-              {fmt(monthlyGrowth.reduce((s, m) => s + m.joined, 0))}
+            <p className={`text-3xl font-black tabular-nums ${netGrowthSinceFirst === null ? "text-gray-400" : netGrowthSinceFirst >= 0 ? "text-green-700" : "text-red-600"}`}>
+              {netGrowthSinceFirst !== null ? (netGrowthSinceFirst >= 0 ? `+${fmt(netGrowthSinceFirst)}` : fmt(netGrowthSinceFirst)) : "—"}
             </p>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">New members (6 months)</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Net membership growth</p>
             <p className="text-xs text-gray-400 mt-0.5">
-              Net: {monthlyGrowth.reduce((s, m) => s + m.net, 0) >= 0 ? "+" : ""}{fmt(monthlyGrowth.reduce((s, m) => s + m.net, 0))} after cancellations
+              {firstSnapshotActive !== null
+                ? `From ${fmt(firstSnapshotActive)} at first snapshot to ${fmt(combinedActive)} today`
+                : "No snapshots recorded yet"}
             </p>
           </div>
         </div>
@@ -517,51 +517,58 @@ export default async function ReportingPage() {
         {/* Growth trend | Member tenure — side by side */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
 
-          {/* Monthly growth trend */}
+          {/* Membership growth trend — snapshot-to-snapshot combined */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
-              <h2 className="text-sm font-bold text-gray-900">Monthly growth trend</h2>
-              <p className="text-xs text-gray-500 mt-0.5">New platform members by join date · cancellation history from event log</p>
+              <h2 className="text-sm font-bold text-gray-900">Membership growth trend</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Combined active members (WordPress + new platform) at each recorded snapshot</p>
             </div>
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Month</th>
-                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Joined</th>
-                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Left</th>
-                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Net</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {monthlyGrowth.map(({ label, joined, cancelled, net }) => (
-                  <tr key={label}>
-                    <td className="px-4 py-2.5 text-sm text-gray-700">{label}</td>
-                    <td className="px-4 py-2.5 text-sm text-right tabular-nums text-green-700 font-medium">{joined > 0 ? `+${fmt(joined)}` : <span className="text-gray-300">—</span>}</td>
-                    <td className="px-4 py-2.5 text-sm text-right tabular-nums text-red-500">{cancelled > 0 ? `-${fmt(cancelled)}` : <span className="text-gray-300">—</span>}</td>
-                    <td className={`px-4 py-2.5 text-sm text-right tabular-nums font-bold ${net > 0 ? "text-green-700" : net < 0 ? "text-red-600" : "text-gray-400"}`}>
-                      {net > 0 ? `+${fmt(net)}` : net < 0 ? fmt(net) : "0"}
+            {snapshotGrowth.length === 0 ? (
+              <p className="px-4 py-4 text-sm text-gray-400">No snapshots recorded yet. Upload a WP export or wait for the weekly cron.</p>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Snapshot date</th>
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Active members</th>
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Change</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {snapshotGrowth.map(({ date, active, delta }) => (
+                    <tr key={date}>
+                      <td className="px-4 py-2.5 text-sm text-gray-700">{date}</td>
+                      <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-gray-900">{fmt(active)}</td>
+                      <td className="px-4 py-2.5 text-sm text-right tabular-nums">
+                        {delta === null ? <span className="text-gray-300">—</span> :
+                          <span className={delta > 0 ? "text-green-600 font-semibold" : delta < 0 ? "text-red-600 font-semibold" : "text-gray-400"}>
+                            {delta > 0 ? `+${fmt(delta)}` : delta < 0 ? fmt(delta) : "no change"}
+                          </span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-gray-200 bg-gray-50">
+                    <td className="px-4 py-2.5 text-sm font-semibold text-gray-700">Live (now)</td>
+                    <td className="px-4 py-2.5 text-sm text-right tabular-nums font-black text-csl-dark">{fmt(combinedActive)}</td>
+                    <td className="px-4 py-2.5 text-sm text-right tabular-nums">
+                      {netGrowthSinceFirst !== null && (
+                        <span className={netGrowthSinceFirst >= 0 ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>
+                          {netGrowthSinceFirst >= 0 ? `+${fmt(netGrowthSinceFirst)}` : fmt(netGrowthSinceFirst)} total
+                        </span>
+                      )}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-gray-200 bg-gray-50">
-                  <td className="px-4 py-2 text-xs font-semibold text-gray-500">6-month total</td>
-                  <td className="px-4 py-2 text-sm text-right tabular-nums text-green-700 font-bold">+{fmt(monthlyGrowth.reduce((s, m) => s + m.joined, 0))}</td>
-                  <td className="px-4 py-2 text-sm text-right tabular-nums text-red-500 font-bold">-{fmt(monthlyGrowth.reduce((s, m) => s + m.cancelled, 0))}</td>
-                  <td className={`px-4 py-2 text-sm text-right tabular-nums font-black ${monthlyGrowth.reduce((s, m) => s + m.net, 0) >= 0 ? "text-green-700" : "text-red-600"}`}>
-                    {monthlyGrowth.reduce((s, m) => s + m.net, 0) >= 0 ? "+" : ""}{fmt(monthlyGrowth.reduce((s, m) => s + m.net, 0))}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                </tbody>
+              </table>
+            )}
           </div>
 
           {/* Member tenure distribution */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
               <h2 className="text-sm font-bold text-gray-900">Member tenure</h2>
-              <p className="text-xs text-gray-500 mt-0.5">How long active new-platform members have been with CSL</p>
+              <p className="text-xs text-gray-500 mt-0.5">New platform members only — WP join dates not available in current export</p>
             </div>
             <table className="w-full">
               <thead>
