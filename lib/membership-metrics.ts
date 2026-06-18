@@ -33,6 +33,7 @@ export type SourceMetrics = {
   cancelled: number;
   expired: number;
   pending: number;
+  spam: number;                // WordPress-only: accounts with bot-pattern names, excluded from all other counts
   other: number;
   by_plan: Record<string, number>;
   mrr_pence: number;           // excludes lifetime members; annual amounts divided by 12
@@ -49,7 +50,8 @@ export type MigrationMetrics = {
 export type DataQualityFlags = {
   payment_failed_count: number;
   no_auth_account_count: number;  // members with user_id IS NULL
-  wp_pending_count: number;       // WordPress pending rows (never completed payment)
+  wp_pending_count: number;       // WordPress pending rows (never completed payment — real people only)
+  wp_spam_count: number;          // WordPress bot/spam accounts (excluded from all other counts)
   unknown_plan_count: number;
 };
 
@@ -84,7 +86,7 @@ export function computeSupabaseMetrics(rows: SupabaseMemberRow[]): {
   dataQuality: Pick<DataQualityFlags, "payment_failed_count" | "no_auth_account_count">;
 } {
   const metrics: SourceMetrics = {
-    active: 0, payment_failed: 0, cancelled: 0, expired: 0, pending: 0, other: 0,
+    active: 0, payment_failed: 0, cancelled: 0, expired: 0, pending: 0, spam: 0, other: 0,
     by_plan: {}, mrr_pence: 0, unknown_plans: [],
   };
   let migrated = 0;
@@ -133,12 +135,21 @@ export function computeSupabaseMetrics(rows: SupabaseMemberRow[]): {
 
 // ── WordPress CSV parsing ─────────────────────────────────────────────────────
 
+// Bot accounts registered via automated scripts have randomised 8-12 lowercase-alpha
+// strings as both first and last names. Real members always have normal-cased names
+// with at least some non-alpha characters or mixed case, or names shorter than 8 chars.
+function isGibberishName(first: string, last: string): boolean {
+  const gibberish = (s: string) => /^[a-z]{8,12}$/.test(s);
+  return gibberish(first) && gibberish(last);
+}
+
 export type WordPressRow = {
   email: string;
   status: string;
   plan_name: string;
   billing_amount: number;
   billing_unit: string;  // 'month' | 'year'
+  is_spam: boolean;
 };
 
 function parseCsvRow(line: string): string[] {
@@ -168,11 +179,13 @@ export function parseWordPressCsv(csvText: string): WordPressRow[] {
   const header = parseCsvRow(lines[0]);
   const idx = (col: string) => header.indexOf(col);
 
-  const emailIdx  = idx("user_email");
-  const statusIdx = idx("subscription_status");
-  const nameIdx   = idx("subscription_name");
-  const amountIdx = idx("subscription_billing_amount");
-  const unitIdx   = idx("subscription_billing_duration_unit");
+  const emailIdx     = idx("user_email");
+  const statusIdx    = idx("subscription_status");
+  const nameIdx      = idx("subscription_name");
+  const amountIdx    = idx("subscription_billing_amount");
+  const unitIdx      = idx("subscription_billing_duration_unit");
+  const firstNameIdx = idx("user_firstname");
+  const lastNameIdx  = idx("user_lastname");
 
   if (emailIdx === -1 || statusIdx === -1) return [];
 
@@ -180,12 +193,15 @@ export function parseWordPressCsv(csvText: string): WordPressRow[] {
     const cols = parseCsvRow(line);
     const email = (cols[emailIdx] ?? "").toLowerCase().trim();
     if (!email) return [];
+    const firstName = (cols[firstNameIdx] ?? "").trim();
+    const lastName  = (cols[lastNameIdx]  ?? "").trim();
     return [{
       email,
       status:         (cols[statusIdx] ?? "").toLowerCase().trim(),
       plan_name:      cols[nameIdx]   ?? "Unknown",
       billing_amount: parseFloat(cols[amountIdx] ?? "0") || 0,
       billing_unit:   (cols[unitIdx]  ?? "month").toLowerCase(),
+      is_spam:        isGibberishName(firstName, lastName),
     }];
   });
 }
@@ -195,9 +211,9 @@ export function parseWordPressCsv(csvText: string): WordPressRow[] {
 export function computeWordPressMetrics(
   rows: WordPressRow[],
   supabaseEmails: Set<string>,
-): { metrics: SourceMetrics; wpPendingCount: number; legacyCount: number } {
+): { metrics: SourceMetrics; wpPendingCount: number; legacyCount: number; spamCount: number } {
   const metrics: SourceMetrics = {
-    active: 0, payment_failed: 0, cancelled: 0, expired: 0, pending: 0, other: 0,
+    active: 0, payment_failed: 0, cancelled: 0, expired: 0, pending: 0, spam: 0, other: 0,
     by_plan: {}, mrr_pence: 0, unknown_plans: [],
   };
   let wpPendingCount = 0;
@@ -206,12 +222,18 @@ export function computeWordPressMetrics(
   const legacyRows = rows.filter((r) => !supabaseEmails.has(r.email));
 
   for (const row of legacyRows) {
+    // Spam accounts are counted separately and excluded from all meaningful metrics
+    if (row.is_spam) {
+      metrics.spam++;
+      continue;
+    }
+
     const s = row.status;
-    if (s === "active")                         metrics.active++;
+    if (s === "active")                             metrics.active++;
     else if (s === "canceled" || s === "cancelled") metrics.cancelled++;
-    else if (s === "expired")                   metrics.expired++;
+    else if (s === "expired")                       metrics.expired++;
     else if (s === "pending") { metrics.pending++; wpPendingCount++; }
-    else                                        metrics.other++;
+    else                                            metrics.other++;
 
     const plan = row.plan_name;
     metrics.by_plan[plan] = (metrics.by_plan[plan] ?? 0) + 1;
@@ -227,7 +249,7 @@ export function computeWordPressMetrics(
     }
   }
 
-  return { metrics, wpPendingCount, legacyCount: legacyRows.length };
+  return { metrics, wpPendingCount, legacyCount: legacyRows.length, spamCount: metrics.spam };
 }
 
 // ── Combine into a full snapshot ──────────────────────────────────────────────
@@ -249,11 +271,13 @@ export function buildSnapshot({
   let wpPendingCount = 0;
   let legacyCount = 0;
 
+  let spamCount = 0;
   if (wpRows) {
     const wp = computeWordPressMetrics(wpRows, supabaseEmails);
-    wpMetrics    = wp.metrics;
+    wpMetrics      = wp.metrics;
     wpPendingCount = wp.wpPendingCount;
-    legacyCount  = wp.legacyCount;
+    legacyCount    = wp.legacyCount;
+    spamCount      = wp.spamCount;
   }
 
   const activeCombined = sbMetrics.active + (wpMetrics?.active ?? 0);
@@ -276,6 +300,7 @@ export function buildSnapshot({
     data_quality: {
       ...dataQuality,
       wp_pending_count: wpPendingCount,
+      wp_spam_count: spamCount,
       unknown_plan_count: unknownPlanCount,
     },
     wp_as_of_date: wpAsOfDate,

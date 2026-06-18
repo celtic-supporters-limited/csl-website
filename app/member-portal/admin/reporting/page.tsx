@@ -346,7 +346,7 @@ export default async function ReportingPage() {
         {/* Data quality */}
         {(liveQuality.payment_failed_count > 0 ||
           liveQuality.no_auth_account_count > 0 ||
-          (wpData && wpData.pending > 0) ||
+          (wpData && (wpData.pending > 0 || wpData.spam > 0)) ||
           liveMetrics.unknown_plans.length > 0 ||
           wpData?.unknown_plans.length) ? (
           <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
@@ -367,9 +367,15 @@ export default async function ReportingPage() {
                   <span className="font-bold text-amber-700 tabular-nums">{fmt(liveQuality.no_auth_account_count)}</span>
                 </li>
               )}
+              {wpData && wpData.spam > 0 && (
+                <li className="px-4 py-2.5 flex justify-between text-sm">
+                  <span className="text-amber-800">WordPress spam/bot accounts (excluded from all counts)</span>
+                  <span className="font-bold text-amber-700 tabular-nums">{fmt(wpData.spam)}</span>
+                </li>
+              )}
               {wpData && wpData.pending > 0 && (
                 <li className="px-4 py-2.5 flex justify-between text-sm">
-                  <span className="text-amber-800">WordPress pending (payment never completed)</span>
+                  <span className="text-amber-800">WordPress pending — real members, payment not completed</span>
                   <span className="font-bold text-amber-700 tabular-nums">{fmt(wpData.pending)}</span>
                 </li>
               )}

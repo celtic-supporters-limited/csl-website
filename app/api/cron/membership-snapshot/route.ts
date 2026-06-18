@@ -74,6 +74,7 @@ export async function GET(req: NextRequest) {
     data_quality: {
       ...dataQuality,
       wp_pending_count: wpData?.pending ?? 0,
+      wp_spam_count: wpData?.spam ?? 0,
       unknown_plan_count: unknownPlanCount,
     },
     wp_as_of_date: wpAsOfDate,
