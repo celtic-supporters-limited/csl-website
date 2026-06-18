@@ -455,7 +455,9 @@ export default async function ReportingPage() {
                     { label: "Rest of world",  count: rowTotal - ukCount - ieCount },
                   ].map(({ label, count }) => (
                     <div key={label} className="bg-csl-light rounded-lg px-3 py-2 text-center min-w-[100px]">
-                      <p className="text-xl font-black text-csl-dark tabular-nums">{fmt(count)}</p>
+                      <p className="text-xl font-black text-csl-dark tabular-nums">
+                        {rowTotal > 0 ? `${Math.round((count / rowTotal) * 1000) / 10}%` : "0%"}
+                      </p>
                       <p className="text-[0.65rem] text-gray-500 mt-0.5">{label}</p>
                     </div>
                   ))}
