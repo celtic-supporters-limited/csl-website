@@ -1,11 +1,43 @@
 import Link from "next/link";
 import { Container } from "@/components/Container";
+import { getSupabase } from "@/lib/supabase";
+import type { MembershipSnapshot } from "@/lib/membership-metrics";
 
-const CURRENT_MEMBERS = 487;
+export const revalidate = 3600;
+
 const MEMBER_TARGET = 5000;
-const progressPct = ((CURRENT_MEMBERS / MEMBER_TARGET) * 100).toFixed(2);
+const FALLBACK_MEMBERS = 493;
 
-export default function HomePage() {
+async function getActiveMembers(): Promise<number> {
+  try {
+    const db = getSupabase();
+
+    const { data: config } = await db
+      .from("site_config")
+      .select("value")
+      .eq("key", "active_members")
+      .maybeSingle();
+
+    if (config?.value) return parseInt(config.value, 10);
+
+    const { data: snap } = await db
+      .from("membership_snapshots")
+      .select("metrics")
+      .order("snapshotted_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const active = (snap?.metrics as MembershipSnapshot | null)?.combined?.active_total;
+    if (typeof active === "number") return active;
+  } catch {
+    // fall through to hardcoded floor
+  }
+  return FALLBACK_MEMBERS;
+}
+
+export default async function HomePage() {
+  const currentMembers = await getActiveMembers();
+  const progressPct = ((currentMembers / MEMBER_TARGET) * 100).toFixed(2);
   return (
     <>
       {/* HERO */}
@@ -52,10 +84,10 @@ export default function HomePage() {
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-center mb-2.5">
                   <span className="text-white/85 text-[0.9rem]">
-                    {CURRENT_MEMBERS} members and growing. Help us reach 5,000.
+                    {currentMembers} members and growing. Help us reach 5,000.
                   </span>
                   <span className="text-gray-300 font-medium text-[0.85rem] tabular-nums ml-4 flex-shrink-0">
-                    {CURRENT_MEMBERS.toLocaleString()} / {MEMBER_TARGET.toLocaleString()}
+                    {currentMembers.toLocaleString()} / {MEMBER_TARGET.toLocaleString()}
                   </span>
                 </div>
                 <div className="bg-white/10 rounded-full h-2.5 w-full overflow-hidden">
@@ -77,7 +109,7 @@ export default function HomePage() {
           {/* Financial transparency stats */}
           <div className="w-full flex justify-center gap-16 flex-wrap">
             {[
-              { number: "487",    label: "Members" },
+              { number: currentMembers.toLocaleString("en-GB"), label: "Members" },
               { number: "15,000", label: "Shares Held" },
             ].map(({ number, label }) => (
               <div key={label} className="text-center">
@@ -409,8 +441,8 @@ export default function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               {
-                title: "CSL Reaches 487 Members",
-                date: "May 2026",
+                title: `CSL Reaches ${currentMembers.toLocaleString("en-GB")} Members`,
+                date: "June 2026",
                 summary: "Membership continues to grow as awareness of CSL's governance mission spreads.",
                 href: "#",
               },

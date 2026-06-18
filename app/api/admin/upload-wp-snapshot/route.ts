@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import { sweepStripeCharges } from "@/lib/stripe";
 import {
@@ -69,6 +70,12 @@ export async function POST(req: NextRequest) {
     console.error("[upload-wp-snapshot] Insert failed:", insertError.message, insertError.code, insertError.details);
     return NextResponse.json({ error: `Failed to save snapshot: ${insertError.message} (${insertError.code})` }, { status: 500 });
   }
+
+  await db.from("site_config").upsert(
+    { key: "active_members", value: String(snapshot.combined.active_total), updated_at: new Date().toISOString() },
+    { onConflict: "key" },
+  );
+  revalidatePath("/");
 
   return NextResponse.json({
     ok: true,
