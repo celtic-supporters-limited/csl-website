@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 import { Container } from "@/components/Container";
@@ -39,6 +39,7 @@ const dropdownItemClass = (active: boolean) =>
 
 export default function Nav() {
   const pathname = usePathname();
+  const router = useRouter();
   const [authed, setAuthed] = useState(false);
   const [takeActionOpen, setTakeActionOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -52,7 +53,12 @@ export default function Nav() {
       setAuthed(!!session);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => setAuthed(!!session)
+      (_event, session) => {
+        // Clear the Next.js router cache when the session ends so stale
+        // portal RSC payloads cannot be served after sign-out.
+        if (!session) router.refresh();
+        setAuthed(!!session);
+      }
     );
     return () => subscription.unsubscribe();
   }, []);
@@ -186,6 +192,7 @@ export default function Nav() {
         <div className="flex items-center gap-2">
           <Link
             href={authed ? "/member-portal" : "/login"}
+            prefetch={false}
             className="hidden lg:inline-flex items-center px-4 py-2 rounded-lg text-[0.88rem] font-semibold border border-white text-white bg-transparent hover:bg-csl-mid transition-colors duration-200"
           >
             {authed ? "Member Portal" : "Member Login"}
@@ -321,6 +328,7 @@ export default function Nav() {
             <div className="mt-3 pt-3 border-t border-white/10 flex flex-col gap-2.5">
               <Link
                 href={authed ? "/member-portal" : "/login"}
+                prefetch={false}
                 className="block text-center px-4 py-2.5 rounded-lg text-[0.92rem] font-semibold border border-white text-white bg-transparent hover:bg-csl-mid transition-colors duration-200"
               >
                 {authed ? "Member Portal" : "Member Login"}
