@@ -170,6 +170,7 @@ export default async function ReportingPage() {
 
   // Total collected — sum all successful Stripe charges (new platform only, exact)
   let totalCollectedPence = 0;
+  let earliestChargeDate: Date | null = null;
   try {
     const stripe = getStripe();
     let hasMore = true;
@@ -180,6 +181,8 @@ export default async function ReportingPage() {
         if (charge.paid && charge.status === "succeeded") {
           totalCollectedPence += charge.amount - (charge.amount_refunded ?? 0);
         }
+        // charges.list returns newest-first; last item in final batch is the earliest
+        earliestChargeDate = new Date(charge.created * 1000);
       }
       hasMore = batch.has_more;
       startingAfter = batch.data[batch.data.length - 1]?.id;
@@ -256,7 +259,11 @@ export default async function ReportingPage() {
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
             <p className="text-3xl font-black text-csl-dark tabular-nums">{fmtGbp(totalCollectedPence)}</p>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Total collected — new platform</p>
-            <p className="text-xs text-gray-400 mt-0.5">All Stripe payments since launch</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {earliestChargeDate
+                ? `All Stripe payments since ${earliestChargeDate.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+                : "All Stripe payments since launch"}
+            </p>
           </div>
         </div>
 
@@ -275,13 +282,27 @@ export default async function ReportingPage() {
               </tr>
             </thead>
             <tbody>
-              <StatusRow label="Active"          sb={liveMetrics.active}         wp={hasWp ? wpData!.active         : null} total={liveMetrics.active         + (wpData?.active         ?? 0)} highlight="green" />
-              <StatusRow label="Payment failed"  sb={liveMetrics.payment_failed} wp={hasWp ? wpData!.payment_failed : null} total={liveMetrics.payment_failed + (wpData?.payment_failed ?? 0)} highlight={liveMetrics.payment_failed + (wpData?.payment_failed ?? 0) > 0 ? "red" : undefined} />
-              <StatusRow label="Pending"         sb={liveMetrics.pending}        wp={hasWp ? wpData!.pending        : null} total={liveMetrics.pending        + (wpData?.pending        ?? 0)} highlight={liveMetrics.pending + (wpData?.pending ?? 0) > 0 ? "amber" : undefined} />
-              <StatusRow label="Cancelled"       sb={liveMetrics.cancelled}      wp={hasWp ? wpData!.cancelled      : null} total={liveMetrics.cancelled      + (wpData?.cancelled      ?? 0)} />
-              <StatusRow label="Expired"         sb={liveMetrics.expired}        wp={hasWp ? wpData!.expired        : null} total={liveMetrics.expired        + (wpData?.expired        ?? 0)} />
-              {(liveMetrics.other + (wpData?.other ?? 0)) > 0 && (
-                <StatusRow label="Other / unknown" sb={liveMetrics.other}        wp={hasWp ? wpData!.other          : null} total={liveMetrics.other          + (wpData?.other          ?? 0)} />
+              {([
+                { label: "Active",          sb: liveMetrics.active,         wp: wpData?.active         ?? 0, highlight: "green"  as const },
+                { label: "Pending",         sb: liveMetrics.pending,        wp: wpData?.pending        ?? 0, highlight: "amber"  as const },
+                { label: "Expired",         sb: liveMetrics.expired,        wp: wpData?.expired        ?? 0, highlight: undefined },
+                { label: "Other / unknown", sb: liveMetrics.other,          wp: wpData?.other          ?? 0, highlight: undefined },
+                { label: "Cancelled",       sb: liveMetrics.cancelled,      wp: wpData?.cancelled      ?? 0, highlight: undefined },
+                { label: "Payment failed",  sb: liveMetrics.payment_failed, wp: wpData?.payment_failed ?? 0, highlight: "red"    as const },
+              ]
+                .map((r) => ({ ...r, total: r.sb + r.wp }))
+                .sort((a, b) => b.total - a.total)
+                .filter((r) => r.total > 0 || r.label === "Active")
+                .map(({ label, sb, wp, total, highlight }) => (
+                  <StatusRow
+                    key={label}
+                    label={label}
+                    sb={sb}
+                    wp={hasWp ? wp : null}
+                    total={total}
+                    highlight={highlight && total > 0 ? highlight : undefined}
+                  />
+                ))
               )}
             </tbody>
           </table>
