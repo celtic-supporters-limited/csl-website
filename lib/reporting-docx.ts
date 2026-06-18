@@ -150,8 +150,9 @@ function progressBar(pct: number, widthDxa: number) {
 export async function buildReportDocx(d: ReportData): Promise<Buffer> {
   const hasWp       = d.wpData !== null;
   const progressPct = Math.round((d.combinedActive / d.targetMembers) * 1000) / 10;
-  const notYet      = d.wpData
-    ? d.wpData.active + d.wpData.cancelled + d.wpData.expired + d.wpData.pending + d.wpData.other
+  const notYet      = d.wpData?.active ?? 0;
+  const legacyLapsed = d.wpData
+    ? d.wpData.pending + d.wpData.expired + d.wpData.cancelled + d.wpData.other
     : 0;
 
   // ── Status rows ─────────────────────────────────────────────────────────────
@@ -205,6 +206,9 @@ export async function buildReportDocx(d: ReportData): Promise<Buffer> {
     "Automated bot registrations are identified by name pattern and excluded from all counts.",
     "Lifetime members are counted as active but are not included in monthly income, as they make a single payment rather than a recurring subscription.",
     `Total collected covers all payments received via Stripe${d.earliestChargeDate ? ` since ${d.earliestChargeDate}` : ""}, across both the legacy and new platforms, after deducting any refunds.`,
+    hasWp && legacyLapsed > 0
+      ? `${num(legacyLapsed)} WordPress members are lapsed (expired, pending, or cancelled) and are excluded from the migration count. These represent a potential re-engagement opportunity.`
+      : null,
     d.liveQuality.payment_failed_count > 0
       ? `${num(d.liveQuality.payment_failed_count)} member${d.liveQuality.payment_failed_count !== 1 ? "s" : ""} on the new platform ${d.liveQuality.payment_failed_count !== 1 ? "have" : "has"} a payment that has failed. Their membership is at risk.`
       : null,
@@ -383,7 +387,7 @@ export async function buildReportDocx(d: ReportData): Promise<Buffer> {
               tc([
                 new Paragraph({ alignment: AlignmentType.CENTER, children: [run(hasWp ? num(notYet) : "?", { bold: true, color: GREEN, size: 26 })], spacing: { after: 40 } }),
                 new Paragraph({ alignment: AlignmentType.CENTER, children: [run("Not yet migrated", { color: GREY, size: 14 })], spacing: { after: 20 } }),
-                new Paragraph({ alignment: AlignmentType.CENTER, children: [run("(WordPress only)", { color: GREY, size: 13 })], spacing: { after: 0 } }),
+                new Paragraph({ alignment: AlignmentType.CENTER, children: [run("(active WordPress members)", { color: GREY, size: 13 })], spacing: { after: 0 } }),
               ], COL3R, { margins: { top: 80, bottom: 80, left: 60, right: 60 } }),
             ],
           })],
