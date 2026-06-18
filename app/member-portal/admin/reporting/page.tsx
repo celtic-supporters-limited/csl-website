@@ -224,9 +224,12 @@ export default async function ReportingPage() {
     return { key, label: d.toLocaleDateString("en-GB", { month: "short", year: "numeric" }) };
   });
 
+  // Use members.created_at for joins (reliable for all members).
+  // member_events only has checkout.completed since Phase 15 deployment, so
+  // it would under-count historical joins. created_at exists on every row.
   const monthlyGrowth = growthMonths.map(({ key, label }) => {
-    const joined      = (growthEvents ?? []).filter(e => e.event_type === "checkout.completed"    && e.created_at.startsWith(key)).length;
-    const cancelled   = (growthEvents ?? []).filter(e => e.event_type === "subscription.cancelled" && e.created_at.startsWith(key)).length;
+    const joined    = (supabaseMembers ?? []).filter(r => (r.created_at as string | null)?.startsWith(key)).length;
+    const cancelled = (growthEvents ?? []).filter(e => e.event_type === "subscription.cancelled" && e.created_at.startsWith(key)).length;
     return { label, joined, cancelled, net: joined - cancelled };
   });
 
@@ -518,7 +521,7 @@ export default async function ReportingPage() {
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
               <h2 className="text-sm font-bold text-gray-900">Monthly growth trend</h2>
-              <p className="text-xs text-gray-500 mt-0.5">New members and cancellations on the new platform, last 6 months</p>
+              <p className="text-xs text-gray-500 mt-0.5">New platform members by join date · cancellation history from event log</p>
             </div>
             <table className="w-full">
               <thead>
