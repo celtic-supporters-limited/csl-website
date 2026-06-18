@@ -141,7 +141,7 @@ export default async function ReportingPage() {
 
   const { data: supabaseMembers } = await db
     .from("members")
-    .select("email, status, plan_name, amount_pence, membership_tier, stripe_subscription_id, user_id");
+    .select("email, status, plan_name, amount_pence, membership_tier, stripe_subscription_id, user_id, created_at");
 
   const supabaseRows = (supabaseMembers ?? []) as SupabaseMemberRow[];
   const { metrics: liveMetrics, migration: liveMigration, dataQuality: liveQuality } =
@@ -199,6 +199,86 @@ export default async function ReportingPage() {
 
   const hasWp = wpData !== null;
 
+  // ── ARPM ─────────────────────────────────────────────────────────────────
+  const arpmPence = combinedActive > 0 ? Math.round(combinedMrr / combinedActive) : 0;
+
+  // ── Growth trend (last 6 months from member_events) ──────────────────────
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  sixMonthsAgo.setDate(1);
+
+  const { data: growthEvents } = await db
+    .from("member_events")
+    .select("event_type, created_at")
+    .in("event_type", ["checkout.completed", "subscription.cancelled"])
+    .eq("is_test", false)
+    .gte("created_at", sixMonthsAgo.toISOString())
+    .order("created_at", { ascending: true });
+
+  // Build monthly buckets
+  const growthMonths = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - (5 - i));
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    return { key, label: d.toLocaleDateString("en-GB", { month: "short", year: "numeric" }) };
+  });
+
+  const monthlyGrowth = growthMonths.map(({ key, label }) => {
+    const joined      = (growthEvents ?? []).filter(e => e.event_type === "checkout.completed"    && e.created_at.startsWith(key)).length;
+    const cancelled   = (growthEvents ?? []).filter(e => e.event_type === "subscription.cancelled" && e.created_at.startsWith(key)).length;
+    return { label, joined, cancelled, net: joined - cancelled };
+  });
+
+  // Churn rate: cancellations in last 30 days as % of active base
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const recentCancellations = (growthEvents ?? []).filter(
+    e => e.event_type === "subscription.cancelled" && e.created_at >= thirtyDaysAgo
+  ).length;
+  const monthlyChurnPct = combinedActive > 0
+    ? Math.round((recentCancellations / combinedActive) * 1000) / 10
+    : 0;
+
+  // ── Member tenure distribution (active new-platform members only) ─────────
+  const now = Date.now();
+  const tenureBuckets = { under3m: 0, threeToTwelve: 0, oneToTwo: 0, overTwo: 0 };
+  for (const row of supabaseMembers ?? []) {
+    if ((row.status ?? "").toLowerCase() !== "active") continue;
+    const createdAt = row.created_at ? new Date(row.created_at as string).getTime() : null;
+    if (!createdAt) continue;
+    const months = (now - createdAt) / (1000 * 60 * 60 * 24 * 30.44);
+    if      (months < 3)   tenureBuckets.under3m++;
+    else if (months < 12)  tenureBuckets.threeToTwelve++;
+    else if (months < 24)  tenureBuckets.oneToTwo++;
+    else                   tenureBuckets.overTwo++;
+  }
+
+  // ── Payment failure recovery ──────────────────────────────────────────────
+  const { data: failedMemberEvents } = await db
+    .from("member_events")
+    .select("member_id")
+    .eq("event_type", "payment.failed")
+    .eq("is_test", false);
+
+  const failedMemberIds = Array.from(new Set((failedMemberEvents ?? []).map(e => e.member_id as string)));
+  const recoveryStats = { recovered: 0, lost: 0, stillFailing: 0 };
+  if (failedMemberIds.length > 0) {
+    const { data: failedMembers } = await db
+      .from("members")
+      .select("status")
+      .in("id", failedMemberIds);
+    for (const m of failedMembers ?? []) {
+      const s = (m.status ?? "").toLowerCase();
+      if (s === "active")                                recoveryStats.recovered++;
+      else if (s === "cancelled" || s === "canceled")    recoveryStats.lost++;
+      else if (s === "payment_failed")                   recoveryStats.stillFailing++;
+    }
+  }
+  const totalEverFailed = recoveryStats.recovered + recoveryStats.lost + recoveryStats.stillFailing;
+  const recoveryRate = totalEverFailed > 0
+    ? Math.round((recoveryStats.recovered / totalEverFailed) * 100)
+    : null;
+
   // Geographic helpers (computed once, used in the panel)
   const COUNTRY_NAMES: Record<string, string> = {
     GB: "United Kingdom", IE: "Ireland", US: "United States",
@@ -244,7 +324,7 @@ export default async function ReportingPage() {
           </div>
         </div>
 
-        {/* Summary stat cards */}
+        {/* Summary stat cards — row 1: scale metrics */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
             <p className="text-3xl font-black text-csl-dark tabular-nums">{fmt(combinedActive)}</p>
@@ -257,10 +337,7 @@ export default async function ReportingPage() {
             <p className="text-3xl font-black text-csl-dark tabular-nums">{progressPct}%</p>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Of {fmt(MEMBERSHIP_TARGET)} target</p>
             <div className="mt-2 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-              <div
-                className="h-full bg-csl-gold rounded-full transition-all"
-                style={{ width: `${Math.min(progressPct, 100)}%` }}
-              />
+              <div className="h-full bg-csl-gold rounded-full transition-all" style={{ width: `${Math.min(progressPct, 100)}%` }} />
             </div>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
@@ -276,6 +353,46 @@ export default async function ReportingPage() {
               {totalCollectedPence !== null && stripeSnapDate
                 ? `As of ${fmtDate(stripeSnapDate)}${earliestChargeDate ? ` · since ${fmtDate(earliestChargeDate)}` : ""}`
                 : "Upload a WP snapshot or wait for the weekly cron"}
+            </p>
+          </div>
+        </div>
+
+        {/* Summary stat cards — row 2: health metrics */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+            <p className="text-3xl font-black text-csl-dark tabular-nums">{fmtGbp(arpmPence)}</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Avg revenue per member</p>
+            <p className="text-xs text-gray-400 mt-0.5">Monthly MRR / active members</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+            <p className={`text-3xl font-black tabular-nums ${monthlyChurnPct > 3 ? "text-red-600" : monthlyChurnPct > 1 ? "text-amber-600" : "text-green-700"}`}>
+              {monthlyChurnPct}%
+            </p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Monthly churn rate</p>
+            <p className="text-xs text-gray-400 mt-0.5">Cancellations last 30 days / active</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+            <p className={`text-3xl font-black tabular-nums ${
+              recoveryRate === null ? "text-gray-400" :
+              recoveryRate >= 70   ? "text-green-700" :
+              recoveryRate >= 40   ? "text-amber-600" : "text-red-600"
+            }`}>
+              {recoveryRate !== null ? `${recoveryRate}%` : "—"}
+            </p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Payment recovery rate</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {totalEverFailed > 0
+                ? `${recoveryStats.recovered} recovered · ${recoveryStats.stillFailing} still failing · ${recoveryStats.lost} lost`
+                : "No payment failures recorded"}
+            </p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+            <p className="text-3xl font-black text-csl-dark tabular-nums">
+              {fmt(monthlyGrowth.reduce((s, m) => s + m.joined, 0))}
+            </p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">New members (6 months)</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Net: {monthlyGrowth.reduce((s, m) => s + m.net, 0) >= 0 ? "+" : ""}{fmt(monthlyGrowth.reduce((s, m) => s + m.net, 0))} after cancellations
             </p>
           </div>
         </div>
@@ -391,6 +508,97 @@ export default async function ReportingPage() {
                 </table>
               </>
             )}
+          </div>
+        </div>
+
+        {/* Growth trend | Member tenure — side by side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+
+          {/* Monthly growth trend */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h2 className="text-sm font-bold text-gray-900">Monthly growth trend</h2>
+              <p className="text-xs text-gray-500 mt-0.5">New members and cancellations on the new platform, last 6 months</p>
+            </div>
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Month</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Joined</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Left</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Net</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {monthlyGrowth.map(({ label, joined, cancelled, net }) => (
+                  <tr key={label}>
+                    <td className="px-4 py-2.5 text-sm text-gray-700">{label}</td>
+                    <td className="px-4 py-2.5 text-sm text-right tabular-nums text-green-700 font-medium">{joined > 0 ? `+${fmt(joined)}` : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-4 py-2.5 text-sm text-right tabular-nums text-red-500">{cancelled > 0 ? `-${fmt(cancelled)}` : <span className="text-gray-300">—</span>}</td>
+                    <td className={`px-4 py-2.5 text-sm text-right tabular-nums font-bold ${net > 0 ? "text-green-700" : net < 0 ? "text-red-600" : "text-gray-400"}`}>
+                      {net > 0 ? `+${fmt(net)}` : net < 0 ? fmt(net) : "0"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-gray-200 bg-gray-50">
+                  <td className="px-4 py-2 text-xs font-semibold text-gray-500">6-month total</td>
+                  <td className="px-4 py-2 text-sm text-right tabular-nums text-green-700 font-bold">+{fmt(monthlyGrowth.reduce((s, m) => s + m.joined, 0))}</td>
+                  <td className="px-4 py-2 text-sm text-right tabular-nums text-red-500 font-bold">-{fmt(monthlyGrowth.reduce((s, m) => s + m.cancelled, 0))}</td>
+                  <td className={`px-4 py-2 text-sm text-right tabular-nums font-black ${monthlyGrowth.reduce((s, m) => s + m.net, 0) >= 0 ? "text-green-700" : "text-red-600"}`}>
+                    {monthlyGrowth.reduce((s, m) => s + m.net, 0) >= 0 ? "+" : ""}{fmt(monthlyGrowth.reduce((s, m) => s + m.net, 0))}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {/* Member tenure distribution */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h2 className="text-sm font-bold text-gray-900">Member tenure</h2>
+              <p className="text-xs text-gray-500 mt-0.5">How long active new-platform members have been with CSL</p>
+            </div>
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenure</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Members</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">% of active</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {[
+                  { label: "Under 3 months",  count: tenureBuckets.under3m,       note: "New joiners" },
+                  { label: "3 – 12 months",   count: tenureBuckets.threeToTwelve, note: "Establishing" },
+                  { label: "1 – 2 years",     count: tenureBuckets.oneToTwo,      note: "Committed" },
+                  { label: "Over 2 years",    count: tenureBuckets.overTwo,        note: "Long-standing" },
+                ].map(({ label, count, note }, i) => {
+                  const tenureTotal = tenureBuckets.under3m + tenureBuckets.threeToTwelve + tenureBuckets.oneToTwo + tenureBuckets.overTwo;
+                  const pct = tenureTotal > 0 ? ((count / tenureTotal) * 100).toFixed(1) : "0.0";
+                  return (
+                    <tr key={label} className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
+                      <td className="px-4 py-2.5 text-sm text-gray-700">
+                        {label}
+                        <span className="ml-2 text-[0.65rem] text-gray-400">{note}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-gray-900">{fmt(count)}</td>
+                      <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">{pct}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-gray-200 bg-gray-50">
+                  <td className="px-4 py-2 text-xs font-semibold text-gray-500">Total (new platform active)</td>
+                  <td className="px-4 py-2 text-sm text-right tabular-nums font-bold text-gray-900">
+                    {fmt(tenureBuckets.under3m + tenureBuckets.threeToTwelve + tenureBuckets.oneToTwo + tenureBuckets.overTwo)}
+                  </td>
+                  <td className="px-4 py-2 text-sm text-right tabular-nums text-gray-500">100%</td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </div>
 
