@@ -280,132 +280,117 @@ export default async function ReportingPage() {
           </div>
         </div>
 
-        {/* Geographic distribution — full width, prominent */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900">Geographic distribution</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Billing country of successful Stripe charges</p>
-          </div>
-          {!hasGeo ? (
-            <p className="px-5 py-4 text-sm text-gray-400">Upload a WP export or wait for the weekly cron to populate geographic data.</p>
-          ) : (
-            <>
-              {/* Summary pills */}
-              <div className="px-5 py-4 flex gap-4 border-b border-gray-100">
-                {[
-                  { label: "United Kingdom", count: ukCount },
-                  { label: "Ireland",        count: ieCount },
-                  { label: "Rest of world",  count: geoTotal - ukCount - ieCount },
-                ].map(({ label, count }) => (
-                  <div key={label} className="bg-csl-light rounded-xl px-5 py-3 text-center min-w-[130px]">
-                    <p className="text-2xl font-black text-csl-dark tabular-nums">
-                      {geoTotal > 0 ? `${Math.round((count / geoTotal) * 1000) / 10}%` : "0%"}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">{label}</p>
-                  </div>
-                ))}
-              </div>
-              {/* Two-column country table */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
-                {[geoRows.slice(0, Math.ceil(geoRows.length / 2)), geoRows.slice(Math.ceil(geoRows.length / 2))].map((half, hi) => (
-                  <table key={hi} className="w-full">
-                    {hi === 0 && (
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200">
-                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Country</th>
-                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charges</th>
-                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">%</th>
-                        </tr>
-                      </thead>
-                    )}
-                    {hi === 1 && (
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200">
-                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Country</th>
-                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charges</th>
-                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">%</th>
-                        </tr>
-                      </thead>
-                    )}
-                    <tbody className="divide-y divide-gray-100">
-                      {half.map(([code, count], i) => (
-                        <tr key={code} className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
-                          <td className="px-4 py-2.5 text-sm text-gray-700">
-                            {COUNTRY_NAMES[code] ?? code}
-                            <span className="ml-1.5 text-[0.6rem] text-gray-400">{code}</span>
-                          </td>
-                          <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-700">{fmt(count)}</td>
-                          <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">
-                            {geoTotal > 0 ? ((count / geoTotal) * 100).toFixed(1) : "0.0"}%
-                          </td>
-                        </tr>
-                      ))}
-                      {/* Total row on right half only */}
-                      {hi === 1 && (
-                        <tr className="border-t border-gray-200 bg-gray-50">
-                          <td className="px-4 py-2.5 text-sm font-semibold text-gray-900">Total</td>
-                          <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-gray-900">{fmt(geoTotal)}</td>
-                          <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">100%</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+        {/* Three key metrics: Status + Plan (left, stacked) | Geographic distribution (right, full height) */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
 
-        {/* Status breakdown | Plan breakdown — side by side */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+          {/* Left column: Status breakdown stacked above Plan breakdown */}
+          <div className="lg:col-span-3 flex flex-col gap-4">
 
-          {/* Status breakdown */}
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100">
-              <h2 className="text-sm font-bold text-gray-900">Status breakdown</h2>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h2 className="text-sm font-bold text-gray-900">Status breakdown</h2>
+              </div>
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">New platform</th>
+                    {hasWp && <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Legacy (WP)</th>}
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {([
+                    { label: "Active",          sb: liveMetrics.active,         wp: wpData?.active         ?? 0, highlight: "green"  as const },
+                    { label: "Pending",         sb: liveMetrics.pending,        wp: wpData?.pending        ?? 0, highlight: "amber"  as const },
+                    { label: "Expired",         sb: liveMetrics.expired,        wp: wpData?.expired        ?? 0, highlight: undefined },
+                    { label: "Other / unknown", sb: liveMetrics.other,          wp: wpData?.other          ?? 0, highlight: undefined },
+                    { label: "Cancelled",       sb: liveMetrics.cancelled,      wp: wpData?.cancelled      ?? 0, highlight: undefined },
+                    { label: "Payment failed",  sb: liveMetrics.payment_failed, wp: wpData?.payment_failed ?? 0, highlight: "red"    as const },
+                  ]
+                    .map((r) => ({ ...r, total: r.sb + r.wp }))
+                    .sort((a, b) => b.total - a.total)
+                    .filter((r) => r.total > 0 || r.label === "Active")
+                    .map(({ label, sb, wp, total, highlight }) => (
+                      <StatusRow
+                        key={label}
+                        label={label}
+                        sb={sb}
+                        wp={hasWp ? wp : null}
+                        total={total}
+                        highlight={highlight && total > 0 ? highlight : undefined}
+                      />
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">New platform</th>
-                  {hasWp && <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Legacy (WP)</th>}
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {([
-                  { label: "Active",          sb: liveMetrics.active,         wp: wpData?.active         ?? 0, highlight: "green"  as const },
-                  { label: "Pending",         sb: liveMetrics.pending,        wp: wpData?.pending        ?? 0, highlight: "amber"  as const },
-                  { label: "Expired",         sb: liveMetrics.expired,        wp: wpData?.expired        ?? 0, highlight: undefined },
-                  { label: "Other / unknown", sb: liveMetrics.other,          wp: wpData?.other          ?? 0, highlight: undefined },
-                  { label: "Cancelled",       sb: liveMetrics.cancelled,      wp: wpData?.cancelled      ?? 0, highlight: undefined },
-                  { label: "Payment failed",  sb: liveMetrics.payment_failed, wp: wpData?.payment_failed ?? 0, highlight: "red"    as const },
-                ]
-                  .map((r) => ({ ...r, total: r.sb + r.wp }))
-                  .sort((a, b) => b.total - a.total)
-                  .filter((r) => r.total > 0 || r.label === "Active")
-                  .map(({ label, sb, wp, total, highlight }) => (
-                    <StatusRow
-                      key={label}
-                      label={label}
-                      sb={sb}
-                      wp={hasWp ? wp : null}
-                      total={total}
-                      highlight={highlight && total > 0 ? highlight : undefined}
-                    />
-                  ))
-                )}
-              </tbody>
-            </table>
+
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h2 className="text-sm font-bold text-gray-900">Active members by plan</h2>
+              </div>
+              <PlanTable sb={liveMetrics} wp={wpData} />
+            </div>
+
           </div>
 
-          {/* Plan breakdown */}
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {/* Right column: Geographic distribution spanning the full height */}
+          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
             <div className="px-4 py-3 border-b border-gray-100">
-              <h2 className="text-sm font-bold text-gray-900">Active members by plan</h2>
+              <h2 className="text-sm font-bold text-gray-900">Geographic distribution</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Billing country of successful Stripe charges</p>
             </div>
-            <PlanTable sb={liveMetrics} wp={wpData} />
+            {!hasGeo ? (
+              <p className="px-4 py-4 text-sm text-gray-400">Upload a WP export or wait for the weekly cron to populate geographic data.</p>
+            ) : (
+              <>
+                {/* % pills */}
+                <div className="px-4 py-3 flex gap-2 border-b border-gray-100">
+                  {[
+                    { label: "United Kingdom", count: ukCount },
+                    { label: "Ireland",        count: ieCount },
+                    { label: "Rest of world",  count: geoTotal - ukCount - ieCount },
+                  ].map(({ label, count }) => (
+                    <div key={label} className="flex-1 bg-csl-light rounded-lg px-2 py-2.5 text-center">
+                      <p className="text-xl font-black text-csl-dark tabular-nums">
+                        {geoTotal > 0 ? `${Math.round((count / geoTotal) * 1000) / 10}%` : "0%"}
+                      </p>
+                      <p className="text-[0.65rem] text-gray-500 mt-0.5 leading-tight">{label}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Country table */}
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Country</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charges</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">%</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {geoRows.map(([code, count], i) => (
+                      <tr key={code} className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
+                        <td className="px-4 py-2.5 text-sm text-gray-700">
+                          {COUNTRY_NAMES[code] ?? code}
+                          <span className="ml-1.5 text-[0.6rem] text-gray-400">{code}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-700">{fmt(count)}</td>
+                        <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">
+                          {geoTotal > 0 ? ((count / geoTotal) * 100).toFixed(1) : "0.0"}%
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-gray-200 bg-gray-50">
+                      <td className="px-4 py-2.5 text-sm font-semibold text-gray-900">Total</td>
+                      <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-gray-900">{fmt(geoTotal)}</td>
+                      <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">100%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </>
+            )}
           </div>
         </div>
 
