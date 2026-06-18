@@ -159,31 +159,47 @@ export type WordPressRow = {
   is_spam: boolean;
 };
 
-function parseCsvRow(line: string): string[] {
+// Splits a CSV text into rows, correctly handling quoted fields that contain newlines.
+function parseCsvRows(text: string): string[][] {
+  const rows: string[][] = [];
   const cols: string[] = [];
   let current = "";
   let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+  let i = 0;
+
+  // Normalise \r\n and bare \r to \n
+  const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  while (i < src.length) {
+    const ch = src[i];
     if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
-      else inQuotes = !inQuotes;
+      if (inQuotes && src[i + 1] === '"') { current += '"'; i += 2; continue; }
+      inQuotes = !inQuotes;
     } else if (ch === "," && !inQuotes) {
       cols.push(current);
       current = "";
+    } else if (ch === "\n" && !inQuotes) {
+      cols.push(current);
+      current = "";
+      if (cols.some(Boolean)) rows.push([...cols]);
+      cols.length = 0;
     } else {
       current += ch;
     }
+    i++;
   }
+  // Flush last field and row
   cols.push(current);
-  return cols;
+  if (cols.some(Boolean)) rows.push([...cols]);
+
+  return rows;
 }
 
 export function parseWordPressCsv(csvText: string): WordPressRow[] {
-  const lines = csvText.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) return [];
+  const rows = parseCsvRows(csvText);
+  if (rows.length < 2) return [];
 
-  const header = parseCsvRow(lines[0]);
+  const header = rows[0];
   const idx = (col: string) => header.indexOf(col);
 
   const emailIdx     = idx("user_email");
@@ -196,8 +212,7 @@ export function parseWordPressCsv(csvText: string): WordPressRow[] {
 
   if (emailIdx === -1 || statusIdx === -1) return [];
 
-  return lines.slice(1).flatMap((line) => {
-    const cols = parseCsvRow(line);
+  return rows.slice(1).flatMap((cols) => {
     const email = (cols[emailIdx] ?? "").toLowerCase().trim();
     if (!email) return [];
     const firstName = (cols[firstNameIdx] ?? "").trim();

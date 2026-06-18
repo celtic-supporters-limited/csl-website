@@ -179,11 +179,15 @@ export default async function ReportingPage() {
   const earliestChargeDate  = (latestStripeSnap?.metrics as MembershipSnapshot | undefined)?.stripe?.earliest_charge_date ?? null;
   const stripeSnapDate      = latestStripeSnap?.snapshotted_at ?? null;
 
-  // Migration progress
+  // Migration progress — denominator is active members only (lapsed legacy excluded)
+  const legacyActiveCount = wpData?.active ?? 0;
+  const legacyLapsedCount = wpData
+    ? (wpData.pending + wpData.expired + wpData.cancelled + wpData.other)
+    : 0;
   const totalKnown =
     liveMigration.migrated +
     liveMigration.migration_in_progress +
-    (wpData ? (snapshots?.find((s) => s.wp_as_of_date)?.metrics as MembershipSnapshot | undefined)?.migration?.not_yet_migrated ?? 0 : 0);
+    legacyActiveCount;
 
   // Previous snapshot for deltas
   const prevMetrics = prevSnap ? (prevSnap.metrics as MembershipSnapshot) : null;
@@ -328,10 +332,10 @@ export default async function ReportingPage() {
             </div>
             <div className="text-center">
               <p className="text-2xl font-black text-gray-500 tabular-nums">
-                {hasWp ? fmt((latestWpSnap!.metrics as MembershipSnapshot).migration?.not_yet_migrated ?? 0) : "?"}
+                {hasWp ? fmt(legacyActiveCount) : "?"}
               </p>
               <p className="text-xs text-gray-500 mt-0.5">Not yet migrated</p>
-              <p className="text-[0.65rem] text-gray-400">(WordPress only)</p>
+              <p className="text-[0.65rem] text-gray-400">(active WordPress members)</p>
             </div>
           </div>
           {totalKnown > 0 && (
@@ -349,8 +353,8 @@ export default async function ReportingPage() {
                 />
                 <div
                   className="bg-gray-300 h-full transition-all"
-                  style={{ width: `${(((latestWpSnap?.metrics as MembershipSnapshot | undefined)?.migration?.not_yet_migrated ?? 0) / totalKnown) * 100}%` }}
-                  title="Not yet migrated"
+                  style={{ width: `${(legacyActiveCount / totalKnown) * 100}%` }}
+                  title="Not yet migrated (active)"
                 />
               </div>
               <div className="flex gap-4 mt-1.5 text-[0.65rem] text-gray-500">
@@ -365,7 +369,7 @@ export default async function ReportingPage() {
         {/* Data quality */}
         {(liveQuality.payment_failed_count > 0 ||
           liveQuality.no_auth_account_count > 0 ||
-          (wpData && (wpData.pending > 0 || wpData.spam > 0)) ||
+          (wpData && (wpData.pending > 0 || wpData.spam > 0 || legacyLapsedCount > 0)) ||
           liveMetrics.unknown_plans.length > 0 ||
           wpData?.unknown_plans.length) ? (
           <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
@@ -392,10 +396,15 @@ export default async function ReportingPage() {
                   <span className="font-bold text-amber-700 tabular-nums">{fmt(wpData.spam)}</span>
                 </li>
               )}
-              {wpData && wpData.pending > 0 && (
+              {wpData && legacyLapsedCount > 0 && (
                 <li className="px-4 py-2.5 flex justify-between text-sm">
-                  <span className="text-amber-800">WordPress pending - real members, payment not completed</span>
-                  <span className="font-bold text-amber-700 tabular-nums">{fmt(wpData.pending)}</span>
+                  <span className="text-amber-800">
+                    WordPress lapsed members (expired, pending, cancelled) - excluded from migration count, potential re-engagement
+                    {wpData.expired > 0 && ` - ${fmt(wpData.expired)} expired`}
+                    {wpData.pending > 0 && `, ${fmt(wpData.pending)} pending`}
+                    {(wpData.cancelled + wpData.other) > 0 && `, ${fmt(wpData.cancelled + wpData.other)} cancelled/other`}
+                  </span>
+                  <span className="font-bold text-amber-700 tabular-nums ml-4 shrink-0">{fmt(legacyLapsedCount)}</span>
                 </li>
               )}
               {[...liveMetrics.unknown_plans, ...(wpData?.unknown_plans ?? [])].length > 0 && (

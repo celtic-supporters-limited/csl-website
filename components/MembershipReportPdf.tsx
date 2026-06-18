@@ -187,9 +187,10 @@ export function MembershipReportPdf(props: ReportData) {
     .map((r) => ({ ...r, total: r.sb + r.wp }))
     .sort((a, b) => b.total - a.total);
 
-  // Migration not-yet count
-  const notYetMigrated = wpData
-    ? wpData.active + wpData.cancelled + wpData.expired + wpData.pending + wpData.other
+  // Migration not-yet count — active legacy members only; lapsed shown separately in notes
+  const notYetMigrated  = wpData?.active ?? 0;
+  const legacyLapsed    = wpData
+    ? wpData.pending + wpData.expired + wpData.cancelled + wpData.other
     : 0;
 
   // Column widths
@@ -306,7 +307,7 @@ export function MembershipReportPdf(props: ReportData) {
             </View>
             <View style={s.migCard}>
               <Text style={s.migVal}>{hasWp ? num(notYetMigrated) : "?"}</Text>
-              <Text style={s.migLabel}>Not yet migrated{"\n"}(WordPress only)</Text>
+              <Text style={s.migLabel}>Not yet migrated{"\n"}(active WordPress members)</Text>
             </View>
           </View>
 
@@ -321,6 +322,9 @@ export function MembershipReportPdf(props: ReportData) {
               "Automated bot registrations are identified by name pattern and excluded from all counts.",
               "Lifetime members are counted as active but are not included in monthly income, as they make a single payment rather than a recurring subscription.",
               `Total collected covers all payments received via Stripe${earliestChargeDate ? ` since ${earliestChargeDate}` : ""}, across both the legacy and new platforms, after deducting any refunds.`,
+              hasWp && legacyLapsed > 0
+                ? `${num(legacyLapsed)} WordPress members are lapsed (expired, pending, or cancelled) and are excluded from the migration count. These represent a potential re-engagement opportunity.`
+                : null,
               liveQuality.payment_failed_count > 0
                 ? `${num(liveQuality.payment_failed_count)} member${liveQuality.payment_failed_count !== 1 ? "s" : ""} on the new platform ${liveQuality.payment_failed_count !== 1 ? "have" : "has"} a payment that has failed. Their membership is at risk.`
                 : null,
