@@ -58,8 +58,8 @@ export async function POST(req: NextRequest) {
   });
 
   if (insertError) {
-    console.error("[upload-wp-snapshot] Insert failed:", insertError.message);
-    return NextResponse.json({ error: "Failed to save snapshot" }, { status: 500 });
+    console.error("[upload-wp-snapshot] Insert failed:", insertError.message, insertError.code, insertError.details);
+    return NextResponse.json({ error: `Failed to save snapshot: ${insertError.message} (${insertError.code})` }, { status: 500 });
   }
 
   return NextResponse.json({
