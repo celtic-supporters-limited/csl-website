@@ -199,9 +199,23 @@ export default async function ReportingPage() {
 
   const hasWp = wpData !== null;
 
+  // Geographic helpers (computed once, used in the panel)
+  const COUNTRY_NAMES: Record<string, string> = {
+    GB: "United Kingdom", IE: "Ireland", US: "United States",
+    CA: "Canada", AU: "Australia", DE: "Germany", FR: "France",
+    NL: "Netherlands", ES: "Spain", IT: "Italy", SE: "Sweden",
+    NO: "Norway", DK: "Denmark", BE: "Belgium", CH: "Switzerland",
+    NZ: "New Zealand", ZA: "South Africa", AE: "United Arab Emirates",
+  };
+  const geoRows   = Object.entries(countryBreakdown).sort((a, b) => b[1] - a[1]);
+  const geoTotal  = geoRows.reduce((s, [, n]) => s + n, 0);
+  const ukCount   = countryBreakdown["GB"] ?? 0;
+  const ieCount   = countryBreakdown["IE"] ?? 0;
+  const hasGeo    = geoRows.length > 0;
+
   return (
     <PortalShell user={{ email: user.email, id: user.id }} member={member}>
-      <div className="max-w-4xl space-y-6">
+      <div className="max-w-5xl space-y-5">
 
         {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -260,115 +274,184 @@ export default async function ReportingPage() {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Total collected</p>
             <p className="text-xs text-gray-400 mt-0.5">
               {totalCollectedPence !== null && stripeSnapDate
-                ? `As of ${fmtDate(stripeSnapDate)}${earliestChargeDate ? ` (charges since ${fmtDate(earliestChargeDate)})` : ""}`
-                : "Upload a WP snapshot or wait for the weekly cron to populate"}
+                ? `As of ${fmtDate(stripeSnapDate)}${earliestChargeDate ? ` · since ${fmtDate(earliestChargeDate)}` : ""}`
+                : "Upload a WP snapshot or wait for the weekly cron"}
             </p>
           </div>
         </div>
 
-        {/* Status breakdown */}
+        {/* Geographic distribution — full width, prominent */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900">Status breakdown</h2>
+          <div className="px-5 py-3 border-b border-gray-100">
+            <h2 className="text-sm font-bold text-gray-900">Geographic distribution</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Billing country of successful Stripe charges</p>
           </div>
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">New platform</th>
-                {hasWp && <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Legacy (WP)</th>}
-                <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {([
-                { label: "Active",          sb: liveMetrics.active,         wp: wpData?.active         ?? 0, highlight: "green"  as const },
-                { label: "Pending",         sb: liveMetrics.pending,        wp: wpData?.pending        ?? 0, highlight: "amber"  as const },
-                { label: "Expired",         sb: liveMetrics.expired,        wp: wpData?.expired        ?? 0, highlight: undefined },
-                { label: "Other / unknown", sb: liveMetrics.other,          wp: wpData?.other          ?? 0, highlight: undefined },
-                { label: "Cancelled",       sb: liveMetrics.cancelled,      wp: wpData?.cancelled      ?? 0, highlight: undefined },
-                { label: "Payment failed",  sb: liveMetrics.payment_failed, wp: wpData?.payment_failed ?? 0, highlight: "red"    as const },
-              ]
-                .map((r) => ({ ...r, total: r.sb + r.wp }))
-                .sort((a, b) => b.total - a.total)
-                .filter((r) => r.total > 0 || r.label === "Active")
-                .map(({ label, sb, wp, total, highlight }) => (
-                  <StatusRow
-                    key={label}
-                    label={label}
-                    sb={sb}
-                    wp={hasWp ? wp : null}
-                    total={total}
-                    highlight={highlight && total > 0 ? highlight : undefined}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Plan breakdown */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900">Active members by plan</h2>
-          </div>
-          <PlanTable sb={liveMetrics} wp={wpData} />
-        </div>
-
-        {/* Migration progress */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900">Migration progress</h2>
-            <p className="text-xs text-gray-500 mt-0.5">How many members have moved to the new platform</p>
-          </div>
-          <div className="px-4 py-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="text-center">
-              <p className="text-2xl font-black text-green-700 tabular-nums">{fmt(liveMigration.migrated)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Fully migrated</p>
-              <p className="text-[0.65rem] text-gray-400">(Supabase + Stripe sub)</p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-black text-amber-600 tabular-nums">{fmt(liveMigration.migration_in_progress)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Migration started</p>
-              <p className="text-[0.65rem] text-gray-400">(Supabase only, no Stripe sub)</p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-black text-gray-500 tabular-nums">
-                {hasWp ? fmt(legacyActiveCount) : "?"}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Not yet migrated</p>
-              <p className="text-[0.65rem] text-gray-400">(active WordPress members)</p>
-            </div>
-          </div>
-          {totalKnown > 0 && (
-            <div className="px-4 pb-4">
-              <div className="flex gap-0.5 h-3 rounded-full overflow-hidden">
-                <div
-                  className="bg-green-500 h-full transition-all"
-                  style={{ width: `${(liveMigration.migrated / totalKnown) * 100}%` }}
-                  title={`Migrated: ${liveMigration.migrated}`}
-                />
-                <div
-                  className="bg-amber-400 h-full transition-all"
-                  style={{ width: `${(liveMigration.migration_in_progress / totalKnown) * 100}%` }}
-                  title={`In progress: ${liveMigration.migration_in_progress}`}
-                />
-                <div
-                  className="bg-gray-300 h-full transition-all"
-                  style={{ width: `${(legacyActiveCount / totalKnown) * 100}%` }}
-                  title="Not yet migrated (active)"
-                />
+          {!hasGeo ? (
+            <p className="px-5 py-4 text-sm text-gray-400">Upload a WP export or wait for the weekly cron to populate geographic data.</p>
+          ) : (
+            <>
+              {/* Summary pills */}
+              <div className="px-5 py-4 flex gap-4 border-b border-gray-100">
+                {[
+                  { label: "United Kingdom", count: ukCount },
+                  { label: "Ireland",        count: ieCount },
+                  { label: "Rest of world",  count: geoTotal - ukCount - ieCount },
+                ].map(({ label, count }) => (
+                  <div key={label} className="bg-csl-light rounded-xl px-5 py-3 text-center min-w-[130px]">
+                    <p className="text-2xl font-black text-csl-dark tabular-nums">
+                      {geoTotal > 0 ? `${Math.round((count / geoTotal) * 1000) / 10}%` : "0%"}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">{label}</p>
+                  </div>
+                ))}
               </div>
-              <div className="flex gap-4 mt-1.5 text-[0.65rem] text-gray-500">
-                <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Migrated</span>
-                <span><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1" />In progress</span>
-                <span><span className="inline-block w-2 h-2 rounded-full bg-gray-300 mr-1" />Not yet migrated</span>
+              {/* Two-column country table */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
+                {[geoRows.slice(0, Math.ceil(geoRows.length / 2)), geoRows.slice(Math.ceil(geoRows.length / 2))].map((half, hi) => (
+                  <table key={hi} className="w-full">
+                    {hi === 0 && (
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Country</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charges</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">%</th>
+                        </tr>
+                      </thead>
+                    )}
+                    {hi === 1 && (
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Country</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charges</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">%</th>
+                        </tr>
+                      </thead>
+                    )}
+                    <tbody className="divide-y divide-gray-100">
+                      {half.map(([code, count], i) => (
+                        <tr key={code} className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
+                          <td className="px-4 py-2.5 text-sm text-gray-700">
+                            {COUNTRY_NAMES[code] ?? code}
+                            <span className="ml-1.5 text-[0.6rem] text-gray-400">{code}</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-700">{fmt(count)}</td>
+                          <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">
+                            {geoTotal > 0 ? ((count / geoTotal) * 100).toFixed(1) : "0.0"}%
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Total row on right half only */}
+                      {hi === 1 && (
+                        <tr className="border-t border-gray-200 bg-gray-50">
+                          <td className="px-4 py-2.5 text-sm font-semibold text-gray-900">Total</td>
+                          <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-gray-900">{fmt(geoTotal)}</td>
+                          <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">100%</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                ))}
               </div>
-            </div>
+            </>
           )}
         </div>
 
-        {/* Data quality */}
+        {/* Status breakdown | Plan breakdown — side by side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+
+          {/* Status breakdown */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h2 className="text-sm font-bold text-gray-900">Status breakdown</h2>
+            </div>
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">New platform</th>
+                  {hasWp && <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Legacy (WP)</th>}
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {([
+                  { label: "Active",          sb: liveMetrics.active,         wp: wpData?.active         ?? 0, highlight: "green"  as const },
+                  { label: "Pending",         sb: liveMetrics.pending,        wp: wpData?.pending        ?? 0, highlight: "amber"  as const },
+                  { label: "Expired",         sb: liveMetrics.expired,        wp: wpData?.expired        ?? 0, highlight: undefined },
+                  { label: "Other / unknown", sb: liveMetrics.other,          wp: wpData?.other          ?? 0, highlight: undefined },
+                  { label: "Cancelled",       sb: liveMetrics.cancelled,      wp: wpData?.cancelled      ?? 0, highlight: undefined },
+                  { label: "Payment failed",  sb: liveMetrics.payment_failed, wp: wpData?.payment_failed ?? 0, highlight: "red"    as const },
+                ]
+                  .map((r) => ({ ...r, total: r.sb + r.wp }))
+                  .sort((a, b) => b.total - a.total)
+                  .filter((r) => r.total > 0 || r.label === "Active")
+                  .map(({ label, sb, wp, total, highlight }) => (
+                    <StatusRow
+                      key={label}
+                      label={label}
+                      sb={sb}
+                      wp={hasWp ? wp : null}
+                      total={total}
+                      highlight={highlight && total > 0 ? highlight : undefined}
+                    />
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Plan breakdown */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h2 className="text-sm font-bold text-gray-900">Active members by plan</h2>
+            </div>
+            <PlanTable sb={liveMetrics} wp={wpData} />
+          </div>
+        </div>
+
+        {/* Migration progress — compact, lower priority */}
+        {hasWp && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-gray-900">Migration progress</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Members moved from WordPress to the new platform</p>
+              </div>
+            </div>
+            <div className="px-4 py-3 flex items-center gap-6">
+              <div className="flex gap-6 text-center">
+                <div>
+                  <p className="text-xl font-black text-green-700 tabular-nums">{fmt(liveMigration.migrated)}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Migrated</p>
+                </div>
+                <div>
+                  <p className="text-xl font-black text-amber-600 tabular-nums">{fmt(liveMigration.migration_in_progress)}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">In progress</p>
+                </div>
+                <div>
+                  <p className="text-xl font-black text-gray-500 tabular-nums">{fmt(legacyActiveCount)}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Not yet migrated</p>
+                </div>
+              </div>
+              {totalKnown > 0 && (
+                <div className="flex-1">
+                  <div className="flex gap-0.5 h-2.5 rounded-full overflow-hidden">
+                    <div className="bg-green-500 h-full" style={{ width: `${(liveMigration.migrated / totalKnown) * 100}%` }} />
+                    <div className="bg-amber-400 h-full" style={{ width: `${(liveMigration.migration_in_progress / totalKnown) * 100}%` }} />
+                    <div className="bg-gray-300 h-full" style={{ width: `${(legacyActiveCount / totalKnown) * 100}%` }} />
+                  </div>
+                  <div className="flex gap-3 mt-1.5 text-[0.6rem] text-gray-500">
+                    <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Migrated</span>
+                    <span><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1" />In progress</span>
+                    <span><span className="inline-block w-2 h-2 rounded-full bg-gray-300 mr-1" />Not yet</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Data quality flags */}
         {(liveQuality.payment_failed_count > 0 ||
           liveQuality.no_auth_account_count > 0 ||
           (wpData && (wpData.pending > 0 || wpData.spam > 0 || legacyLapsedCount > 0)) ||
@@ -421,82 +504,7 @@ export default async function ReportingPage() {
           </div>
         ) : null}
 
-        {/* Geographic distribution */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900">Geographic distribution</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Based on billing country of successful Stripe charges</p>
-          </div>
-          {Object.keys(countryBreakdown).length === 0 ? (
-            <p className="px-4 py-4 text-sm text-gray-400">
-              Upload a WordPress export or wait for the weekly cron to populate geographic data.
-            </p>
-          ) : (() => {
-            const COUNTRY_NAMES: Record<string, string> = {
-              GB: "United Kingdom", IE: "Ireland", US: "United States",
-              CA: "Canada", AU: "Australia", DE: "Germany", FR: "France",
-              NL: "Netherlands", ES: "Spain", IT: "Italy", SE: "Sweden",
-              NO: "Norway", DK: "Denmark", BE: "Belgium", CH: "Switzerland",
-              NZ: "New Zealand", ZA: "South Africa", AE: "United Arab Emirates",
-            };
-            const total = Object.values(countryBreakdown).reduce((s, n) => s + n, 0);
-            const rows = Object.entries(countryBreakdown)
-              .sort((a, b) => b[1] - a[1]);
-            const ukCount  = countryBreakdown["GB"] ?? 0;
-            const ieCount  = countryBreakdown["IE"] ?? 0;
-            const rowTotal = total;
-            return (
-              <>
-                {/* Summary pills */}
-                <div className="px-4 py-3 flex flex-wrap gap-3 border-b border-gray-100">
-                  {[
-                    { label: "United Kingdom", count: ukCount },
-                    { label: "Ireland",        count: ieCount },
-                    { label: "Rest of world",  count: rowTotal - ukCount - ieCount },
-                  ].map(({ label, count }) => (
-                    <div key={label} className="bg-csl-light rounded-lg px-3 py-2 text-center min-w-[100px]">
-                      <p className="text-xl font-black text-csl-dark tabular-nums">
-                        {rowTotal > 0 ? `${Math.round((count / rowTotal) * 1000) / 10}%` : "0%"}
-                      </p>
-                      <p className="text-[0.65rem] text-gray-500 mt-0.5">{label}</p>
-                    </div>
-                  ))}
-                </div>
-                {/* Full table */}
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Country</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charges</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">% of total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {rows.map(([code, count]) => (
-                      <tr key={code}>
-                        <td className="px-4 py-2.5 text-sm text-gray-700">
-                          {COUNTRY_NAMES[code] ?? code}
-                          <span className="ml-1.5 text-[0.65rem] text-gray-400">{code}</span>
-                        </td>
-                        <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-700">{fmt(count)}</td>
-                        <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">
-                          {total > 0 ? ((count / total) * 100).toFixed(1) : "0.0"}%
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="border-t border-gray-200 bg-gray-50">
-                      <td className="px-4 py-2.5 text-sm font-semibold text-gray-900">Total</td>
-                      <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-gray-900">{fmt(total)}</td>
-                      <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">100%</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </>
-            );
-          })()}
-        </div>
-
-        {/* Trend history */}
+        {/* Snapshot history */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100">
             <h2 className="text-sm font-bold text-gray-900">Snapshot history</h2>
