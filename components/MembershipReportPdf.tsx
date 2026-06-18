@@ -8,65 +8,97 @@ import {
 } from "@react-pdf/renderer";
 import type { SourceMetrics, DataQualityFlags } from "@/lib/membership-metrics";
 
+// ── Palette ───────────────────────────────────────────────────────────────────
+
+const GREEN = "#1B4D2E";
+const GOLD  = "#C8A951";
+const LIGHT = "#F0F4F1";
+const GREY  = "#6B7280";
+const LGREY = "#E5E7EB";
+const BLACK = "#111827";
+const WHITE = "#FFFFFF";
+
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const GREEN  = "#1B4D2E";
-const GOLD   = "#C8A951";
-const LIGHT  = "#F8F6F1";
-const GREY   = "#6B7280";
-const LGREY  = "#E5E7EB";
-const BLACK  = "#111827";
-
 const s = StyleSheet.create({
-  page: { fontFamily: "Helvetica", fontSize: 9, color: BLACK, paddingBottom: 48 },
+  page: {
+    fontFamily: "Helvetica",
+    fontSize: 8,
+    color: BLACK,
+    paddingBottom: 32,
+  },
 
-  // Cover
-  coverBg:       { backgroundColor: GREEN, padding: 48, minHeight: 200 },
-  coverTitle:    { fontFamily: "Helvetica-Bold", fontSize: 26, color: "#FFFFFF", marginBottom: 6 },
-  coverSub:      { fontSize: 12, color: GOLD, marginBottom: 24 },
-  coverMeta:     { fontSize: 9, color: "#FFFFFF", opacity: 0.8, marginBottom: 3 },
+  // Header strip
+  header: {
+    backgroundColor: GREEN,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
+  headerLeft: { flexDirection: "column" },
+  headerOrg:  { fontFamily: "Helvetica-Bold", fontSize: 14, color: WHITE, marginBottom: 2 },
+  headerTitle:{ fontSize: 9, color: GOLD, letterSpacing: 0.5 },
+  headerRight:{ flexDirection: "column", alignItems: "flex-end" },
+  headerMeta: { fontSize: 7, color: WHITE, opacity: 0.8, marginBottom: 1 },
 
-  // Body padding
-  body:          { paddingHorizontal: 40, paddingTop: 28 },
+  // Body
+  body: { paddingHorizontal: 28, paddingTop: 14 },
+
+  // Stat cards
+  cardRow:    { flexDirection: "row", gap: 8, marginBottom: 12 },
+  card:       { flex: 1, backgroundColor: LIGHT, borderRadius: 3, padding: 8 },
+  cardValue:  { fontFamily: "Helvetica-Bold", fontSize: 15, color: GREEN, marginBottom: 1 },
+  cardLabel:  { fontSize: 6.5, color: GREY, textTransform: "uppercase", letterSpacing: 0.4 },
+  cardNote:   { fontSize: 6.5, color: GREY, marginTop: 2 },
+  progressBg: { backgroundColor: LGREY, height: 4, borderRadius: 2, marginTop: 3 },
+  progressFill:{ backgroundColor: GOLD, height: 4, borderRadius: 2 },
+
+  // Two-column layout
+  cols:       { flexDirection: "row", gap: 12, marginBottom: 10 },
+  col:        { flex: 1 },
 
   // Section heading
-  sectionHead:   { fontFamily: "Helvetica-Bold", fontSize: 11, color: GREEN,
-                   borderBottomWidth: 1.5, borderBottomColor: GREEN,
-                   paddingBottom: 3, marginBottom: 10, marginTop: 20 },
-
-  // Stat cards row
-  cardRow:       { flexDirection: "row", gap: 10, marginBottom: 20 },
-  card:          { flex: 1, backgroundColor: LIGHT, borderRadius: 4, padding: 10 },
-  cardValue:     { fontFamily: "Helvetica-Bold", fontSize: 18, color: GREEN, marginBottom: 2 },
-  cardLabel:     { fontSize: 7.5, color: GREY, textTransform: "uppercase", letterSpacing: 0.5 },
-  cardNote:      { fontSize: 7, color: GREY, marginTop: 2 },
+  secHead:    {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 7.5,
+    color: GREEN,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    borderBottomWidth: 1,
+    borderBottomColor: GREEN,
+    paddingBottom: 2,
+    marginBottom: 4,
+  },
 
   // Table
-  tableHead:     { flexDirection: "row", backgroundColor: GREEN, paddingVertical: 5,
-                   paddingHorizontal: 8 },
-  tableHeadCell: { fontFamily: "Helvetica-Bold", fontSize: 7.5, color: "#FFFFFF",
-                   textTransform: "uppercase", letterSpacing: 0.4 },
-  tableRow:      { flexDirection: "row", paddingVertical: 5, paddingHorizontal: 8,
-                   borderBottomWidth: 0.5, borderBottomColor: LGREY },
-  tableRowAlt:   { backgroundColor: LIGHT },
-  tableCell:     { fontSize: 8.5, color: BLACK },
-  tableCellGrey: { fontSize: 8.5, color: GREY },
-  right:         { textAlign: "right" },
-  bold:          { fontFamily: "Helvetica-Bold" },
+  tHead:      { flexDirection: "row", backgroundColor: GREEN, paddingVertical: 4, paddingHorizontal: 6 },
+  tHeadCell:  { fontFamily: "Helvetica-Bold", fontSize: 6.5, color: WHITE, textTransform: "uppercase", letterSpacing: 0.3 },
+  tRow:       { flexDirection: "row", paddingVertical: 3.5, paddingHorizontal: 6, borderBottomWidth: 0.5, borderBottomColor: LGREY },
+  tRowAlt:    { backgroundColor: LIGHT },
+  tCell:      { fontSize: 7.5, color: BLACK },
+  tCellGrey:  { fontSize: 7.5, color: GREY },
+  right:      { textAlign: "right" },
+  bold:       { fontFamily: "Helvetica-Bold" },
 
-  // Progress bar
-  progressBg:    { backgroundColor: LGREY, height: 8, borderRadius: 4, marginTop: 4 },
-  progressFill:  { backgroundColor: GOLD,  height: 8, borderRadius: 4 },
+  // Migration strip
+  migRow:     { flexDirection: "row", gap: 8, marginBottom: 10 },
+  migCard:    { flex: 1, borderWidth: 0.5, borderColor: LGREY, borderRadius: 3, padding: 7, alignItems: "center" },
+  migVal:     { fontFamily: "Helvetica-Bold", fontSize: 13, color: GREEN, marginBottom: 1 },
+  migLabel:   { fontSize: 6.5, color: GREY, textAlign: "center" },
 
-  // Methodology box
-  methodBox:     { backgroundColor: LIGHT, borderRadius: 4, padding: 12, marginTop: 8 },
-  methodText:    { fontSize: 8, color: GREY, lineHeight: 1.5 },
+  // Notes
+  notesBox:   { backgroundColor: LIGHT, borderRadius: 3, padding: 8 },
+  notesText:  { fontSize: 7, color: GREY, lineHeight: 1.5 },
 
   // Footer
-  footer:        { position: "absolute", bottom: 20, left: 40, right: 40,
-                   borderTopWidth: 0.5, borderTopColor: LGREY, paddingTop: 6,
-                   flexDirection: "row", justifyContent: "space-between" },
-  footerText:    { fontSize: 7, color: GREY },
+  footer:     {
+    position: "absolute", bottom: 14, left: 28, right: 28,
+    borderTopWidth: 0.5, borderTopColor: LGREY, paddingTop: 4,
+    flexDirection: "row", justifyContent: "space-between",
+  },
+  footerText: { fontSize: 6.5, color: GREY },
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -79,42 +111,24 @@ function num(n: number) {
   return n.toLocaleString("en-GB");
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function Footer({ page }: { page: string }) {
-  return (
-    <View style={s.footer} fixed>
-      <Text style={s.footerText}>
-        Celtic Supporters Limited  |  Company No. SC862186  |  ICO ZB985030
-      </Text>
-      <Text style={s.footerText}>{page}</Text>
-    </View>
-  );
-}
-
-function SectionHead({ children }: { children: string }) {
-  return <Text style={s.sectionHead}>{children}</Text>;
-}
-
-function TableRow({
-  cols, widths, alt, grey, bold,
+function TRow({
+  cols, widths, alt, isBold,
 }: {
   cols: (string | number)[];
   widths: string[];
   alt?: boolean;
-  grey?: boolean;
-  bold?: boolean;
+  isBold?: boolean;
 }) {
   return (
-    <View style={[s.tableRow, alt ? s.tableRowAlt : {}]}>
+    <View style={[s.tRow, alt ? s.tRowAlt : {}]}>
       {cols.map((c, i) => (
         <Text
           key={i}
           style={[
             { width: widths[i] },
             i > 0 ? s.right : {},
-            grey ? s.tableCellGrey : s.tableCell,
-            bold ? s.bold : {},
+            s.tCell,
+            isBold ? s.bold : {},
           ]}
         >
           {String(c)}
@@ -189,8 +203,14 @@ export function MembershipReportPdf(props: MembershipReportPdfProps) {
     .map((r) => ({ ...r, total: r.sb + r.wp }))
     .sort((a, b) => b.total - a.total);
 
-  const statusWidths  = hasWp ? ["34%", "22%", "22%", "22%"] : ["52%", "24%", "24%"];
-  const planWidths    = hasWp ? ["40%", "20%", "20%", "20%"] : ["60%", "20%", "20%"];
+  // Migration not-yet count
+  const notYetMigrated = wpData
+    ? wpData.active + wpData.cancelled + wpData.expired + wpData.pending + wpData.other
+    : 0;
+
+  // Column widths
+  const swStatus = hasWp ? ["36%", "21%", "21%", "22%"] : ["54%", "22%", "24%"];
+  const swPlan   = hasWp ? ["44%", "18%", "18%", "20%"] : ["62%", "18%", "20%"];
 
   return (
     <Document
@@ -198,26 +218,26 @@ export function MembershipReportPdf(props: MembershipReportPdfProps) {
       author="Celtic Supporters Limited"
       subject="Membership Statistics"
     >
-      {/* ── Page 1 ── */}
       <Page size="A4" style={s.page}>
 
-        {/* Cover band */}
-        <View style={s.coverBg}>
-          <Text style={s.coverTitle}>Membership Report</Text>
-          <Text style={s.coverSub}>Celtic Supporters Limited</Text>
-          <Text style={s.coverMeta}>Generated: {generatedAt}</Text>
-          <Text style={s.coverMeta}>Company No. SC862186  |  ICO ZB985030  |  LEI 984500CDVAFEBEF83781</Text>
-          {wpAsOfDate && (
-            <Text style={s.coverMeta}>
-              Legacy (WordPress) data as of: {wpAsOfDate}. New platform data: live at time of export.
-            </Text>
-          )}
+        {/* Header strip */}
+        <View style={s.header}>
+          <View style={s.headerLeft}>
+            <Text style={s.headerOrg}>Celtic Supporters Limited</Text>
+            <Text style={s.headerTitle}>MEMBERSHIP REPORT</Text>
+          </View>
+          <View style={s.headerRight}>
+            <Text style={s.headerMeta}>Generated: {generatedAt}</Text>
+            <Text style={s.headerMeta}>Company No. SC862186  |  ICO ZB985030</Text>
+            {wpAsOfDate && (
+              <Text style={s.headerMeta}>Legacy (WP) data as of {wpAsOfDate}</Text>
+            )}
+          </View>
         </View>
 
         <View style={s.body}>
 
-          {/* Key figures */}
-          <SectionHead>Key figures</SectionHead>
+          {/* Stat cards */}
           <View style={s.cardRow}>
             <View style={s.card}>
               <Text style={s.cardValue}>{num(combinedActive)}</Text>
@@ -235,115 +255,104 @@ export function MembershipReportPdf(props: MembershipReportPdfProps) {
             <View style={s.card}>
               <Text style={s.cardValue}>{gbp(totalCollectedPence)}</Text>
               <Text style={s.cardLabel}>Total collected - new platform</Text>
-              {earliestChargeDate && (
-                <Text style={s.cardNote}>All Stripe payments since {earliestChargeDate}</Text>
-              )}
+              <Text style={s.cardNote}>
+                {earliestChargeDate ? `All Stripe payments since ${earliestChargeDate}` : "All Stripe payments since launch"}
+              </Text>
             </View>
           </View>
 
-          {/* Status breakdown */}
-          <SectionHead>Membership status breakdown</SectionHead>
-          <View style={s.tableHead}>
-            <Text style={[s.tableHeadCell, { width: hasWp ? "34%" : "52%" }]}>Status</Text>
-            <Text style={[s.tableHeadCell, s.right, { width: hasWp ? "22%" : "24%" }]}>New platform</Text>
-            {hasWp && <Text style={[s.tableHeadCell, s.right, { width: "22%" }]}>Legacy (WP)</Text>}
-            <Text style={[s.tableHeadCell, s.right, { width: hasWp ? "22%" : "24%" }]}>Total</Text>
+          {/* Status + Plan tables side by side */}
+          <View style={s.cols}>
+
+            {/* Status breakdown */}
+            <View style={s.col}>
+              <Text style={s.secHead}>Membership status</Text>
+              <View style={s.tHead}>
+                <Text style={[s.tHeadCell, { width: swStatus[0] }]}>Status</Text>
+                <Text style={[s.tHeadCell, s.right, { width: swStatus[1] }]}>New</Text>
+                {hasWp && <Text style={[s.tHeadCell, s.right, { width: swStatus[2] }]}>Legacy</Text>}
+                <Text style={[s.tHeadCell, s.right, { width: swStatus[hasWp ? 3 : 2] }]}>Total</Text>
+              </View>
+              {statusRows.map((r, i) => (
+                <TRow
+                  key={r.label}
+                  alt={i % 2 === 1}
+                  isBold={r.label === "Active"}
+                  cols={hasWp
+                    ? [r.label, num(r.sb), num(r.wp), num(r.total)]
+                    : [r.label, num(r.sb), num(r.total)]}
+                  widths={swStatus}
+                />
+              ))}
+            </View>
+
+            {/* Plan breakdown */}
+            <View style={s.col}>
+              <Text style={s.secHead}>Active members by plan</Text>
+              <View style={s.tHead}>
+                <Text style={[s.tHeadCell, { width: swPlan[0] }]}>Plan</Text>
+                <Text style={[s.tHeadCell, s.right, { width: swPlan[1] }]}>New</Text>
+                {hasWp && <Text style={[s.tHeadCell, s.right, { width: swPlan[2] }]}>Legacy</Text>}
+                <Text style={[s.tHeadCell, s.right, { width: swPlan[hasWp ? 3 : 2] }]}>Total</Text>
+              </View>
+              {planRows.map((r, i) => (
+                <TRow
+                  key={r.plan}
+                  alt={i % 2 === 1}
+                  cols={hasWp
+                    ? [r.plan, r.sb > 0 ? num(r.sb) : "-", r.wp > 0 ? num(r.wp) : "-", num(r.total)]
+                    : [r.plan, r.sb > 0 ? num(r.sb) : "-", num(r.total)]}
+                  widths={swPlan}
+                />
+              ))}
+            </View>
+
           </View>
-          {statusRows.map((r, i) => (
-            <TableRow
-              key={r.label}
-              alt={i % 2 === 1}
-              bold={r.label === "Active"}
-              cols={hasWp
-                ? [r.label, num(r.sb), num(r.wp), num(r.total)]
-                : [r.label, num(r.sb), num(r.total)]}
-              widths={statusWidths}
-            />
-          ))}
-
-        </View>
-
-        <Footer page="Page 1" />
-      </Page>
-
-      {/* ── Page 2 ── */}
-      <Page size="A4" style={s.page}>
-        <View style={s.body}>
-
-          {/* Plan breakdown */}
-          <SectionHead>Active members by plan</SectionHead>
-          <View style={s.tableHead}>
-            <Text style={[s.tableHeadCell, { width: hasWp ? "40%" : "60%" }]}>Plan</Text>
-            <Text style={[s.tableHeadCell, s.right, { width: hasWp ? "20%" : "20%" }]}>New platform</Text>
-            {hasWp && <Text style={[s.tableHeadCell, s.right, { width: "20%" }]}>Legacy (WP)</Text>}
-            <Text style={[s.tableHeadCell, s.right, { width: "20%" }]}>Total</Text>
-          </View>
-          {planRows.map((r, i) => (
-            <TableRow
-              key={r.plan}
-              alt={i % 2 === 1}
-              cols={hasWp
-                ? [r.plan, r.sb > 0 ? num(r.sb) : "-", r.wp > 0 ? num(r.wp) : "-", num(r.total)]
-                : [r.plan, r.sb > 0 ? num(r.sb) : "-", num(r.total)]}
-              widths={planWidths}
-            />
-          ))}
 
           {/* Migration progress */}
-          <SectionHead>Migration progress</SectionHead>
-          <View style={s.tableHead}>
-            <Text style={[s.tableHeadCell, { width: "55%" }]}>Stage</Text>
-            <Text style={[s.tableHeadCell, s.right, { width: "45%" }]}>Members</Text>
+          <Text style={s.secHead}>Migration progress</Text>
+          <View style={s.migRow}>
+            <View style={s.migCard}>
+              <Text style={s.migVal}>{num(liveMigration.migrated)}</Text>
+              <Text style={s.migLabel}>Fully migrated{"\n"}(new platform + Stripe)</Text>
+            </View>
+            <View style={s.migCard}>
+              <Text style={s.migVal}>{num(liveMigration.migration_in_progress)}</Text>
+              <Text style={s.migLabel}>Migration started{"\n"}(new platform only)</Text>
+            </View>
+            <View style={s.migCard}>
+              <Text style={s.migVal}>{hasWp ? num(notYetMigrated) : "?"}</Text>
+              <Text style={s.migLabel}>Not yet migrated{"\n"}(WordPress only)</Text>
+            </View>
           </View>
-          {[
-            { label: "Fully migrated (new platform + active Stripe subscription)", n: liveMigration.migrated },
-            { label: "Migration started (new platform, no Stripe subscription yet)", n: liveMigration.migration_in_progress },
-            { label: "Not yet migrated (WordPress only)", n: wpData ? ((wpData.active + wpData.cancelled + wpData.expired + wpData.pending + wpData.other)) : 0 },
-          ].map((r, i) => (
-            <TableRow key={r.label} alt={i % 2 === 1} cols={[r.label, num(r.n)]} widths={["55%", "45%"]} />
-          ))}
 
-          {/* Data notes */}
-          <SectionHead>Notes on data</SectionHead>
-          <View style={s.methodBox}>
-            <Text style={s.methodText}>
-              New platform figures are drawn live from the CSL membership database (Supabase, EU West region) at the time of export.
-              {"\n\n"}
+          {/* Notes */}
+          <Text style={s.secHead}>Notes</Text>
+          <View style={s.notesBox}>
+            <Text style={s.notesText}>
+              New platform figures are live from the CSL membership database (Supabase, EU West) at the time of export.
               {hasWp
-                ? `Legacy (WordPress) figures are taken from a WordPress PMS Pro export dated ${wpAsOfDate ?? "unknown"}. These cover members who have not yet migrated to the new platform. Legacy billing amounts are used to estimate monthly income for this cohort; the actual amounts collected may differ slightly from the Stripe figures.`
-                : "No legacy (WordPress) export has been uploaded. Figures reflect new platform members only."}
-              {"\n\n"}
-              Spam/bot accounts (identified by automated name pattern matching) are excluded from all counts.
-              Lifetime members are included in active member totals but excluded from monthly income figures as they make a single payment rather than a recurring subscription.
-              {"\n\n"}
-              Total collected (new platform) represents the sum of all successful Stripe charges since{earliestChargeDate ? ` ${earliestChargeDate}` : " launch"}, net of any refunds.
-              {"\n\n"}
-              {`This report was generated from ${snapshotCount} historical snapshot${snapshotCount !== 1 ? "s" : ""} and live data at ${generatedAt}.`}
+                ? ` Legacy figures are from a WordPress PMS Pro export dated ${wpAsOfDate ?? "unknown"} and cover members not yet migrated to the new platform.`
+                : " No legacy export has been uploaded; figures cover new platform members only."}
+              {" "}Spam/bot accounts are excluded from all counts. Lifetime members are included in active totals but excluded from monthly income.
+              {" "}Total collected covers all successful Stripe charges{earliestChargeDate ? ` since ${earliestChargeDate}` : ""}, net of refunds.
+              {liveQuality.payment_failed_count > 0
+                ? ` Note: ${num(liveQuality.payment_failed_count)} member${liveQuality.payment_failed_count !== 1 ? "s" : ""} have a failed payment on the new platform.`
+                : ""}
+              {" "}Report generated from {snapshotCount} historical snapshot{snapshotCount !== 1 ? "s" : ""} and live data at {generatedAt}.
             </Text>
           </View>
 
-          {/* Flags */}
-          {(liveQuality.payment_failed_count > 0 || liveQuality.no_auth_account_count > 0) && (
-            <>
-              <SectionHead>Data quality notes</SectionHead>
-              <View style={s.methodBox}>
-                {liveQuality.payment_failed_count > 0 && (
-                  <Text style={[s.methodText, { marginBottom: 4 }]}>
-                    {num(liveQuality.payment_failed_count)} member{liveQuality.payment_failed_count !== 1 ? "s" : ""} on the new platform have a failed payment. These are included in the membership count but their subscriptions are at risk.
-                  </Text>
-                )}
-                {liveQuality.no_auth_account_count > 0 && (
-                  <Text style={s.methodText}>
-                    {num(liveQuality.no_auth_account_count)} member{liveQuality.no_auth_account_count !== 1 ? "s" : ""} do not yet have a linked login account. This does not affect their membership status.
-                  </Text>
-                )}
-              </View>
-            </>
-          )}
-
         </View>
 
-        <Footer page="Page 2" />
+        {/* Footer */}
+        <View style={s.footer} fixed>
+          <Text style={s.footerText}>
+            Celtic Supporters Limited  |  Company No. SC862186  |  ICO ZB985030  |  LEI 984500CDVAFEBEF83781
+          </Text>
+          <Text style={s.footerText}>Confidential</Text>
+        </View>
+
       </Page>
     </Document>
   );
