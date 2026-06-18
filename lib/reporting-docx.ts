@@ -204,7 +204,7 @@ export async function buildReportDocx(d: ReportData): Promise<Buffer> {
       : "No legacy membership export has been uploaded. Figures cover new platform members only.",
     "Automated bot registrations are identified by name pattern and excluded from all counts.",
     "Lifetime members are counted as active but are not included in monthly income, as they make a single payment rather than a recurring subscription.",
-    `Total collected covers all payments received through the new platform${d.earliestChargeDate ? ` since ${d.earliestChargeDate}` : ""}, after deducting any refunds.`,
+    `Total collected covers all payments received via Stripe${d.earliestChargeDate ? ` since ${d.earliestChargeDate}` : ""}, across both the legacy and new platforms, after deducting any refunds.`,
     d.liveQuality.payment_failed_count > 0
       ? `${num(d.liveQuality.payment_failed_count)} member${d.liveQuality.payment_failed_count !== 1 ? "s" : ""} on the new platform ${d.liveQuality.payment_failed_count !== 1 ? "have" : "has"} a payment that has failed. Their membership is at risk.`
       : null,

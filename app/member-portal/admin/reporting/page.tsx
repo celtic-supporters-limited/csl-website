@@ -251,7 +251,7 @@ export default async function ReportingPage() {
             <p className="text-3xl font-black text-csl-dark tabular-nums">
               {totalCollectedPence !== null ? fmtGbp(totalCollectedPence) : "—"}
             </p>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Total collected - new platform</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Total collected</p>
             <p className="text-xs text-gray-400 mt-0.5">
               {totalCollectedPence !== null && stripeSnapDate
                 ? `As of ${fmtDate(stripeSnapDate)}${earliestChargeDate ? ` (charges since ${fmtDate(earliestChargeDate)})` : ""}`
