@@ -40,7 +40,6 @@ export default async function HomePage() {
   const progressPct = ((currentMembers / MEMBER_TARGET) * 100).toFixed(2);
 
   const currentMonthLabel = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-  const maxMembers = Math.max(currentMembers, 484);
   const growthRows = [
     { month: "March 2026", members: 398 },
     { month: "April 2026", members: 444 },
@@ -351,7 +350,7 @@ export default async function HomePage() {
                   <div className="bg-csl-dark/10 rounded-md h-2.5">
                     <div
                       className="bg-csl-dark h-full rounded-md"
-                      style={{ width: `${Math.round((members / maxMembers) * 100)}%` }}
+                      style={{ width: `${Math.round((members / MEMBER_TARGET) * 100)}%` }}
                     />
                   </div>
                 </div>
