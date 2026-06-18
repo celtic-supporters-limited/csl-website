@@ -155,8 +155,7 @@ export default async function ReportingPage() {
     .order("snapshotted_at", { ascending: false })
     .limit(10);
 
-  const latestSnap = snapshots?.[0] ?? null;
-  const prevSnap   = snapshots?.[1] ?? null;
+  const prevSnap = snapshots?.[1] ?? null;
 
   // The WP portion comes from the most recent snapshot that has WP data
   const latestWpSnap = snapshots?.find((s) => s.wp_as_of_date) ?? null;

@@ -10,7 +10,7 @@ import {
 } from "@/lib/membership-metrics";
 import { MembershipReportPdf } from "@/components/MembershipReportPdf";
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   const authClient = createServerSupabase();
   const { data: { user } } = await authClient.auth.getUser();
   if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
