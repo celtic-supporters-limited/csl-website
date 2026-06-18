@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
+import { sweepStripeCharges } from "@/lib/stripe";
 import {
   computeSupabaseMetrics,
   MEMBERSHIP_TARGET,
@@ -52,6 +53,16 @@ export async function GET(req: NextRequest) {
       ? (prevWpSnap.metrics as MembershipSnapshot).migration?.not_yet_migrated ?? 0
       : 0;
 
+  // ── Stripe charge sweep ───────────────────────────────────────────────────
+
+  let stripeData: { total_collected_pence: number; earliest_charge_date: string | null } | null = null;
+  try {
+    stripeData = await sweepStripeCharges();
+    console.log(`[cron/membership-snapshot] Stripe sweep: £${(stripeData.total_collected_pence / 100).toFixed(0)} total collected`);
+  } catch (e) {
+    console.error("[cron/membership-snapshot] Stripe sweep failed:", e);
+  }
+
   // ── Build snapshot ────────────────────────────────────────────────────────
 
   const combinedActive = sbMetrics.active + (wpData?.active ?? 0);
@@ -78,6 +89,7 @@ export async function GET(req: NextRequest) {
       unknown_plan_count: unknownPlanCount,
     },
     wp_as_of_date: wpAsOfDate,
+    stripe: stripeData,
   };
 
   const { error: insertError } = await db.from("membership_snapshots").insert({

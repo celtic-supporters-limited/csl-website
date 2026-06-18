@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import DownloadReportButton from "@/components/DownloadReportButton";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
-import { getStripe } from "@/lib/stripe";
 import PortalShell from "@/components/PortalShell";
 import {
   computeSupabaseMetrics,
@@ -173,28 +172,12 @@ export default async function ReportingPage() {
   // Monthly income
   const combinedMrr = liveMetrics.mrr_pence + (wpData?.mrr_pence ?? 0);
 
-  // Total collected — sum all successful Stripe charges (new platform only, exact)
-  let totalCollectedPence = 0;
-  let earliestChargeDate: Date | null = null;
-  try {
-    const stripe = getStripe();
-    let hasMore = true;
-    let startingAfter: string | undefined;
-    while (hasMore) {
-      const batch = await stripe.charges.list({ limit: 100, starting_after: startingAfter });
-      for (const charge of batch.data) {
-        if (charge.paid && charge.status === "succeeded") {
-          totalCollectedPence += charge.amount - (charge.amount_refunded ?? 0);
-        }
-        // charges.list returns newest-first; last item in final batch is the earliest
-        earliestChargeDate = new Date(charge.created * 1000);
-      }
-      hasMore = batch.has_more;
-      startingAfter = batch.data[batch.data.length - 1]?.id;
-    }
-  } catch (e) {
-    console.error("[reporting] Stripe total collected error:", e);
-  }
+  // Total collected — read from the most recent snapshot that ran a Stripe sweep.
+  // The sweep itself runs in the cron job and on WP CSV upload (never on page load).
+  const latestStripeSnap = snapshots?.find((s) => (s.metrics as MembershipSnapshot).stripe != null) ?? null;
+  const totalCollectedPence = (latestStripeSnap?.metrics as MembershipSnapshot | undefined)?.stripe?.total_collected_pence ?? null;
+  const earliestChargeDate  = (latestStripeSnap?.metrics as MembershipSnapshot | undefined)?.stripe?.earliest_charge_date ?? null;
+  const stripeSnapDate      = latestStripeSnap?.snapshotted_at ?? null;
 
   // Migration progress
   const totalKnown =
@@ -265,12 +248,14 @@ export default async function ReportingPage() {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Monthly income (excl. lifetime)</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
-            <p className="text-3xl font-black text-csl-dark tabular-nums">{fmtGbp(totalCollectedPence)}</p>
+            <p className="text-3xl font-black text-csl-dark tabular-nums">
+              {totalCollectedPence !== null ? fmtGbp(totalCollectedPence) : "—"}
+            </p>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Total collected - new platform</p>
             <p className="text-xs text-gray-400 mt-0.5">
-              {earliestChargeDate
-                ? `All Stripe payments since ${earliestChargeDate.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
-                : "All Stripe payments since launch"}
+              {totalCollectedPence !== null && stripeSnapDate
+                ? `As of ${fmtDate(stripeSnapDate)}${earliestChargeDate ? ` (charges since ${fmtDate(earliestChargeDate)})` : ""}`
+                : "Upload a WP snapshot or wait for the weekly cron to populate"}
             </p>
           </div>
         </div>

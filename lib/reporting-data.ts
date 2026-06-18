@@ -1,5 +1,4 @@
 import { getSupabase } from "@/lib/supabase";
-import { getStripe } from "@/lib/stripe";
 import {
   computeSupabaseMetrics,
   MEMBERSHIP_TARGET,
@@ -46,27 +45,17 @@ export async function gatherReportData(): Promise<ReportData> {
     : null;
   const wpAsOfDate = latestWpSnap?.wp_as_of_date ?? null;
 
-  let totalCollectedPence = 0;
-  let earliestChargeDate: string | null = null;
-  try {
-    const stripe = getStripe();
-    let hasMore = true;
-    let startingAfter: string | undefined;
-    while (hasMore) {
-      const batch = await stripe.charges.list({ limit: 100, starting_after: startingAfter });
-      for (const charge of batch.data) {
-        if (charge.paid && charge.status === "succeeded") {
-          totalCollectedPence += charge.amount - (charge.amount_refunded ?? 0);
-        }
-        earliestChargeDate = new Date(charge.created * 1000)
-          .toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-      }
-      hasMore = batch.has_more;
-      startingAfter = batch.data[batch.data.length - 1]?.id;
-    }
-  } catch (e) {
-    console.error("[reporting] Stripe error:", e);
-  }
+  // Read Stripe totals from the most recent snapshot that ran a sweep.
+  // The sweep runs in the cron job and on WP CSV upload — never on demand here.
+  const latestStripeSnap = snapshots?.find((s) => (s.metrics as MembershipSnapshot).stripe != null) ?? null;
+  const totalCollectedPence =
+    (latestStripeSnap?.metrics as MembershipSnapshot | undefined)?.stripe?.total_collected_pence ?? 0;
+  const earliestChargeDate =
+    (latestStripeSnap?.metrics as MembershipSnapshot | undefined)?.stripe?.earliest_charge_date ?? null;
+
+  const formattedEarliestDate = earliestChargeDate
+    ? new Date(earliestChargeDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : null;
 
   return {
     generatedAt: new Date().toLocaleString("en-GB", {
@@ -77,7 +66,7 @@ export async function gatherReportData(): Promise<ReportData> {
     targetMembers: MEMBERSHIP_TARGET,
     combinedMrrPence: liveMetrics.mrr_pence + (wpData?.mrr_pence ?? 0),
     totalCollectedPence,
-    earliestChargeDate,
+    earliestChargeDate: formattedEarliestDate,
     liveMetrics,
     wpData,
     wpAsOfDate,
