@@ -116,6 +116,11 @@ export default function UploadForm() {
         </div>
       )}
 
+      {/* Info note */}
+      <div className="bg-csl-light border border-green-200 rounded-lg px-4 py-3 text-xs text-gray-600">
+        Uploading a new export refreshes all figures on the reporting dashboard, including total income collected. This may take up to 30 seconds while Stripe payment history is retrieved.
+      </div>
+
       {/* Submit */}
       <button
         type="submit"
