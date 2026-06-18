@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
 
   // ── Stripe charge sweep ───────────────────────────────────────────────────
 
-  let stripeData: { total_collected_pence: number; earliest_charge_date: string | null } | null = null;
+  let stripeData: { total_collected_pence: number; earliest_charge_date: string | null; country_breakdown: Record<string, number> } | null = null;
   try {
     stripeData = await sweepStripeCharges();
     console.log(`[cron/membership-snapshot] Stripe sweep: £${(stripeData.total_collected_pence / 100).toFixed(0)} total collected`);

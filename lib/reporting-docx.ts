@@ -393,6 +393,31 @@ export async function buildReportDocx(d: ReportData): Promise<Buffer> {
           })],
         }),
 
+        // ── Geographic distribution ───────────────────────────────────────────
+        ...(Object.keys(d.countryBreakdown).length > 0 ? (() => {
+          const COUNTRY_NAMES_DOCX: Record<string, string> = {
+            GB: "United Kingdom", IE: "Ireland", US: "United States",
+            CA: "Canada", AU: "Australia", DE: "Germany", FR: "France",
+            NL: "Netherlands", ES: "Spain", IT: "Italy", SE: "Sweden",
+            NO: "Norway", DK: "Denmark", BE: "Belgium", CH: "Switzerland",
+            NZ: "New Zealand", ZA: "South Africa", AE: "United Arab Emirates",
+          };
+          const geoRows = Object.entries(d.countryBreakdown).sort((a, b) => b[1] - a[1]);
+          const geoTotal = geoRows.reduce((s, [, n]) => s + n, 0);
+          const gW = [Math.round(W * 0.6), Math.round(W * 0.2), W - Math.round(W * 0.6) - Math.round(W * 0.2)];
+          return [
+            sectionHead("Geographic distribution"),
+            dataTable([
+              dataRow(["Country", "Charges", "% of total"], gW, { header: true }),
+              ...geoRows.map(([code, count], i) => dataRow(
+                [COUNTRY_NAMES_DOCX[code] ?? code, num(count), geoTotal > 0 ? `${Math.round((count / geoTotal) * 100)}%` : "0%"],
+                gW, { alt: i % 2 === 1 }
+              )),
+              dataRow(["Total", num(geoTotal), "100%"], gW, { bold: true }),
+            ], W),
+          ];
+        })() : []),
+
         // ── Notes ─────────────────────────────────────────────────────────────
         sectionHead("Notes"),
         new Table({

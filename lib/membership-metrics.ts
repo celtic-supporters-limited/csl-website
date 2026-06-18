@@ -69,6 +69,7 @@ export type MembershipSnapshot = {
   stripe: {
     total_collected_pence: number;
     earliest_charge_date: string | null;
+    country_breakdown: Record<string, number>;
   } | null;
 };
 
@@ -291,7 +292,7 @@ export function buildSnapshot({
   wpRows: WordPressRow[] | null;
   supabaseEmails: Set<string>;
   wpAsOfDate: string | null;
-  stripeData?: { total_collected_pence: number; earliest_charge_date: string | null } | null;
+  stripeData?: { total_collected_pence: number; earliest_charge_date: string | null; country_breakdown: Record<string, number> } | null;
 }): MembershipSnapshot {
   const { metrics: sbMetrics, migration, dataQuality } = computeSupabaseMetrics(supabaseRows);
 

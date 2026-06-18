@@ -175,9 +175,11 @@ export default async function ReportingPage() {
   // Total collected — read from the most recent snapshot that ran a Stripe sweep.
   // The sweep itself runs in the cron job and on WP CSV upload (never on page load).
   const latestStripeSnap = snapshots?.find((s) => (s.metrics as MembershipSnapshot).stripe != null) ?? null;
-  const totalCollectedPence = (latestStripeSnap?.metrics as MembershipSnapshot | undefined)?.stripe?.total_collected_pence ?? null;
-  const earliestChargeDate  = (latestStripeSnap?.metrics as MembershipSnapshot | undefined)?.stripe?.earliest_charge_date ?? null;
+  const latestStripe     = (latestStripeSnap?.metrics as MembershipSnapshot | undefined)?.stripe;
+  const totalCollectedPence = latestStripe?.total_collected_pence ?? null;
+  const earliestChargeDate  = latestStripe?.earliest_charge_date ?? null;
   const stripeSnapDate      = latestStripeSnap?.snapshotted_at ?? null;
+  const countryBreakdown    = latestStripe?.country_breakdown ?? {};
 
   // Migration progress — denominator is active members only (lapsed legacy excluded)
   const legacyActiveCount = wpData?.active ?? 0;
@@ -418,6 +420,79 @@ export default async function ReportingPage() {
             </ul>
           </div>
         ) : null}
+
+        {/* Geographic distribution */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h2 className="text-sm font-bold text-gray-900">Geographic distribution</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Based on billing country of successful Stripe charges</p>
+          </div>
+          {Object.keys(countryBreakdown).length === 0 ? (
+            <p className="px-4 py-4 text-sm text-gray-400">
+              Upload a WordPress export or wait for the weekly cron to populate geographic data.
+            </p>
+          ) : (() => {
+            const COUNTRY_NAMES: Record<string, string> = {
+              GB: "United Kingdom", IE: "Ireland", US: "United States",
+              CA: "Canada", AU: "Australia", DE: "Germany", FR: "France",
+              NL: "Netherlands", ES: "Spain", IT: "Italy", SE: "Sweden",
+              NO: "Norway", DK: "Denmark", BE: "Belgium", CH: "Switzerland",
+              NZ: "New Zealand", ZA: "South Africa", AE: "United Arab Emirates",
+            };
+            const total = Object.values(countryBreakdown).reduce((s, n) => s + n, 0);
+            const rows = Object.entries(countryBreakdown)
+              .sort((a, b) => b[1] - a[1]);
+            const ukCount  = countryBreakdown["GB"] ?? 0;
+            const ieCount  = countryBreakdown["IE"] ?? 0;
+            const rowTotal = total;
+            return (
+              <>
+                {/* Summary pills */}
+                <div className="px-4 py-3 flex flex-wrap gap-3 border-b border-gray-100">
+                  {[
+                    { label: "United Kingdom", count: ukCount },
+                    { label: "Ireland",        count: ieCount },
+                    { label: "Rest of world",  count: rowTotal - ukCount - ieCount },
+                  ].map(({ label, count }) => (
+                    <div key={label} className="bg-csl-light rounded-lg px-3 py-2 text-center min-w-[100px]">
+                      <p className="text-xl font-black text-csl-dark tabular-nums">{fmt(count)}</p>
+                      <p className="text-[0.65rem] text-gray-500 mt-0.5">{label}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Full table */}
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Country</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charges</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">% of total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rows.map(([code, count]) => (
+                      <tr key={code}>
+                        <td className="px-4 py-2.5 text-sm text-gray-700">
+                          {COUNTRY_NAMES[code] ?? code}
+                          <span className="ml-1.5 text-[0.65rem] text-gray-400">{code}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-700">{fmt(count)}</td>
+                        <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">
+                          {total > 0 ? ((count / total) * 100).toFixed(1) : "0.0"}%
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-gray-200 bg-gray-50">
+                      <td className="px-4 py-2.5 text-sm font-semibold text-gray-900">Total</td>
+                      <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-gray-900">{fmt(total)}</td>
+                      <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">100%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </>
+            );
+          })()}
+        </div>
 
         {/* Trend history */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

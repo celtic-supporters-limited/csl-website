@@ -155,6 +155,7 @@ export function MembershipReportPdf(props: ReportData) {
     wpAsOfDate,
     liveMigration,
     liveQuality,
+    countryBreakdown,
   } = props;
 
   const progressPct = Math.round((combinedActive / targetMembers) * 1000) / 10;
@@ -192,6 +193,17 @@ export function MembershipReportPdf(props: ReportData) {
   const legacyLapsed    = wpData
     ? wpData.pending + wpData.expired + wpData.cancelled + wpData.other
     : 0;
+
+  // Geographic distribution
+  const COUNTRY_NAMES_PDF: Record<string, string> = {
+    GB: "United Kingdom", IE: "Ireland", US: "United States",
+    CA: "Canada", AU: "Australia", DE: "Germany", FR: "France",
+    NL: "Netherlands", ES: "Spain", IT: "Italy", SE: "Sweden",
+    NO: "Norway", DK: "Denmark", BE: "Belgium", CH: "Switzerland",
+    NZ: "New Zealand", ZA: "South Africa", AE: "United Arab Emirates",
+  };
+  const geoRows = Object.entries(countryBreakdown ?? {}).sort((a, b) => b[1] - a[1]);
+  const geoTotal = geoRows.reduce((s, [, n]) => s + n, 0);
 
   // Column widths
   const swStatus = hasWp ? ["36%", "21%", "21%", "22%"] : ["54%", "22%", "24%"];
@@ -311,8 +323,37 @@ export function MembershipReportPdf(props: ReportData) {
             </View>
           </View>
 
+          {/* Geographic distribution */}
+          {geoRows.length > 0 && (
+            <>
+              <Text style={s.secHead}>Geographic distribution</Text>
+              <View style={s.tHead}>
+                <Text style={[s.tHeadCell, { width: "60%" }]}>Country</Text>
+                <Text style={[s.tHeadCell, s.right, { width: "20%" }]}>Charges</Text>
+                <Text style={[s.tHeadCell, s.right, { width: "20%" }]}>% of total</Text>
+              </View>
+              {geoRows.map(([code, count], i) => (
+                <TRow
+                  key={code}
+                  alt={i % 2 === 1}
+                  cols={[
+                    COUNTRY_NAMES_PDF[code] ?? code,
+                    num(count),
+                    geoTotal > 0 ? `${Math.round((count / geoTotal) * 100)}%` : "0%",
+                  ]}
+                  widths={["60%", "20%", "20%"]}
+                />
+              ))}
+              <TRow
+                isBold
+                cols={["Total", num(geoTotal), "100%"]}
+                widths={["60%", "20%", "20%"]}
+              />
+            </>
+          )}
+
           {/* Notes */}
-          <Text style={s.secHead}>Notes</Text>
+          <Text style={[s.secHead, { marginTop: 6 }]}>Notes</Text>
           <View style={s.notesBox}>
             {[
               "New platform member figures are live at the time this report was exported.",
