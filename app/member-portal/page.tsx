@@ -112,7 +112,7 @@ export default async function MemberPortalPage({
       db
         .from("site_config")
         .select("key, value")
-        .in("key", ["agm_date", "shares_represented"]),
+        .in("key", ["agm_date", "shares_represented", "active_members"]),
       db
         .from("shareholder_cases")
         .select("*", { count: "exact", head: true })
@@ -123,11 +123,14 @@ export default async function MemberPortalPage({
     cases = casesRes.data ?? [];
     documents = (documentsRes.data ?? []) as MemberDocument[];
     governanceCriteria = (governanceRes.data ?? []) as GovernanceCriterion[];
-    activeCount = activeCountRes.count ?? 0;
-
     const configRows = (siteConfigRes.data ?? []) as { key: string; value: string | null }[];
     agmDate = configRows.find((r) => r.key === "agm_date")?.value ?? null;
     sharesRepresented = configRows.find((r) => r.key === "shares_represented")?.value ?? "15000";
+
+    const activeMembersConfig = configRows.find((r) => r.key === "active_members")?.value;
+    activeCount = activeMembersConfig
+      ? parseInt(activeMembersConfig, 10)
+      : (activeCountRes.count ?? 0);
     proxyCount = proxyCountRes.count ?? 0;
 
     // Batch 2 — requires stripe_customer_id and stripe_subscription_id from batch 1

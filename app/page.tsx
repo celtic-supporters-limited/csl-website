@@ -333,21 +333,33 @@ export default async function HomePage() {
               <h3 className="text-[1.1rem] font-bold mb-5 text-csl-dark">
                 Membership Growth
               </h3>
-              {[
-                { month: "March 2026",  count: "398 active", pct: "80%" },
-                { month: "April 2026",  count: "444 active", pct: "88%" },
-                { month: "May 2026",    count: "484 active", pct: "97%" },
-              ].map(({ month, count, pct }) => (
-                <div key={month} className="mb-4">
-                  <div className="flex justify-between text-[0.85rem] mb-1.5">
-                    <span>{month}</span>
-                    <span className="font-bold">{count}</span>
+              {(() => {
+                const currentMonthLabel = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+                const maxMembers = Math.max(currentMembers, 484);
+                const historicalRows = [
+                  { month: "March 2026", members: 398 },
+                  { month: "April 2026", members: 444 },
+                  { month: "May 2026",   members: 484 },
+                ];
+                const rows = [
+                  ...historicalRows,
+                  ...(currentMonthLabel !== "May 2026" ? [{ month: currentMonthLabel, members: currentMembers }] : []),
+                ];
+                return rows.map(({ month, members }) => (
+                  <div key={month} className="mb-4">
+                    <div className="flex justify-between text-[0.85rem] mb-1.5">
+                      <span>{month}</span>
+                      <span className="font-bold">{members.toLocaleString("en-GB")} active</span>
+                    </div>
+                    <div className="bg-csl-dark/10 rounded-md h-2.5">
+                      <div
+                        className="bg-csl-dark h-full rounded-md"
+                        style={{ width: `${Math.round((members / maxMembers) * 100)}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="bg-csl-dark/10 rounded-md h-2.5">
-                    <div className="bg-csl-dark h-full rounded-md" style={{ width: pct }} />
-                  </div>
-                </div>
-              ))}
+                );
+              })()}
               <div className="mt-6 pt-5 border-t border-csl-dark/15">
                 <div className="text-[0.85rem] text-csl-dark font-semibold mb-1">
                   Target: 5,000 Members
