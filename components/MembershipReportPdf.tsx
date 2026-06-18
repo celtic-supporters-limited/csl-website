@@ -155,7 +155,6 @@ export function MembershipReportPdf(props: ReportData) {
     wpAsOfDate,
     liveMigration,
     liveQuality,
-    snapshotCount,
   } = props;
 
   const progressPct = Math.round((combinedActive / targetMembers) * 1000) / 10;
