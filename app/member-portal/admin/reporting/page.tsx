@@ -202,43 +202,57 @@ export default async function ReportingPage() {
   // ── ARPM ─────────────────────────────────────────────────────────────────
   const arpmPence = combinedActive > 0 ? Math.round(combinedMrr / combinedActive) : 0;
 
-  // ── Growth trend — snapshot-to-snapshot combined active deltas ───────────
-  // Snapshots are the only source that covers the full membership (WP + new platform).
-  // We fetch up to 10 above; reverse to show oldest → newest for the trend table.
+  // ── Growth trend — deduplicated monthly snapshot history ─────────────────
+  // Snapshots are the only source covering the full membership (WP + new platform).
+  // Deduplicate: keep the last snapshot per calendar month so same-day cron runs
+  // don't produce a wall of identical rows.
   const snapChronological = (snapshots ?? []).slice().reverse();
-  const snapshotGrowth = snapChronological.map((s, i) => {
-    const m = s.metrics as MembershipSnapshot;
+
+  // Keep one entry per calendar month — last snapshot of that month wins
+  const snapByMonth = new Map<string, typeof snapChronological[0]>();
+  for (const s of snapChronological) {
+    const monthKey = s.snapshotted_at.slice(0, 7); // "YYYY-MM"
+    snapByMonth.set(monthKey, s);
+  }
+  const dedupedSnaps = Array.from(snapByMonth.values()); // already chronological
+
+  const snapshotGrowth = dedupedSnaps.map((s, i) => {
+    const m      = s.metrics as MembershipSnapshot;
     const active = m.combined?.active_total ?? (m.supabase.active + (m.wordpress_legacy?.active ?? 0));
     const prev   = i === 0 ? null : (() => {
-      const pm = snapChronological[i - 1].metrics as MembershipSnapshot;
+      const pm = dedupedSnaps[i - 1].metrics as MembershipSnapshot;
       return pm.combined?.active_total ?? (pm.supabase.active + (pm.wordpress_legacy?.active ?? 0));
     })();
-    return {
-      date:   fmtDate(s.snapshotted_at),
-      active,
-      delta:  prev !== null ? active - prev : null,
-    };
+    const monthLabel = new Date(s.snapshotted_at).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+    return { monthLabel, active, delta: prev !== null ? active - prev : null };
   });
 
-  // Net growth: first recorded → current live count
+  // Net growth: first recorded snapshot → current live count
   const firstSnapshotActive = snapshotGrowth[0]?.active ?? null;
+  const firstSnapshotDate   = dedupedSnaps[0]
+    ? new Date(dedupedSnaps[0].snapshotted_at).toLocaleDateString("en-GB", { month: "short", year: "numeric" })
+    : null;
   const netGrowthSinceFirst = firstSnapshotActive !== null ? combinedActive - firstSnapshotActive : null;
 
-  // Churn: infer from snapshot deltas where combined active fell between consecutive
-  // snapshots. Positive deltas represent net growth; negative imply net loss.
-  // This covers both platforms — no dependency on member_events.
-  const inferredChurnEvents = snapshotGrowth
+  // Trend direction: compare first and last deduped snapshot
+  const lastSnapshotActive = snapshotGrowth[snapshotGrowth.length - 1]?.active ?? null;
+  const trendDirection =
+    snapshotGrowth.length < 2          ? "insufficient"  :
+    lastSnapshotActive! > firstSnapshotActive!  ? "growing"       :
+    lastSnapshotActive! < firstSnapshotActive!  ? "declining"     : "flat";
+
+  // Churn: infer from month-over-month net losses across both platforms
+  const inferredNetLoss = snapshotGrowth
     .filter(s => s.delta !== null && s.delta < 0)
     .reduce((sum, s) => sum + Math.abs(s.delta!), 0);
-  const snapshotSpanDays = snapChronological.length > 1
-    ? (new Date(snapChronological[snapChronological.length - 1].snapshotted_at).getTime() -
-       new Date(snapChronological[0].snapshotted_at).getTime()) / (1000 * 60 * 60 * 24)
+  const monthsObserved = dedupedSnaps.length > 1
+    ? (new Date(dedupedSnaps[dedupedSnaps.length - 1].snapshotted_at).getTime() -
+       new Date(dedupedSnaps[0].snapshotted_at).getTime()) / (1000 * 60 * 60 * 24 * 30.44)
     : null;
-  // Annualise churn as monthly rate: (net losses / avg active) / months observed
   const avgActive = snapshotGrowth.reduce((s, r) => s + r.active, 0) / (snapshotGrowth.length || 1);
-  const monthlyChurnPct = snapshotSpanDays && snapshotSpanDays > 0 && avgActive > 0
-    ? Math.round((inferredChurnEvents / avgActive) / (snapshotSpanDays / 30.44) * 1000) / 10
-    : 0;
+  const monthlyChurnPct = monthsObserved && monthsObserved > 0 && avgActive > 0
+    ? Math.round((inferredNetLoss / avgActive / monthsObserved) * 1000) / 10
+    : null; // null = not enough data yet
 
   // ── Member tenure distribution (active new-platform members only) ─────────
   const now = Date.now();
@@ -358,45 +372,113 @@ export default async function ReportingPage() {
           </div>
         </div>
 
-        {/* Summary stat cards — row 2: health metrics */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
-            <p className="text-3xl font-black text-csl-dark tabular-nums">{fmtGbp(arpmPence)}</p>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Avg revenue per member</p>
-            <p className="text-xs text-gray-400 mt-0.5">Monthly MRR / active members</p>
+        {/* Membership health panel */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100">
+            <h2 className="text-sm font-bold text-gray-900">Membership health</h2>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
-            <p className={`text-3xl font-black tabular-nums ${monthlyChurnPct > 3 ? "text-red-600" : monthlyChurnPct > 1 ? "text-amber-600" : "text-green-700"}`}>
-              {monthlyChurnPct}%
-            </p>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Monthly churn rate</p>
-            <p className="text-xs text-gray-400 mt-0.5">Net losses between snapshots / avg active</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
-            <p className={`text-3xl font-black tabular-nums ${
-              recoveryRate === null ? "text-gray-400" :
-              recoveryRate >= 70   ? "text-green-700" :
-              recoveryRate >= 40   ? "text-amber-600" : "text-red-600"
-            }`}>
-              {recoveryRate !== null ? `${recoveryRate}%` : "—"}
-            </p>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Payment recovery rate</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {totalEverFailed > 0
-                ? `${recoveryStats.recovered} recovered · ${recoveryStats.stillFailing} still failing · ${recoveryStats.lost} lost`
-                : "No payment failures recorded"}
-            </p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
-            <p className={`text-3xl font-black tabular-nums ${netGrowthSinceFirst === null ? "text-gray-400" : netGrowthSinceFirst >= 0 ? "text-green-700" : "text-red-600"}`}>
-              {netGrowthSinceFirst !== null ? (netGrowthSinceFirst >= 0 ? `+${fmt(netGrowthSinceFirst)}` : fmt(netGrowthSinceFirst)) : "—"}
-            </p>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Net membership growth</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {firstSnapshotActive !== null
-                ? `From ${fmt(firstSnapshotActive)} at first snapshot to ${fmt(combinedActive)} today`
-                : "No snapshots recorded yet"}
-            </p>
+          <div className="divide-y divide-gray-100">
+            {/* Retention */}
+            {(() => {
+              const status = monthlyChurnPct === null ? "neutral" : monthlyChurnPct === 0 ? "green" : monthlyChurnPct <= 2 ? "amber" : "red";
+              const dot = status === "green" ? "bg-green-500" : status === "amber" ? "bg-amber-400" : status === "red" ? "bg-red-500" : "bg-gray-300";
+              return (
+                <div className="px-5 py-3 flex items-start gap-4">
+                  <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
+                  <div className="flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-semibold text-gray-900">Retention</span>
+                      <span className="text-sm font-black text-gray-900 tabular-nums">
+                        {monthlyChurnPct !== null ? `${monthlyChurnPct}% monthly churn` : "Insufficient snapshot history"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {monthlyChurnPct === null
+                        ? "More snapshots needed to calculate a reliable churn rate. Check back after a few weekly cycles."
+                        : monthlyChurnPct === 0
+                        ? "No net membership losses recorded across snapshots. Retention is stable."
+                        : monthlyChurnPct <= 2
+                        ? "Low churn — within a healthy range for a membership organisation."
+                        : "Churn is elevated. Review cancellation reasons and consider a re-engagement campaign."}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Revenue per member */}
+            {(() => {
+              return (
+                <div className="px-5 py-3 flex items-start gap-4">
+                  <span className="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 bg-green-500" />
+                  <div className="flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-semibold text-gray-900">Revenue per member</span>
+                      <span className="text-sm font-black text-gray-900 tabular-nums">{fmtGbp(arpmPence)}/month average</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Blended across all active subscription tiers. As the member mix shifts toward higher tiers this figure will rise and accelerate progress toward financial targets.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Growth trajectory */}
+            {(() => {
+              const dot = trendDirection === "growing" ? "bg-green-500" : trendDirection === "declining" ? "bg-red-500" : trendDirection === "flat" ? "bg-amber-400" : "bg-gray-300";
+              return (
+                <div className="px-5 py-3 flex items-start gap-4">
+                  <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
+                  <div className="flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-semibold text-gray-900">Growth trajectory</span>
+                      <span className="text-sm font-black text-gray-900 tabular-nums">
+                        {netGrowthSinceFirst !== null
+                          ? `${netGrowthSinceFirst >= 0 ? "+" : ""}${fmt(netGrowthSinceFirst)} since ${firstSnapshotDate}`
+                          : "No baseline yet"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {trendDirection === "insufficient"
+                        ? "Not enough snapshot history to determine a trend. This will populate automatically as weekly snapshots accumulate."
+                        : trendDirection === "growing"
+                        ? `Membership has grown across recorded snapshots. At current pace, reaching the 5,000 target will require sustained acquisition campaigns.`
+                        : trendDirection === "flat"
+                        ? "Membership is stable but not growing. New joiners are offsetting leavers. Consider a recruitment push to break through the current level."
+                        : "Membership has declined since the first snapshot. Investigate and prioritise retention before launching acquisition."}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Payment health */}
+            {(() => {
+              const dot = totalEverFailed === 0 ? "bg-green-500" : recoveryStats.stillFailing > 0 ? "bg-red-500" : "bg-amber-400";
+              return (
+                <div className="px-5 py-3 flex items-start gap-4">
+                  <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
+                  <div className="flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-semibold text-gray-900">Payment health</span>
+                      <span className="text-sm font-black text-gray-900 tabular-nums">
+                        {totalEverFailed === 0
+                          ? "No failures recorded"
+                          : recoveryRate !== null
+                          ? `${recoveryRate}% recovery rate`
+                          : "Failures recorded"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {totalEverFailed === 0
+                        ? "No payment failures recorded on the new platform."
+                        : `${fmt(recoveryStats.recovered)} members recovered · ${fmt(recoveryStats.stillFailing)} still failing · ${fmt(recoveryStats.lost)} lost to cancellation. ${recoveryStats.stillFailing > 0 ? "Members with outstanding failures should be contacted." : ""}`}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -535,9 +617,9 @@ export default async function ReportingPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {snapshotGrowth.map(({ date, active, delta }) => (
-                    <tr key={date}>
-                      <td className="px-4 py-2.5 text-sm text-gray-700">{date}</td>
+                  {snapshotGrowth.map(({ monthLabel, active, delta }) => (
+                    <tr key={monthLabel}>
+                      <td className="px-4 py-2.5 text-sm text-gray-700">{monthLabel}</td>
                       <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-gray-900">{fmt(active)}</td>
                       <td className="px-4 py-2.5 text-sm text-right tabular-nums">
                         {delta === null ? <span className="text-gray-300">—</span> :
