@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@marsidev/react-turnstile": "^1.5.2",
+    "@react-pdf/renderer": "^4.5.1",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
     "next": "14.2.35",
