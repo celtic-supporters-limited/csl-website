@@ -280,11 +280,87 @@ export default async function ReportingPage() {
           </div>
         </div>
 
-        {/* Row 1: Status breakdown (left) | Migration progress (right) */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
+        {/* Geographic distribution — full width, prominent */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100">
+            <h2 className="text-sm font-bold text-gray-900">Geographic distribution</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Billing country of successful Stripe charges</p>
+          </div>
+          {!hasGeo ? (
+            <p className="px-5 py-4 text-sm text-gray-400">Upload a WP export or wait for the weekly cron to populate geographic data.</p>
+          ) : (
+            <>
+              {/* Summary pills */}
+              <div className="px-5 py-4 flex gap-4 border-b border-gray-100">
+                {[
+                  { label: "United Kingdom", count: ukCount },
+                  { label: "Ireland",        count: ieCount },
+                  { label: "Rest of world",  count: geoTotal - ukCount - ieCount },
+                ].map(({ label, count }) => (
+                  <div key={label} className="bg-csl-light rounded-xl px-5 py-3 text-center min-w-[130px]">
+                    <p className="text-2xl font-black text-csl-dark tabular-nums">
+                      {geoTotal > 0 ? `${Math.round((count / geoTotal) * 1000) / 10}%` : "0%"}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">{label}</p>
+                  </div>
+                ))}
+              </div>
+              {/* Two-column country table */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
+                {[geoRows.slice(0, Math.ceil(geoRows.length / 2)), geoRows.slice(Math.ceil(geoRows.length / 2))].map((half, hi) => (
+                  <table key={hi} className="w-full">
+                    {hi === 0 && (
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Country</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charges</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">%</th>
+                        </tr>
+                      </thead>
+                    )}
+                    {hi === 1 && (
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Country</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charges</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">%</th>
+                        </tr>
+                      </thead>
+                    )}
+                    <tbody className="divide-y divide-gray-100">
+                      {half.map(([code, count], i) => (
+                        <tr key={code} className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
+                          <td className="px-4 py-2.5 text-sm text-gray-700">
+                            {COUNTRY_NAMES[code] ?? code}
+                            <span className="ml-1.5 text-[0.6rem] text-gray-400">{code}</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-700">{fmt(count)}</td>
+                          <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">
+                            {geoTotal > 0 ? ((count / geoTotal) * 100).toFixed(1) : "0.0"}%
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Total row on right half only */}
+                      {hi === 1 && (
+                        <tr className="border-t border-gray-200 bg-gray-50">
+                          <td className="px-4 py-2.5 text-sm font-semibold text-gray-900">Total</td>
+                          <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-gray-900">{fmt(geoTotal)}</td>
+                          <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-500">100%</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
 
-          {/* Status breakdown — 3 cols */}
-          <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {/* Status breakdown | Plan breakdown — side by side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+
+          {/* Status breakdown */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
               <h2 className="text-sm font-bold text-gray-900">Status breakdown</h2>
             </div>
@@ -324,117 +400,56 @@ export default async function ReportingPage() {
             </table>
           </div>
 
-          {/* Migration progress — 2 cols */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100">
-              <h2 className="text-sm font-bold text-gray-900">Migration progress</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Members moved to the new platform</p>
-            </div>
-            <div className="px-4 py-4 grid grid-cols-3 gap-2 text-center">
-              <div>
-                <p className="text-2xl font-black text-green-700 tabular-nums">{fmt(liveMigration.migrated)}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Fully migrated</p>
-                <p className="text-[0.6rem] text-gray-400">Supabase + Stripe</p>
-              </div>
-              <div>
-                <p className="text-2xl font-black text-amber-600 tabular-nums">{fmt(liveMigration.migration_in_progress)}</p>
-                <p className="text-xs text-gray-500 mt-0.5">In progress</p>
-                <p className="text-[0.6rem] text-gray-400">Supabase only</p>
-              </div>
-              <div>
-                <p className="text-2xl font-black text-gray-500 tabular-nums">
-                  {hasWp ? fmt(legacyActiveCount) : "?"}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">Not yet</p>
-                <p className="text-[0.6rem] text-gray-400">WordPress only</p>
-              </div>
-            </div>
-            {totalKnown > 0 && (
-              <div className="px-4 pb-4">
-                <div className="flex gap-0.5 h-2.5 rounded-full overflow-hidden">
-                  <div className="bg-green-500 h-full" style={{ width: `${(liveMigration.migrated / totalKnown) * 100}%` }} />
-                  <div className="bg-amber-400 h-full" style={{ width: `${(liveMigration.migration_in_progress / totalKnown) * 100}%` }} />
-                  <div className="bg-gray-300 h-full" style={{ width: `${(legacyActiveCount / totalKnown) * 100}%` }} />
-                </div>
-                <div className="flex flex-wrap gap-x-3 mt-1.5 text-[0.6rem] text-gray-500">
-                  <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Migrated</span>
-                  <span><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1" />In progress</span>
-                  <span><span className="inline-block w-2 h-2 rounded-full bg-gray-300 mr-1" />Not yet</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Row 2: Plan breakdown (left) | Geographic distribution (right) */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
-
-          {/* Plan breakdown — 3 cols */}
-          <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {/* Plan breakdown */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
               <h2 className="text-sm font-bold text-gray-900">Active members by plan</h2>
             </div>
             <PlanTable sb={liveMetrics} wp={wpData} />
           </div>
-
-          {/* Geographic distribution — 2 cols */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100">
-              <h2 className="text-sm font-bold text-gray-900">Geographic distribution</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Billing country of successful Stripe charges</p>
-            </div>
-            {!hasGeo ? (
-              <p className="px-4 py-4 text-sm text-gray-400">Upload a WP export or wait for the weekly cron.</p>
-            ) : (
-              <>
-                {/* % pills */}
-                <div className="px-3 py-3 flex gap-2 border-b border-gray-100">
-                  {[
-                    { label: "United Kingdom", count: ukCount },
-                    { label: "Ireland",        count: ieCount },
-                    { label: "Rest of world",  count: geoTotal - ukCount - ieCount },
-                  ].map(({ label, count }) => (
-                    <div key={label} className="flex-1 bg-csl-light rounded-lg px-2 py-2 text-center">
-                      <p className="text-base font-black text-csl-dark tabular-nums">
-                        {geoTotal > 0 ? `${Math.round((count / geoTotal) * 1000) / 10}%` : "0%"}
-                      </p>
-                      <p className="text-[0.6rem] text-gray-500 mt-0.5 leading-tight">{label}</p>
-                    </div>
-                  ))}
-                </div>
-                {/* Country table */}
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Country</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charges</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">%</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {geoRows.map(([code, count], i) => (
-                      <tr key={code} className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
-                        <td className="px-3 py-2 text-sm text-gray-700">
-                          {COUNTRY_NAMES[code] ?? code}
-                          <span className="ml-1 text-[0.6rem] text-gray-400">{code}</span>
-                        </td>
-                        <td className="px-3 py-2 text-sm text-right tabular-nums text-gray-700">{fmt(count)}</td>
-                        <td className="px-3 py-2 text-sm text-right tabular-nums text-gray-500">
-                          {geoTotal > 0 ? ((count / geoTotal) * 100).toFixed(1) : "0.0"}%
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="border-t border-gray-200 bg-gray-50">
-                      <td className="px-3 py-2 text-sm font-semibold text-gray-900">Total</td>
-                      <td className="px-3 py-2 text-sm text-right tabular-nums font-semibold text-gray-900">{fmt(geoTotal)}</td>
-                      <td className="px-3 py-2 text-sm text-right tabular-nums text-gray-500">100%</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </>
-            )}
-          </div>
         </div>
+
+        {/* Migration progress — compact, lower priority */}
+        {hasWp && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-gray-900">Migration progress</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Members moved from WordPress to the new platform</p>
+              </div>
+            </div>
+            <div className="px-4 py-3 flex items-center gap-6">
+              <div className="flex gap-6 text-center">
+                <div>
+                  <p className="text-xl font-black text-green-700 tabular-nums">{fmt(liveMigration.migrated)}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Migrated</p>
+                </div>
+                <div>
+                  <p className="text-xl font-black text-amber-600 tabular-nums">{fmt(liveMigration.migration_in_progress)}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">In progress</p>
+                </div>
+                <div>
+                  <p className="text-xl font-black text-gray-500 tabular-nums">{fmt(legacyActiveCount)}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Not yet migrated</p>
+                </div>
+              </div>
+              {totalKnown > 0 && (
+                <div className="flex-1">
+                  <div className="flex gap-0.5 h-2.5 rounded-full overflow-hidden">
+                    <div className="bg-green-500 h-full" style={{ width: `${(liveMigration.migrated / totalKnown) * 100}%` }} />
+                    <div className="bg-amber-400 h-full" style={{ width: `${(liveMigration.migration_in_progress / totalKnown) * 100}%` }} />
+                    <div className="bg-gray-300 h-full" style={{ width: `${(legacyActiveCount / totalKnown) * 100}%` }} />
+                  </div>
+                  <div className="flex gap-3 mt-1.5 text-[0.6rem] text-gray-500">
+                    <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Migrated</span>
+                    <span><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1" />In progress</span>
+                    <span><span className="inline-block w-2 h-2 rounded-full bg-gray-300 mr-1" />Not yet</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Data quality flags */}
         {(liveQuality.payment_failed_count > 0 ||
