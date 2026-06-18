@@ -229,13 +229,16 @@ export default async function ReportingPage() {
               )}
             </div>
           </div>
-          <div className="flex gap-2">
-            <a
-              href="/api/admin/reporting/export"
-              className="border border-csl-dark text-csl-dark px-4 py-2 rounded-lg text-sm font-semibold hover:bg-csl-light transition-colors whitespace-nowrap"
-            >
-              Download PDF
-            </a>
+          <div className="flex flex-wrap gap-2">
+            {(["pdf", "xlsx", "docx"] as const).map((fmt) => (
+              <a
+                key={fmt}
+                href={`/api/admin/reporting/export?format=${fmt}`}
+                className="border border-csl-dark text-csl-dark px-4 py-2 rounded-lg text-sm font-semibold hover:bg-csl-light transition-colors whitespace-nowrap uppercase"
+              >
+                {fmt}
+              </a>
+            ))}
             <Link
               href="/member-portal/admin/reporting/upload"
               className="bg-csl-dark text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-csl-mid transition-colors whitespace-nowrap"

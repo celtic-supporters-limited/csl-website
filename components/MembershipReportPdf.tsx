@@ -6,7 +6,7 @@ import {
   Text,
   StyleSheet,
 } from "@react-pdf/renderer";
-import type { SourceMetrics, DataQualityFlags } from "@/lib/membership-metrics";
+import type { ReportData } from "@/lib/reporting-data";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -140,24 +140,9 @@ function TRow({
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
-export type MembershipReportPdfProps = {
-  generatedAt: string;
-  combinedActive: number;
-  targetMembers: number;
-  combinedMrrPence: number;
-  totalCollectedPence: number;
-  earliestChargeDate: string | null;
-  liveMetrics: SourceMetrics;
-  wpData: SourceMetrics | null;
-  wpAsOfDate: string | null;
-  liveMigration: { migrated: number; migration_in_progress: number };
-  liveQuality: Pick<DataQualityFlags, "payment_failed_count" | "no_auth_account_count">;
-  snapshotCount: number;
-};
-
 // ── Document ──────────────────────────────────────────────────────────────────
 
-export function MembershipReportPdf(props: MembershipReportPdfProps) {
+export function MembershipReportPdf(props: ReportData) {
   const {
     generatedAt,
     combinedActive,
