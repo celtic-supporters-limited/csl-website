@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
+import { sweepStripeCharges } from "@/lib/stripe";
 import {
   parseWordPressCsv,
   buildSnapshot,
@@ -50,7 +51,14 @@ export async function POST(req: NextRequest) {
   const supabaseRows = (supabaseMembers ?? []) as SupabaseMemberRow[];
   const supabaseEmails = new Set(supabaseRows.map((m) => m.email.toLowerCase()));
 
-  const snapshot = buildSnapshot({ supabaseRows, wpRows, supabaseEmails, wpAsOfDate: asOfDate });
+  let stripeData: { total_collected_pence: number; earliest_charge_date: string | null } | null = null;
+  try {
+    stripeData = await sweepStripeCharges();
+  } catch (e) {
+    console.error("[upload-wp-snapshot] Stripe sweep failed:", e);
+  }
+
+  const snapshot = buildSnapshot({ supabaseRows, wpRows, supabaseEmails, wpAsOfDate: asOfDate, stripeData });
 
   const { error: insertError } = await db.from("membership_snapshots").insert({
     wp_as_of_date: asOfDate,

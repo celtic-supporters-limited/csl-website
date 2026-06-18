@@ -66,6 +66,10 @@ export type MembershipSnapshot = {
   migration: MigrationMetrics | null;
   data_quality: DataQualityFlags;
   wp_as_of_date: string | null;
+  stripe: {
+    total_collected_pence: number;
+    earliest_charge_date: string | null;
+  } | null;
 };
 
 // ── Supabase metrics ──────────────────────────────────────────────────────────
@@ -266,11 +270,13 @@ export function buildSnapshot({
   wpRows,
   supabaseEmails,
   wpAsOfDate,
+  stripeData = null,
 }: {
   supabaseRows: SupabaseMemberRow[];
   wpRows: WordPressRow[] | null;
   supabaseEmails: Set<string>;
   wpAsOfDate: string | null;
+  stripeData?: { total_collected_pence: number; earliest_charge_date: string | null } | null;
 }): MembershipSnapshot {
   const { metrics: sbMetrics, migration, dataQuality } = computeSupabaseMetrics(supabaseRows);
 
@@ -311,5 +317,6 @@ export function buildSnapshot({
       unknown_plan_count: unknownPlanCount,
     },
     wp_as_of_date: wpAsOfDate,
+    stripe: stripeData,
   };
 }

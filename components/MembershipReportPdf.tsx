@@ -238,7 +238,7 @@ export function MembershipReportPdf(props: ReportData) {
             </View>
             <View style={s.card}>
               <Text style={s.cardValue}>{gbp(totalCollectedPence)}</Text>
-              <Text style={s.cardLabel}>Total collected - new platform</Text>
+              <Text style={s.cardLabel}>Total collected</Text>
               <Text style={s.cardNote}>
                 {earliestChargeDate ? `All Stripe payments since ${earliestChargeDate}` : "All Stripe payments since launch"}
               </Text>
@@ -320,7 +320,7 @@ export function MembershipReportPdf(props: ReportData) {
                 : "No legacy membership export has been uploaded. Figures cover new platform members only.",
               "Automated bot registrations are identified by name pattern and excluded from all counts.",
               "Lifetime members are counted as active but are not included in monthly income, as they make a single payment rather than a recurring subscription.",
-              `Total collected covers all payments received through the new platform${earliestChargeDate ? ` since ${earliestChargeDate}` : ""}, after deducting any refunds.`,
+              `Total collected covers all payments received via Stripe${earliestChargeDate ? ` since ${earliestChargeDate}` : ""}, across both the legacy and new platforms, after deducting any refunds.`,
               liveQuality.payment_failed_count > 0
                 ? `${num(liveQuality.payment_failed_count)} member${liveQuality.payment_failed_count !== 1 ? "s" : ""} on the new platform ${liveQuality.payment_failed_count !== 1 ? "have" : "has"} a payment that has failed. Their membership is at risk.`
                 : null,

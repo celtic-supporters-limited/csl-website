@@ -14,6 +14,34 @@ export function getStripe(): Stripe {
   return client;
 }
 
+// Paginate all successful Stripe charges and return aggregate totals.
+// Only call from background contexts (cron, upload) — never on page load.
+export async function sweepStripeCharges(): Promise<{
+  total_collected_pence: number;
+  earliest_charge_date: string | null;
+}> {
+  const stripe = getStripe();
+  let total = 0;
+  let earliest: string | null = null;
+  let hasMore = true;
+  let startingAfter: string | undefined;
+
+  while (hasMore) {
+    const batch = await stripe.charges.list({ limit: 100, starting_after: startingAfter });
+    for (const charge of batch.data) {
+      if (charge.paid && charge.status === "succeeded") {
+        total += charge.amount - (charge.amount_refunded ?? 0);
+      }
+      // charges.list is newest-first; last item in the final batch is the earliest
+      earliest = new Date(charge.created * 1000).toISOString().split("T")[0];
+    }
+    hasMore = batch.has_more;
+    startingAfter = batch.data[batch.data.length - 1]?.id;
+  }
+
+  return { total_collected_pence: total, earliest_charge_date: earliest };
+}
+
 // Plan identifiers used across client and server
 export type PlanType =
   | "standard"
