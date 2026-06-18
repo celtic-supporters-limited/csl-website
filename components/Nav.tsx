@@ -49,8 +49,12 @@ export default function Nav() {
 
   useEffect(() => {
     const supabase = createBrowserSupabase();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setAuthed(!!session);
+    // getUser() verifies the token with Supabase's servers (unlike getSession()
+    // which only reads from cookies). This ensures authed is never true for an
+    // expired or invalid session, preventing the portal from being reachable
+    // via the nav button when the session has lapsed.
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setAuthed(!!user);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
