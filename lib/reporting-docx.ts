@@ -1,101 +1,161 @@
 import {
   Document, Packer, Paragraph, Table, TableRow, TableCell,
-  TextRun, HeadingLevel, AlignmentType, WidthType, BorderStyle,
-  ShadingType,
+  TextRun, AlignmentType, WidthType, BorderStyle, ShadingType,
+  TableLayoutType, HeightRule, Footer,
 } from "docx";
 import type { ReportData } from "@/lib/reporting-data";
 
-const GREEN_HEX = "1B4D2E";
-const GOLD_HEX  = "C8A951";
-const LIGHT_HEX = "F0F4F1";
-const GREY_HEX  = "6B7280";
+// ── Palette (matches PDF) ─────────────────────────────────────────────────────
+
+const GREEN = "1B4D2E";
+const GOLD  = "C8A951";
+const LIGHT = "F0F4F1";
+const LGREY = "E5E7EB";
+const GREY  = "6B7280";
+const WHITE = "FFFFFF";
+const BLACK = "111827";
+
+// ── Page geometry (twips) ─────────────────────────────────────────────────────
+// A4 = 11906 wide. Margins 720 each side → content = 10466 twips.
+
+const W        = 10466;
+const COL2     = Math.floor(W / 2);          // two-col layout
+const COL3     = Math.floor(W / 3);          // three-col cards / migration
+const COL3R    = W - COL3 * 2;               // last col absorbs rounding
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function gbp(pence: number) {
   return `£${(pence / 100).toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
+function num(n: number) { return n.toLocaleString("en-GB"); }
 
-function num(n: number) {
-  return n.toLocaleString("en-GB");
+const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: WHITE } as const;
+const NO_BORDERS = { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER, insideHorizontal: NO_BORDER, insideVertical: NO_BORDER };
+
+function run(text: string, opts?: {
+  bold?: boolean; color?: string; size?: number; italics?: boolean;
+}) {
+  return new TextRun({ text, bold: opts?.bold, color: opts?.color ?? BLACK, size: opts?.size ?? 18, italics: opts?.italics });
 }
 
-function heading(text: string) {
+function emptyPara(spacingAfter = 0) {
+  return new Paragraph({ text: "", spacing: { after: spacingAfter } });
+}
+
+// Section heading — green bold text, green bottom border, matches PDF secHead style
+function sectionHead(text: string) {
   return new Paragraph({
-    text,
-    heading: HeadingLevel.HEADING_2,
-    spacing: { before: 240, after: 80 },
-    border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: GREEN_HEX } },
-    run: { color: GREEN_HEX, bold: true },
+    children: [run(text.toUpperCase(), { bold: true, color: GREEN, size: 15 })],
+    spacing: { before: 180, after: 60 },
+    border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: GREEN, space: 2 } },
   });
 }
 
-function cell(text: string, opts?: {
-  bold?: boolean; right?: boolean; header?: boolean; shade?: boolean;
-}) {
+// Table cell with optional shading and alignment
+function tc(
+  children: (Paragraph | Table)[],
+  widthDxa: number,
+  opts?: { shade?: string; valign?: "top" | "center" | "bottom"; margins?: { top?: number; bottom?: number; left?: number; right?: number } }
+) {
   return new TableCell({
-    children: [
-      new Paragraph({
-        alignment: opts?.right ? AlignmentType.RIGHT : AlignmentType.LEFT,
+    width: { size: widthDxa, type: WidthType.DXA },
+    shading: opts?.shade ? { type: ShadingType.SOLID, color: opts.shade } : undefined,
+    verticalAlign: opts?.valign ?? "top",
+    margins: opts?.margins ?? { top: 80, bottom: 80, left: 80, right: 80 },
+    children,
+  });
+}
+
+// Data table row (green header or body row)
+function dataRow(
+  cols: string[],
+  widths: number[],
+  opts?: { header?: boolean; alt?: boolean; bold?: boolean }
+) {
+  return new TableRow({
+    tableHeader: opts?.header,
+    children: cols.map((text, i) =>
+      new TableCell({
+        width: { size: widths[i], type: WidthType.DXA },
+        shading: opts?.header
+          ? { type: ShadingType.SOLID, color: GREEN }
+          : opts?.alt
+          ? { type: ShadingType.SOLID, color: LIGHT }
+          : undefined,
+        margins: { top: 50, bottom: 50, left: 70, right: 70 },
         children: [
-          new TextRun({
-            text,
-            bold: opts?.bold || opts?.header,
-            color: opts?.header ? "FFFFFF" : undefined,
-            size: 18,
+          new Paragraph({
+            alignment: i > 0 ? AlignmentType.RIGHT : AlignmentType.LEFT,
+            children: [
+              run(text, {
+                bold: opts?.header || opts?.bold,
+                color: opts?.header ? WHITE : BLACK,
+                size: 16,
+              }),
+            ],
+            spacing: { before: 0, after: 0 },
           }),
         ],
-        spacing: { before: 40, after: 40 },
+      })
+    ),
+  });
+}
+
+function dataTable(rows: TableRow[], totalWidth: number) {
+  return new Table({
+    width: { size: totalWidth, type: WidthType.DXA },
+    layout: TableLayoutType.FIXED,
+    borders: {
+      top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER,
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: LGREY },
+      insideVertical: NO_BORDER,
+    },
+    rows,
+  });
+}
+
+// Progress bar: gold fill + grey remainder, thin stripe
+function progressBar(pct: number, widthDxa: number) {
+  const goldW = Math.max(1, Math.round((pct / 100) * widthDxa));
+  const greyW = widthDxa - goldW;
+  return new Table({
+    width: { size: widthDxa, type: WidthType.DXA },
+    layout: TableLayoutType.FIXED,
+    borders: NO_BORDERS,
+    rows: [
+      new TableRow({
+        height: { value: 80, rule: HeightRule.EXACT },
+        children: [
+          new TableCell({
+            width: { size: goldW, type: WidthType.DXA },
+            shading: { type: ShadingType.SOLID, color: GOLD },
+            margins: { top: 0, bottom: 0, left: 0, right: 0 },
+            children: [new Paragraph({ text: "", spacing: { after: 0 } })],
+          }),
+          ...(greyW > 0 ? [new TableCell({
+            width: { size: greyW, type: WidthType.DXA },
+            shading: { type: ShadingType.SOLID, color: LGREY },
+            margins: { top: 0, bottom: 0, left: 0, right: 0 },
+            children: [new Paragraph({ text: "", spacing: { after: 0 } })],
+          })] : []),
+        ],
       }),
     ],
-    shading: opts?.header
-      ? { type: ShadingType.SOLID, color: GREEN_HEX }
-      : opts?.shade
-      ? { type: ShadingType.SOLID, color: LIGHT_HEX }
-      : undefined,
-    margins: { top: 60, bottom: 60, left: 80, right: 80 },
   });
 }
 
-function tableRow(cols: string[], widths: number[], opts?: {
-  header?: boolean; shade?: boolean; bold?: boolean;
-}) {
-  return new TableRow({
-    children: cols.map((c, i) =>
-      cell(c, {
-        bold: opts?.bold,
-        header: opts?.header,
-        shade: opts?.shade,
-        right: i > 0,
-      })
-    ),
-    tableHeader: opts?.header,
-  });
-}
-
-function noBorder() {
-  const none = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
-  return { top: none, bottom: none, left: none, right: none, insideH: none, insideV: none };
-}
-
-function keyValueTable(rows: [string, string][]): Table {
-  return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    borders: noBorder(),
-    rows: rows.map(([label, value], i) =>
-      new TableRow({
-        children: [
-          cell(label, { shade: i % 2 === 0 }),
-          cell(value,  { shade: i % 2 === 0, right: true, bold: true }),
-        ],
-      })
-    ),
-  });
-}
+// ── Builder ───────────────────────────────────────────────────────────────────
 
 export async function buildReportDocx(d: ReportData): Promise<Buffer> {
-  const hasWp = d.wpData !== null;
+  const hasWp       = d.wpData !== null;
   const progressPct = Math.round((d.combinedActive / d.targetMembers) * 1000) / 10;
+  const notYet      = d.wpData
+    ? d.wpData.active + d.wpData.cancelled + d.wpData.expired + d.wpData.pending + d.wpData.other
+    : 0;
 
-  // Status rows
+  // ── Status rows ─────────────────────────────────────────────────────────────
+
   const statusRows = [
     { label: "Active",         sb: d.liveMetrics.active,         wp: d.wpData?.active         ?? 0 },
     { label: "Pending",        sb: d.liveMetrics.pending,        wp: d.wpData?.pending        ?? 0 },
@@ -105,36 +165,37 @@ export async function buildReportDocx(d: ReportData): Promise<Buffer> {
     { label: "Payment failed", sb: d.liveMetrics.payment_failed, wp: d.wpData?.payment_failed ?? 0 },
   ]
     .map((r) => ({ ...r, total: r.sb + r.wp }))
+    .filter((r) => r.total > 0 || r.label === "Active")
     .sort((a, b) => b.total - a.total);
 
-  // Plan rows
+  // ── Plan rows ────────────────────────────────────────────────────────────────
+
   const allPlans = new Set([
     ...Object.keys(d.liveMetrics.by_plan),
     ...(d.wpData ? Object.keys(d.wpData.by_plan) : []),
   ]);
   const planRows = Array.from(allPlans)
-    .map((plan) => ({
-      plan,
-      sb: d.liveMetrics.by_plan[plan] ?? 0,
-      wp: d.wpData?.by_plan[plan] ?? 0,
-    }))
+    .map((plan) => ({ plan, sb: d.liveMetrics.by_plan[plan] ?? 0, wp: d.wpData?.by_plan[plan] ?? 0 }))
     .map((r) => ({ ...r, total: r.sb + r.wp }))
     .sort((a, b) => b.total - a.total);
 
-  const notYet = d.wpData
-    ? d.wpData.active + d.wpData.cancelled + d.wpData.expired + d.wpData.pending + d.wpData.other
-    : 0;
+  // ── Column widths for data tables ────────────────────────────────────────────
 
-  const statusColW = hasWp ? [36, 21, 21, 22] : [54, 23, 23];
-  const planColW   = hasWp ? [42, 19, 19, 20] : [60, 20, 20];
+  // Tables sit inside COL2-width cells (with 80-twip margins each side = COL2-160 usable)
+  const tW = COL2 - 160;
 
-  const statusHeader = hasWp
-    ? ["Status", "New platform", "Legacy (WP)", "Total"]
-    : ["Status", "New platform", "Total"];
+  const statusW = hasWp
+    ? [Math.round(tW * 0.36), Math.round(tW * 0.21), Math.round(tW * 0.21), tW - Math.round(tW * 0.36) - Math.round(tW * 0.21) * 2]
+    : [Math.round(tW * 0.54), Math.round(tW * 0.23), tW - Math.round(tW * 0.54) - Math.round(tW * 0.23)];
 
-  const planHeader = hasWp
-    ? ["Plan", "New platform", "Legacy (WP)", "Total"]
-    : ["Plan", "New platform", "Total"];
+  const planW = hasWp
+    ? [Math.round(tW * 0.44), Math.round(tW * 0.18), Math.round(tW * 0.18), tW - Math.round(tW * 0.44) - Math.round(tW * 0.18) * 2]
+    : [Math.round(tW * 0.62), Math.round(tW * 0.18), tW - Math.round(tW * 0.62) - Math.round(tW * 0.18)];
+
+  const statusHeader = hasWp ? ["Status", "New", "Legacy", "Total"] : ["Status", "New", "Total"];
+  const planHeader   = hasWp ? ["Plan",   "New", "Legacy", "Total"] : ["Plan",   "New", "Total"];
+
+  // ── Notes points ─────────────────────────────────────────────────────────────
 
   const notePoints = [
     "New platform member figures are live at the time this report was exported.",
@@ -149,122 +210,209 @@ export async function buildReportDocx(d: ReportData): Promise<Buffer> {
       : null,
   ].filter(Boolean) as string[];
 
+  // ── Document ─────────────────────────────────────────────────────────────────
+
   const doc = new Document({
-    styles: {
-      paragraphStyles: [
-        {
-          id: "Heading2",
-          name: "Heading 2",
-          run: { color: GREEN_HEX, bold: true, size: 22 },
-          paragraph: { spacing: { before: 240, after: 80 } },
-        },
-      ],
-    },
     sections: [{
       properties: {
-        page: {
-          margin: { top: 720, bottom: 720, left: 900, right: 900 },
-        },
+        page: { margin: { top: 0, bottom: 720, left: 720, right: 720 } },
       },
+
+      footers: {
+        default: new Footer({
+          children: [
+            new Table({
+              width: { size: W, type: WidthType.DXA },
+              layout: TableLayoutType.FIXED,
+              borders: { ...NO_BORDERS, top: { style: BorderStyle.SINGLE, size: 4, color: LGREY } },
+              rows: [new TableRow({
+                children: [
+                  tc([new Paragraph({
+                    children: [run("Celtic Supporters Limited  |  Company No. SC862186  |  ICO ZB985030  |  LEI 984500CDVAFEBEF83781", { color: GREY, size: 13 })],
+                    spacing: { after: 0 },
+                  })], Math.round(W * 0.8), { margins: { top: 60, bottom: 0, left: 0, right: 80 } }),
+                  tc([new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    children: [run("Confidential", { color: GREY, size: 13 })],
+                    spacing: { after: 0 },
+                  })], W - Math.round(W * 0.8), { margins: { top: 60, bottom: 0, left: 0, right: 0 } }),
+                ],
+              })],
+            }),
+          ],
+        }),
+      },
+
       children: [
 
-        // Title
-        new Paragraph({
-          children: [
-            new TextRun({ text: "Membership Report", bold: true, size: 40, color: GREEN_HEX }),
+        // ── Header strip (green, full-width, zero top margin) ──────────────────
+        new Table({
+          width: { size: W, type: WidthType.DXA },
+          layout: TableLayoutType.FIXED,
+          borders: NO_BORDERS,
+          rows: [
+            new TableRow({
+              children: [
+                // Left: org name + report title
+                tc([
+                  new Paragraph({
+                    children: [run("Celtic Supporters Limited", { bold: true, color: WHITE, size: 28 })],
+                    spacing: { before: 0, after: 40 },
+                  }),
+                  new Paragraph({
+                    children: [run("MEMBERSHIP REPORT", { color: GOLD, size: 18 })],
+                    spacing: { before: 0, after: 0 },
+                  }),
+                ], Math.round(W * 0.6), { shade: GREEN, margins: { top: 200, bottom: 200, left: 280, right: 80 } }),
+
+                // Right: metadata
+                tc([
+                  new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    children: [run(`Generated: ${d.generatedAt}`, { color: WHITE, size: 14 })],
+                    spacing: { before: 0, after: 40 },
+                  }),
+                  new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    children: [run("Company No. SC862186  |  ICO ZB985030", { color: WHITE, size: 14 })],
+                    spacing: { before: 0, after: 40 },
+                  }),
+                  ...(d.wpAsOfDate ? [new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    children: [run(`Legacy (WP) data as of ${d.wpAsOfDate}`, { color: WHITE, size: 14 })],
+                    spacing: { before: 0, after: 0 },
+                  })] : []),
+                ], W - Math.round(W * 0.6), { shade: GREEN, margins: { top: 200, bottom: 200, left: 80, right: 280 }, valign: "bottom" }),
+              ],
+            }),
           ],
-          spacing: { after: 40 },
         }),
-        new Paragraph({
-          children: [
-            new TextRun({ text: "Celtic Supporters Limited", size: 24, color: GOLD_HEX }),
-          ],
-          spacing: { after: 40 },
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({ text: `Generated: ${d.generatedAt}`, size: 18, color: GREY_HEX }),
-          ],
-          spacing: { after: 20 },
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({ text: "Company No. SC862186  |  ICO ZB985030  |  LEI 984500CDVAFEBEF83781", size: 16, color: GREY_HEX }),
-          ],
-          spacing: { after: hasWp ? 20 : 160 },
-        }),
-        ...(hasWp ? [
-          new Paragraph({
+
+        emptyPara(120),
+
+        // ── Stat cards (3 equal columns, LIGHT background) ────────────────────
+        new Table({
+          width: { size: W, type: WidthType.DXA },
+          layout: TableLayoutType.FIXED,
+          borders: NO_BORDERS,
+          rows: [new TableRow({
             children: [
-              new TextRun({ text: `Legacy (WP) data as of: ${d.wpAsOfDate}`, size: 16, color: GREY_HEX }),
+              // Card 1: Active members + progress bar
+              tc([
+                new Paragraph({ children: [run(num(d.combinedActive), { bold: true, color: GREEN, size: 30 })], spacing: { after: 20 } }),
+                new Paragraph({ children: [run("ACTIVE MEMBERS", { color: GREY, size: 13 })], spacing: { after: 20 } }),
+                new Paragraph({ children: [run(`${progressPct}% of ${num(d.targetMembers)} target`, { color: GREY, size: 13 })], spacing: { after: 60 } }),
+                progressBar(progressPct, COL3 - 160),
+              ], COL3, { shade: LIGHT, margins: { top: 100, bottom: 100, left: 100, right: 60 } }),
+
+              // Card 2: Monthly income
+              tc([
+                new Paragraph({ children: [run(gbp(d.combinedMrrPence), { bold: true, color: GREEN, size: 30 })], spacing: { after: 20 } }),
+                new Paragraph({ children: [run("MONTHLY INCOME", { color: GREY, size: 13 })], spacing: { after: 20 } }),
+                new Paragraph({ children: [run("Recurring subscriptions, excl. lifetime", { color: GREY, size: 13 })], spacing: { after: 0 } }),
+              ], COL3, { shade: LIGHT, margins: { top: 100, bottom: 100, left: 100, right: 60 } }),
+
+              // Card 3: Total collected
+              tc([
+                new Paragraph({ children: [run(gbp(d.totalCollectedPence), { bold: true, color: GREEN, size: 30 })], spacing: { after: 20 } }),
+                new Paragraph({ children: [run("TOTAL COLLECTED - NEW PLATFORM", { color: GREY, size: 13 })], spacing: { after: 20 } }),
+                new Paragraph({ children: [run(d.earliestChargeDate ? `All payments since ${d.earliestChargeDate}` : "All payments since launch", { color: GREY, size: 13 })], spacing: { after: 0 } }),
+              ], COL3R, { shade: LIGHT, margins: { top: 100, bottom: 100, left: 100, right: 60 } }),
             ],
-            spacing: { after: 160 },
-          }),
-        ] : []),
-
-        // Key figures
-        heading("Key figures"),
-        keyValueTable([
-          ["Active members",                    `${num(d.combinedActive)} (${progressPct}% of ${num(d.targetMembers)} target)`],
-          ["Monthly income (excl. lifetime)",   gbp(d.combinedMrrPence)],
-          ["Total collected - new platform",    `${gbp(d.totalCollectedPence)}${d.earliestChargeDate ? ` (since ${d.earliestChargeDate})` : ""}`],
-        ]),
-
-        // Status breakdown
-        heading("Membership status breakdown"),
-        new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          columnWidths: statusColW.map((w) => Math.round(w * 90)),
-          rows: [
-            tableRow(statusHeader, statusColW, { header: true }),
-            ...statusRows.map((r, i) =>
-              tableRow(
-                hasWp
-                  ? [r.label, num(r.sb), num(r.wp), num(r.total)]
-                  : [r.label, num(r.sb), num(r.total)],
-                statusColW,
-                { shade: i % 2 === 1, bold: r.label === "Active" }
-              )
-            ),
-          ],
+          })],
         }),
 
-        // Plan breakdown
-        heading("Active members by plan"),
+        emptyPara(60),
+
+        // ── Two-column: Status + Plan tables ──────────────────────────────────
         new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          columnWidths: planColW.map((w) => Math.round(w * 90)),
-          rows: [
-            tableRow(planHeader, planColW, { header: true }),
-            ...planRows.map((r, i) =>
-              tableRow(
-                hasWp
-                  ? [r.plan, r.sb > 0 ? num(r.sb) : "-", r.wp > 0 ? num(r.wp) : "-", num(r.total)]
-                  : [r.plan, r.sb > 0 ? num(r.sb) : "-", num(r.total)],
-                planColW,
-                { shade: i % 2 === 1 }
-              )
-            ),
-          ],
+          width: { size: W, type: WidthType.DXA },
+          layout: TableLayoutType.FIXED,
+          borders: NO_BORDERS,
+          rows: [new TableRow({
+            children: [
+              // Left: status breakdown
+              tc([
+                sectionHead("Membership status"),
+                dataTable([
+                  dataRow(statusHeader, statusW, { header: true }),
+                  ...statusRows.map((r, i) => dataRow(
+                    hasWp ? [r.label, num(r.sb), num(r.wp), num(r.total)] : [r.label, num(r.sb), num(r.total)],
+                    statusW,
+                    { alt: i % 2 === 1, bold: r.label === "Active" }
+                  )),
+                ], tW),
+              ], COL2, { margins: { top: 0, bottom: 0, left: 0, right: 80 } }),
+
+              // Right: plan breakdown
+              tc([
+                sectionHead("Active members by plan"),
+                dataTable([
+                  dataRow(planHeader, planW, { header: true }),
+                  ...planRows.map((r, i) => dataRow(
+                    hasWp
+                      ? [r.plan, r.sb > 0 ? num(r.sb) : "-", r.wp > 0 ? num(r.wp) : "-", num(r.total)]
+                      : [r.plan, r.sb > 0 ? num(r.sb) : "-", num(r.total)],
+                    planW,
+                    { alt: i % 2 === 1 }
+                  )),
+                ], tW),
+              ], COL2, { margins: { top: 0, bottom: 0, left: 80, right: 0 } }),
+            ],
+          })],
         }),
 
-        // Migration
-        heading("Migration progress"),
-        keyValueTable([
-          ["Fully migrated (new platform + active subscription)", num(d.liveMigration.migrated)],
-          ["Migration started (new platform, no active subscription yet)", num(d.liveMigration.migration_in_progress)],
-          ["Not yet migrated (legacy platform only)", hasWp ? num(notYet) : "Unknown"],
-        ]),
+        // ── Migration progress ────────────────────────────────────────────────
+        sectionHead("Migration progress"),
+        new Table({
+          width: { size: W, type: WidthType.DXA },
+          layout: TableLayoutType.FIXED,
+          borders: { ...NO_BORDERS, insideVertical: { style: BorderStyle.SINGLE, size: 4, color: LGREY } },
+          rows: [new TableRow({
+            children: [
+              tc([
+                new Paragraph({ alignment: AlignmentType.CENTER, children: [run(num(d.liveMigration.migrated), { bold: true, color: GREEN, size: 26 })], spacing: { after: 40 } }),
+                new Paragraph({ alignment: AlignmentType.CENTER, children: [run("Fully migrated", { color: GREY, size: 14 })], spacing: { after: 20 } }),
+                new Paragraph({ alignment: AlignmentType.CENTER, children: [run("(new platform + Stripe)", { color: GREY, size: 13 })], spacing: { after: 0 } }),
+              ], COL3, { margins: { top: 80, bottom: 80, left: 60, right: 60 } }),
+              tc([
+                new Paragraph({ alignment: AlignmentType.CENTER, children: [run(num(d.liveMigration.migration_in_progress), { bold: true, color: GREEN, size: 26 })], spacing: { after: 40 } }),
+                new Paragraph({ alignment: AlignmentType.CENTER, children: [run("Migration started", { color: GREY, size: 14 })], spacing: { after: 20 } }),
+                new Paragraph({ alignment: AlignmentType.CENTER, children: [run("(new platform only)", { color: GREY, size: 13 })], spacing: { after: 0 } }),
+              ], COL3, { margins: { top: 80, bottom: 80, left: 60, right: 60 } }),
+              tc([
+                new Paragraph({ alignment: AlignmentType.CENTER, children: [run(hasWp ? num(notYet) : "?", { bold: true, color: GREEN, size: 26 })], spacing: { after: 40 } }),
+                new Paragraph({ alignment: AlignmentType.CENTER, children: [run("Not yet migrated", { color: GREY, size: 14 })], spacing: { after: 20 } }),
+                new Paragraph({ alignment: AlignmentType.CENTER, children: [run("(WordPress only)", { color: GREY, size: 13 })], spacing: { after: 0 } }),
+              ], COL3R, { margins: { top: 80, bottom: 80, left: 60, right: 60 } }),
+            ],
+          })],
+        }),
 
-        // Notes
-        heading("Notes"),
-        ...notePoints.map((point) =>
-          new Paragraph({
-            bullet: { level: 0 },
-            children: [new TextRun({ text: point, size: 18, color: GREY_HEX })],
-            spacing: { after: 60 },
-          })
-        ),
+        // ── Notes ─────────────────────────────────────────────────────────────
+        sectionHead("Notes"),
+        new Table({
+          width: { size: W, type: WidthType.DXA },
+          layout: TableLayoutType.FIXED,
+          borders: NO_BORDERS,
+          rows: [new TableRow({
+            children: [
+              tc(
+                notePoints.map((point) =>
+                  new Paragraph({
+                    children: [
+                      run("-  ", { bold: true, color: GOLD, size: 15 }),
+                      run(point, { color: GREY, size: 15 }),
+                    ],
+                    spacing: { after: 60 },
+                  })
+                ),
+                W,
+                { shade: LIGHT, margins: { top: 100, bottom: 100, left: 120, right: 120 } }
+              ),
+            ],
+          })],
+        }),
 
       ],
     }],
