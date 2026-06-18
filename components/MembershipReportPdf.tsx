@@ -329,18 +329,25 @@ export function MembershipReportPdf(props: MembershipReportPdfProps) {
           {/* Notes */}
           <Text style={s.secHead}>Notes</Text>
           <View style={s.notesBox}>
-            <Text style={s.notesText}>
-              New platform figures are live from the CSL membership database (Supabase, EU West) at the time of export.
-              {hasWp
-                ? ` Legacy figures are from a WordPress PMS Pro export dated ${wpAsOfDate ?? "unknown"} and cover members not yet migrated to the new platform.`
-                : " No legacy export has been uploaded; figures cover new platform members only."}
-              {" "}Spam/bot accounts are excluded from all counts. Lifetime members are included in active totals but excluded from monthly income.
-              {" "}Total collected covers all successful Stripe charges{earliestChargeDate ? ` since ${earliestChargeDate}` : ""}, net of refunds.
-              {liveQuality.payment_failed_count > 0
-                ? ` Note: ${num(liveQuality.payment_failed_count)} member${liveQuality.payment_failed_count !== 1 ? "s" : ""} have a failed payment on the new platform.`
-                : ""}
-              {" "}Report generated from {snapshotCount} historical snapshot{snapshotCount !== 1 ? "s" : ""} and live data at {generatedAt}.
-            </Text>
+            {[
+              "New platform member figures are live at the time this report was exported.",
+              hasWp
+                ? `Legacy figures cover members who have not yet moved to the new platform. They are taken from a membership export dated ${wpAsOfDate ?? "unknown"}.`
+                : "No legacy membership export has been uploaded. Figures cover new platform members only.",
+              "Automated bot registrations are identified by name pattern and excluded from all counts.",
+              "Lifetime members are counted as active but are not included in monthly income, as they make a single payment rather than a recurring subscription.",
+              `Total collected covers all payments received through the new platform${earliestChargeDate ? ` since ${earliestChargeDate}` : ""}, after deducting any refunds.`,
+              liveQuality.payment_failed_count > 0
+                ? `${num(liveQuality.payment_failed_count)} member${liveQuality.payment_failed_count !== 1 ? "s" : ""} on the new platform ${liveQuality.payment_failed_count !== 1 ? "have" : "has"} a payment that has failed. Their membership is at risk.`
+                : null,
+            ]
+              .filter(Boolean)
+              .map((point, i) => (
+                <View key={i} style={{ flexDirection: "row", marginBottom: 3 }}>
+                  <Text style={[s.notesText, { width: 10, color: GOLD, fontFamily: "Helvetica-Bold" }]}>-</Text>
+                  <Text style={[s.notesText, { flex: 1 }]}>{point as string}</Text>
+                </View>
+              ))}
           </View>
 
         </View>
