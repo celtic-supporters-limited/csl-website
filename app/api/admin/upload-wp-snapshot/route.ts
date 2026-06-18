@@ -58,14 +58,6 @@ export async function POST(req: NextRequest) {
     console.error("[upload-wp-snapshot] Stripe sweep failed:", e);
   }
 
-  // Tally raw status values before any normalisation — surfaces encoding or parsing anomalies
-  const rawStatusTally: Record<string, number> = {};
-  for (const row of wpRows) {
-    const key = row.raw_status === "" ? "(blank)" : JSON.stringify(row.raw_status);
-    rawStatusTally[key] = (rawStatusTally[key] ?? 0) + 1;
-  }
-  console.log("[upload-wp-snapshot] Raw status tally:", JSON.stringify(rawStatusTally));
-
   const snapshot = buildSnapshot({ supabaseRows, wpRows, supabaseEmails, wpAsOfDate: asOfDate, stripeData });
 
   const { error: insertError } = await db.from("membership_snapshots").insert({
@@ -83,6 +75,5 @@ export async function POST(req: NextRequest) {
     rows_parsed: wpRows.length,
     legacy_count: snapshot.migration?.not_yet_migrated ?? 0,
     active_combined: snapshot.combined.active_total,
-    raw_status_tally: rawStatusTally,
   });
 }
