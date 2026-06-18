@@ -49,23 +49,31 @@ export default function Nav() {
 
   useEffect(() => {
     const supabase = createBrowserSupabase();
-    // getUser() verifies the token with Supabase's servers (unlike getSession()
-    // which only reads from cookies). This ensures authed is never true for an
-    // expired or invalid session, preventing the portal from being reachable
-    // via the nav button when the session has lapsed.
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setAuthed(!!user);
-    });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        // Clear the Next.js router cache when the session ends so stale
-        // portal RSC payloads cannot be served after sign-out.
-        if (!session) router.refresh();
-        setAuthed(!!session);
+      (event, session) => {
+        if (event === "INITIAL_SESSION") {
+          // sessionStorage is cleared when the browser or tab closes, even when
+          // Chrome's "Continue where you left off" revives the auth cookies.
+          // Only trust the session if we set the alive marker in this tab.
+          const alive = !!sessionStorage.getItem("csl-auth-alive");
+          setAuthed(!!session && alive);
+        } else if (session) {
+          // SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED — active auth event.
+          // Mark this tab as an established session.
+          sessionStorage.setItem("csl-auth-alive", "1");
+          setAuthed(true);
+        } else {
+          // SIGNED_OUT or null session.
+          sessionStorage.removeItem("csl-auth-alive");
+          router.refresh();
+          setAuthed(false);
+        }
       }
     );
+
     return () => subscription.unsubscribe();
-  }, []);
+  }, [router]);
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
