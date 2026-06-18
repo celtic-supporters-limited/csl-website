@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getSupabase } from "@/lib/supabase";
 import { sweepStripeCharges } from "@/lib/stripe";
 import {
@@ -101,6 +102,12 @@ export async function GET(req: NextRequest) {
     console.error("[cron/membership-snapshot] Insert failed:", insertError.message);
     return NextResponse.json({ error: "Insert failed" }, { status: 500 });
   }
+
+  await db.from("site_config").upsert(
+    { key: "active_members", value: String(combinedActive), updated_at: new Date().toISOString() },
+    { onConflict: "key" },
+  );
+  revalidatePath("/");
 
   console.log(`[cron/membership-snapshot] Snapshot written. Active: ${combinedActive}, WP as-of: ${wpAsOfDate ?? "none"}`);
   return NextResponse.json({ ok: true, active_total: combinedActive, wp_as_of_date: wpAsOfDate });
