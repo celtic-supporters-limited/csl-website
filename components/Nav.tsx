@@ -49,29 +49,12 @@ export default function Nav() {
 
   useEffect(() => {
     const supabase = createBrowserSupabase();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (event === "INITIAL_SESSION") {
-          // sessionStorage is cleared when the browser or tab closes, even when
-          // Chrome's "Continue where you left off" revives the auth cookies.
-          // Only trust the session if we set the alive marker in this tab.
-          const alive = !!sessionStorage.getItem("csl-auth-alive");
-          setAuthed(!!session && alive);
-        } else if (session) {
-          // SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED — active auth event.
-          // Mark this tab as an established session.
-          sessionStorage.setItem("csl-auth-alive", "1");
-          setAuthed(true);
-        } else {
-          // SIGNED_OUT or null session.
-          sessionStorage.removeItem("csl-auth-alive");
-          router.refresh();
-          setAuthed(false);
-        }
+      (_event, session) => {
+        if (!session) router.refresh();
+        setAuthed(!!session);
       }
     );
-
     return () => subscription.unsubscribe();
   }, [router]);
 

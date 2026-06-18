@@ -42,6 +42,39 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Block top-level navigations with no referrer (Sec-Fetch-Site: none +
+  // Sec-Fetch-Mode: navigate) when a session cookie exists. This fires on
+  // browser restarts and tab restores where Chrome revives auth cookies —
+  // and, crucially, also restores sessionStorage, making client-side alive
+  // markers unreliable. The server-side Sec-Fetch-Site header is the only
+  // trustworthy browser-restart signal we have.
+  //
+  // For /member-portal: redirect to login + delete cookies.
+  // For all other pages: delete cookies and let the page render; the Nav
+  // sees no session on INITIAL_SESSION and shows "Member Login".
+  if (
+    user &&
+    request.headers.get("sec-fetch-site") === "none" &&
+    request.headers.get("sec-fetch-mode") === "navigate"
+  ) {
+    const sbCookies = request.cookies
+      .getAll()
+      .filter((c) => c.name.startsWith("sb-"));
+
+    if (request.nextUrl.pathname.startsWith("/member-portal")) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = "/login";
+      const response = NextResponse.redirect(loginUrl);
+      sbCookies.forEach((c) => response.cookies.delete(c.name));
+      return response;
+    }
+
+    // Non-portal page — clear cookies, continue rendering.
+    const response = NextResponse.next({ request });
+    sbCookies.forEach((c) => response.cookies.delete(c.name));
+    return response;
+  }
+
   // Redirect unauthenticated visitors away from the member portal
   if (
     request.nextUrl.pathname.startsWith("/member-portal") &&
@@ -53,33 +86,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Block top-level navigations with no referrer page (Sec-Fetch-Site: none +
-  // Sec-Fetch-Mode: navigate) even when a session cookie exists. This covers
-  // browser restarts and session restores where Chrome may have revived the
-  // auth cookies but sessionStorage (and therefore csl-auth-alive) is gone.
-  // Navigations that originate inside the app carry Sec-Fetch-Site: same-origin
-  // and are unaffected.
-  if (
-    request.nextUrl.pathname.startsWith("/member-portal") &&
-    user &&
-    request.headers.get("sec-fetch-site") === "none" &&
-    request.headers.get("sec-fetch-mode") === "navigate"
-  ) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
-    const response = NextResponse.redirect(loginUrl);
-    // Delete the auth cookies so the next middleware invocation does not see a
-    // valid session and loop back to the portal.
-    request.cookies
-      .getAll()
-      .filter((c) => c.name.startsWith("sb-"))
-      .forEach((c) => response.cookies.delete(c.name));
-    return response;
-  }
-
   return supabaseResponse;
 }
 
 export const config = {
-  matcher: ["/member-portal/:path*", "/auth/callback"],
+  matcher: [
+    // Match all routes except Next.js internals and static assets
+    "/((?!_next/static|_next/image|favicon\\.ico|images/).*)",
+  ],
 };
