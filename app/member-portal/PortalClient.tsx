@@ -1670,6 +1670,7 @@ export default function PortalClient({
                     <>
                       {[
                         { href: "/member-portal/admin/members",       label: "Member Events" },
+                        { href: "/member-portal/admin/reporting",     label: "Reporting"     },
                         { href: "/member-portal/admin/documents/new", label: "Add Document"  },
                       ].map((item) => (
                         <Link
@@ -1738,6 +1739,7 @@ export default function PortalClient({
                     <ul className="space-y-0.5">
                       {[
                         { href: "/member-portal/admin/members",       icon: "&#128203;", label: "Member Events" },
+                        { href: "/member-portal/admin/reporting",     icon: "&#128202;", label: "Reporting"      },
                         { href: "/member-portal/admin/documents/new", icon: "&#128196;", label: "Add Document"   },
                       ].map((item) => (
                         <li key={item.href}>
