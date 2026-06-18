@@ -32,3 +32,7 @@ create policy "Admins can read snapshots"
   );
 
 -- No UPDATE or DELETE policies: table is intentionally append-only for auditability.
+
+-- Explicit grants required in some Supabase project configurations
+grant all on table membership_snapshots to service_role;
+grant select, insert on table membership_snapshots to authenticated;
