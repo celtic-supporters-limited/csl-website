@@ -32,6 +32,11 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "unknown";
+  return new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 function StatusRow({ label, sb, wp, total, highlight }: {
   label: string;
   sb: number;
@@ -258,7 +263,7 @@ export default async function ReportingPage() {
           </div>
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
             <p className="text-3xl font-black text-csl-dark tabular-nums">{fmtGbp(totalCollectedPence)}</p>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Total collected — new platform</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Total collected - new platform</p>
             <p className="text-xs text-gray-400 mt-0.5">
               {earliestChargeDate
                 ? `All Stripe payments since ${earliestChargeDate.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
@@ -401,7 +406,7 @@ export default async function ReportingPage() {
               )}
               {wpData && wpData.pending > 0 && (
                 <li className="px-4 py-2.5 flex justify-between text-sm">
-                  <span className="text-amber-800">WordPress pending — real members, payment not completed</span>
+                  <span className="text-amber-800">WordPress pending - real members, payment not completed</span>
                   <span className="font-bold text-amber-700 tabular-nums">{fmt(wpData.pending)}</span>
                 </li>
               )}
@@ -417,30 +422,40 @@ export default async function ReportingPage() {
           </div>
         ) : null}
 
-        {/* Trend note */}
-        <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
-          <h2 className="text-sm font-bold text-gray-900 mb-1">Trend history</h2>
-          {snapshots && snapshots.length >= 2 ? (
-            <p className="text-xs text-gray-500">
-              {snapshots.length} snapshot{snapshots.length !== 1 ? "s" : ""} recorded.
-              Oldest: {fmtDate(snapshots[snapshots.length - 1].snapshotted_at)}.
-              Latest: {fmtDate(snapshots[0].snapshotted_at)}.
-              Week-on-week and month-on-month charts will be added once sufficient history is available.
+        {/* Trend history */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h2 className="text-sm font-bold text-gray-900">Snapshot history</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {snapshots && snapshots.length > 0
+                ? `${snapshots.length} snapshot${snapshots.length !== 1 ? "s" : ""} recorded. Charts will follow once more history builds up.`
+                : "Snapshots run weekly (Monday 06:00 UTC). The first upload will appear here."}
             </p>
-          ) : (
-            <p className="text-xs text-gray-500">
-              Trend data will appear after the first weekly snapshot runs (every Monday at 06:00 UTC).
-              {snapshots?.length === 1 && " First snapshot recorded - trends available after next week's run."}
-            </p>
-          )}
+          </div>
+          {snapshots && snapshots.length > 0 ? (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-4 py-2 text-left font-semibold text-gray-500 uppercase tracking-wider">Recorded</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-500 uppercase tracking-wider">WP data as of</th>
+                  <th className="px-4 py-2 text-right font-semibold text-gray-500 uppercase tracking-wider">Active members</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {snapshots.map((s) => {
+                  const m = s.metrics as MembershipSnapshot;
+                  return (
+                    <tr key={s.id}>
+                      <td className="px-4 py-2 text-gray-700">{fmtDateTime(s.snapshotted_at)}</td>
+                      <td className="px-4 py-2 text-gray-500">{s.wp_as_of_date ? fmtDate(s.wp_as_of_date) : <span className="text-gray-300">none</span>}</td>
+                      <td className="px-4 py-2 text-right tabular-nums font-semibold text-gray-900">{fmt(m.combined?.active_total ?? m.supabase.active)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : null}
         </div>
-
-        {/* Last snapshot time */}
-        {latestSnap && (
-          <p className="text-xs text-gray-400 text-right">
-            Last snapshot: {fmtDate(latestSnap.snapshotted_at)}
-          </p>
-        )}
 
       </div>
     </PortalShell>
