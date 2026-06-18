@@ -19,10 +19,12 @@ export function getStripe(): Stripe {
 export async function sweepStripeCharges(): Promise<{
   total_collected_pence: number;
   earliest_charge_date: string | null;
+  country_breakdown: Record<string, number>;
 }> {
   const stripe = getStripe();
   let total = 0;
   let earliest: string | null = null;
+  const countryTally: Record<string, number> = {};
   let hasMore = true;
   let startingAfter: string | undefined;
 
@@ -31,6 +33,8 @@ export async function sweepStripeCharges(): Promise<{
     for (const charge of batch.data) {
       if (charge.paid && charge.status === "succeeded") {
         total += charge.amount - (charge.amount_refunded ?? 0);
+        const country = charge.billing_details?.address?.country ?? "Unknown";
+        countryTally[country] = (countryTally[country] ?? 0) + 1;
       }
       // charges.list is newest-first; last item in the final batch is the earliest
       earliest = new Date(charge.created * 1000).toISOString().split("T")[0];
@@ -39,7 +43,7 @@ export async function sweepStripeCharges(): Promise<{
     startingAfter = batch.data[batch.data.length - 1]?.id;
   }
 
-  return { total_collected_pence: total, earliest_charge_date: earliest };
+  return { total_collected_pence: total, earliest_charge_date: earliest, country_breakdown: countryTally };
 }
 
 // Plan identifiers used across client and server

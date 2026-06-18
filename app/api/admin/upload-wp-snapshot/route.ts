@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   const supabaseRows = (supabaseMembers ?? []) as SupabaseMemberRow[];
   const supabaseEmails = new Set(supabaseRows.map((m) => m.email.toLowerCase()));
 
-  let stripeData: { total_collected_pence: number; earliest_charge_date: string | null } | null = null;
+  let stripeData: { total_collected_pence: number; earliest_charge_date: string | null; country_breakdown: Record<string, number> } | null = null;
   try {
     stripeData = await sweepStripeCharges();
   } catch (e) {

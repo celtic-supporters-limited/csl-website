@@ -107,5 +107,32 @@ export function buildReportXlsx(d: ReportData): Buffer {
   wsMig["!cols"] = [{ wch: 52 }, { wch: 12 }];
   XLSX.utils.book_append_sheet(wb, wsMig, "Migration progress");
 
+  // ── Sheet 5: Geographic distribution ─────────────────────────────────────
+
+  const geoEntries = Object.entries(d.countryBreakdown).sort((a, b) => b[1] - a[1]);
+  if (geoEntries.length > 0) {
+    const COUNTRY_NAMES_XLSX: Record<string, string> = {
+      GB: "United Kingdom", IE: "Ireland", US: "United States",
+      CA: "Canada", AU: "Australia", DE: "Germany", FR: "France",
+      NL: "Netherlands", ES: "Spain", IT: "Italy", SE: "Sweden",
+      NO: "Norway", DK: "Denmark", BE: "Belgium", CH: "Switzerland",
+      NZ: "New Zealand", ZA: "South Africa", AE: "United Arab Emirates",
+    };
+    const geoTotal = geoEntries.reduce((s, [, n]) => s + n, 0);
+    const geoData = [
+      ["Country", "ISO code", "Charges", "% of total"],
+      ...geoEntries.map(([code, count]) => [
+        COUNTRY_NAMES_XLSX[code] ?? code,
+        code,
+        count,
+        geoTotal > 0 ? `${Math.round((count / geoTotal) * 100)}%` : "0%",
+      ]),
+      ["Total", "", geoTotal, "100%"],
+    ];
+    const wsGeo = XLSX.utils.aoa_to_sheet(geoData);
+    wsGeo["!cols"] = [{ wch: 24 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, wsGeo, "Geographic distribution");
+  }
+
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }

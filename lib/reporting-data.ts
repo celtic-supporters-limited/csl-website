@@ -15,6 +15,7 @@ export type ReportData = {
   combinedMrrPence: number;
   totalCollectedPence: number;
   earliestChargeDate: string | null;
+  countryBreakdown: Record<string, number>;
   liveMetrics: SourceMetrics;
   wpData: SourceMetrics | null;
   wpAsOfDate: string | null;
@@ -48,10 +49,10 @@ export async function gatherReportData(): Promise<ReportData> {
   // Read Stripe totals from the most recent snapshot that ran a sweep.
   // The sweep runs in the cron job and on WP CSV upload — never on demand here.
   const latestStripeSnap = snapshots?.find((s) => (s.metrics as MembershipSnapshot).stripe != null) ?? null;
-  const totalCollectedPence =
-    (latestStripeSnap?.metrics as MembershipSnapshot | undefined)?.stripe?.total_collected_pence ?? 0;
-  const earliestChargeDate =
-    (latestStripeSnap?.metrics as MembershipSnapshot | undefined)?.stripe?.earliest_charge_date ?? null;
+  const latestStripe = (latestStripeSnap?.metrics as MembershipSnapshot | undefined)?.stripe;
+  const totalCollectedPence = latestStripe?.total_collected_pence ?? 0;
+  const earliestChargeDate  = latestStripe?.earliest_charge_date ?? null;
+  const countryBreakdown    = latestStripe?.country_breakdown ?? {};
 
   const formattedEarliestDate = earliestChargeDate
     ? new Date(earliestChargeDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
@@ -67,6 +68,7 @@ export async function gatherReportData(): Promise<ReportData> {
     combinedMrrPence: liveMetrics.mrr_pence + (wpData?.mrr_pence ?? 0),
     totalCollectedPence,
     earliestChargeDate: formattedEarliestDate,
+    countryBreakdown,
     liveMetrics,
     wpData,
     wpAsOfDate,
