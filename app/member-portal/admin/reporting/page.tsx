@@ -230,7 +230,7 @@ export default async function ReportingPage() {
           </div>
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
             <p className="text-3xl font-black text-csl-dark tabular-nums">{fmtGbp(combinedMrr)}</p>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">MRR (excl. lifetime)</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Monthly income (excl. lifetime)</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
             <p className="text-3xl font-black text-csl-dark tabular-nums">{fmt(supabaseRows.length)}</p>
