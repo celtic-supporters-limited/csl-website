@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
+import { getStripe } from "@/lib/stripe";
 import PortalShell from "@/components/PortalShell";
 import {
   computeSupabaseMetrics,
@@ -164,8 +165,28 @@ export default async function ReportingPage() {
   const combinedActive = liveMetrics.active + (wpData?.active ?? 0);
   const progressPct    = Math.round((combinedActive / MEMBERSHIP_TARGET) * 1000) / 10;
 
-  // MRR
+  // Monthly income
   const combinedMrr = liveMetrics.mrr_pence + (wpData?.mrr_pence ?? 0);
+
+  // Total collected — sum all successful Stripe charges (new platform only, exact)
+  let totalCollectedPence = 0;
+  try {
+    const stripe = getStripe();
+    let hasMore = true;
+    let startingAfter: string | undefined;
+    while (hasMore) {
+      const batch = await stripe.charges.list({ limit: 100, starting_after: startingAfter });
+      for (const charge of batch.data) {
+        if (charge.paid && charge.status === "succeeded") {
+          totalCollectedPence += charge.amount - (charge.amount_refunded ?? 0);
+        }
+      }
+      hasMore = batch.has_more;
+      startingAfter = batch.data[batch.data.length - 1]?.id;
+    }
+  } catch (e) {
+    console.error("[reporting] Stripe total collected error:", e);
+  }
 
   // Migration progress
   const totalKnown =
@@ -233,11 +254,9 @@ export default async function ReportingPage() {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Monthly income (excl. lifetime)</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
-            <p className="text-3xl font-black text-csl-dark tabular-nums">{fmt(supabaseRows.length)}</p>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">On new platform</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {hasWp ? `${fmt((latestWpSnap?.metrics as MembershipSnapshot).migration?.not_yet_migrated ?? 0)} remaining on WP` : "WP count unknown"}
-            </p>
+            <p className="text-3xl font-black text-csl-dark tabular-nums">{fmtGbp(totalCollectedPence)}</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1">Total collected — new platform</p>
+            <p className="text-xs text-gray-400 mt-0.5">All Stripe payments since launch</p>
           </div>
         </div>
 
