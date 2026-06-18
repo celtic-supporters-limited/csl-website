@@ -15,8 +15,8 @@ import {
 
 export const metadata: Metadata = { title: "Membership Reporting | CSL Admin" };
 
-// Revalidate every hour so the live Supabase data refreshes without a manual reload
-export const revalidate = 3600;
+// Force dynamic rendering — page reads cookies for auth and must never be ISR-cached
+export const dynamic = "force-dynamic";;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
