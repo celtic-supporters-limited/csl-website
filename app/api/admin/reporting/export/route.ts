@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import { getStripe } from "@/lib/stripe";
@@ -10,7 +10,7 @@ import {
 } from "@/lib/membership-metrics";
 import { MembershipReportPdf } from "@/components/MembershipReportPdf";
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const authClient = createServerSupabase();
   const { data: { user } } = await authClient.auth.getUser();
   if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
