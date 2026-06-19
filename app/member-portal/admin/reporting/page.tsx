@@ -199,9 +199,6 @@ export default async function ReportingPage() {
 
   const hasWp = wpData !== null;
 
-  // ── ARPM ─────────────────────────────────────────────────────────────────
-  const arpmPence = combinedActive > 0 ? Math.round(combinedMrr / combinedActive) : 0;
-
   // ── Growth trend — deduplicated monthly snapshot history ─────────────────
   // Snapshots are the only source covering the full membership (WP + new platform).
   // Deduplicate: keep the last snapshot per calendar month so same-day cron runs
@@ -229,30 +226,7 @@ export default async function ReportingPage() {
 
   // Net growth: first recorded snapshot → current live count
   const firstSnapshotActive = snapshotGrowth[0]?.active ?? null;
-  const firstSnapshotDate   = dedupedSnaps[0]
-    ? new Date(dedupedSnaps[0].snapshotted_at).toLocaleDateString("en-GB", { month: "short", year: "numeric" })
-    : null;
   const netGrowthSinceFirst = firstSnapshotActive !== null ? combinedActive - firstSnapshotActive : null;
-
-  // Trend direction: compare first and last deduped snapshot
-  const lastSnapshotActive = snapshotGrowth[snapshotGrowth.length - 1]?.active ?? null;
-  const trendDirection =
-    snapshotGrowth.length < 2          ? "insufficient"  :
-    lastSnapshotActive! > firstSnapshotActive!  ? "growing"       :
-    lastSnapshotActive! < firstSnapshotActive!  ? "declining"     : "flat";
-
-  // Churn: infer from month-over-month net losses across both platforms
-  const inferredNetLoss = snapshotGrowth
-    .filter(s => s.delta !== null && s.delta < 0)
-    .reduce((sum, s) => sum + Math.abs(s.delta!), 0);
-  const monthsObserved = dedupedSnaps.length > 1
-    ? (new Date(dedupedSnaps[dedupedSnaps.length - 1].snapshotted_at).getTime() -
-       new Date(dedupedSnaps[0].snapshotted_at).getTime()) / (1000 * 60 * 60 * 24 * 30.44)
-    : null;
-  const avgActive = snapshotGrowth.reduce((s, r) => s + r.active, 0) / (snapshotGrowth.length || 1);
-  const monthlyChurnPct = monthsObserved && monthsObserved > 0 && avgActive > 0
-    ? Math.round((inferredNetLoss / avgActive / monthsObserved) * 1000) / 10
-    : null; // null = not enough data yet
 
   // ── Member tenure distribution (active new-platform members only) ─────────
   const now = Date.now();
@@ -267,32 +241,6 @@ export default async function ReportingPage() {
     else if (months < 24)  tenureBuckets.oneToTwo++;
     else                   tenureBuckets.overTwo++;
   }
-
-  // ── Payment failure recovery ──────────────────────────────────────────────
-  const { data: failedMemberEvents } = await db
-    .from("member_events")
-    .select("member_id")
-    .eq("event_type", "payment.failed")
-    .eq("is_test", false);
-
-  const failedMemberIds = Array.from(new Set((failedMemberEvents ?? []).map(e => e.member_id as string)));
-  const recoveryStats = { recovered: 0, lost: 0, stillFailing: 0 };
-  if (failedMemberIds.length > 0) {
-    const { data: failedMembers } = await db
-      .from("members")
-      .select("status")
-      .in("id", failedMemberIds);
-    for (const m of failedMembers ?? []) {
-      const s = (m.status ?? "").toLowerCase();
-      if (s === "active")                                recoveryStats.recovered++;
-      else if (s === "cancelled" || s === "canceled")    recoveryStats.lost++;
-      else if (s === "payment_failed")                   recoveryStats.stillFailing++;
-    }
-  }
-  const totalEverFailed = recoveryStats.recovered + recoveryStats.lost + recoveryStats.stillFailing;
-  const recoveryRate = totalEverFailed > 0
-    ? Math.round((recoveryStats.recovered / totalEverFailed) * 100)
-    : null;
 
   // Geographic helpers (computed once, used in the panel)
   const COUNTRY_NAMES: Record<string, string> = {
