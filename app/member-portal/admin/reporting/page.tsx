@@ -199,9 +199,6 @@ export default async function ReportingPage() {
 
   const hasWp = wpData !== null;
 
-  // ── ARPM ─────────────────────────────────────────────────────────────────
-  const arpmPence = combinedActive > 0 ? Math.round(combinedMrr / combinedActive) : 0;
-
   // ── Growth trend — deduplicated monthly snapshot history ─────────────────
   // Snapshots are the only source covering the full membership (WP + new platform).
   // Deduplicate: keep the last snapshot per calendar month so same-day cron runs
@@ -229,30 +226,7 @@ export default async function ReportingPage() {
 
   // Net growth: first recorded snapshot → current live count
   const firstSnapshotActive = snapshotGrowth[0]?.active ?? null;
-  const firstSnapshotDate   = dedupedSnaps[0]
-    ? new Date(dedupedSnaps[0].snapshotted_at).toLocaleDateString("en-GB", { month: "short", year: "numeric" })
-    : null;
   const netGrowthSinceFirst = firstSnapshotActive !== null ? combinedActive - firstSnapshotActive : null;
-
-  // Trend direction: compare first and last deduped snapshot
-  const lastSnapshotActive = snapshotGrowth[snapshotGrowth.length - 1]?.active ?? null;
-  const trendDirection =
-    snapshotGrowth.length < 2          ? "insufficient"  :
-    lastSnapshotActive! > firstSnapshotActive!  ? "growing"       :
-    lastSnapshotActive! < firstSnapshotActive!  ? "declining"     : "flat";
-
-  // Churn: infer from month-over-month net losses across both platforms
-  const inferredNetLoss = snapshotGrowth
-    .filter(s => s.delta !== null && s.delta < 0)
-    .reduce((sum, s) => sum + Math.abs(s.delta!), 0);
-  const monthsObserved = dedupedSnaps.length > 1
-    ? (new Date(dedupedSnaps[dedupedSnaps.length - 1].snapshotted_at).getTime() -
-       new Date(dedupedSnaps[0].snapshotted_at).getTime()) / (1000 * 60 * 60 * 24 * 30.44)
-    : null;
-  const avgActive = snapshotGrowth.reduce((s, r) => s + r.active, 0) / (snapshotGrowth.length || 1);
-  const monthlyChurnPct = monthsObserved && monthsObserved > 0 && avgActive > 0
-    ? Math.round((inferredNetLoss / avgActive / monthsObserved) * 1000) / 10
-    : null; // null = not enough data yet
 
   // ── Member tenure distribution (active new-platform members only) ─────────
   const now = Date.now();
@@ -267,32 +241,6 @@ export default async function ReportingPage() {
     else if (months < 24)  tenureBuckets.oneToTwo++;
     else                   tenureBuckets.overTwo++;
   }
-
-  // ── Payment failure recovery ──────────────────────────────────────────────
-  const { data: failedMemberEvents } = await db
-    .from("member_events")
-    .select("member_id")
-    .eq("event_type", "payment.failed")
-    .eq("is_test", false);
-
-  const failedMemberIds = Array.from(new Set((failedMemberEvents ?? []).map(e => e.member_id as string)));
-  const recoveryStats = { recovered: 0, lost: 0, stillFailing: 0 };
-  if (failedMemberIds.length > 0) {
-    const { data: failedMembers } = await db
-      .from("members")
-      .select("status")
-      .in("id", failedMemberIds);
-    for (const m of failedMembers ?? []) {
-      const s = (m.status ?? "").toLowerCase();
-      if (s === "active")                                recoveryStats.recovered++;
-      else if (s === "cancelled" || s === "canceled")    recoveryStats.lost++;
-      else if (s === "payment_failed")                   recoveryStats.stillFailing++;
-    }
-  }
-  const totalEverFailed = recoveryStats.recovered + recoveryStats.lost + recoveryStats.stillFailing;
-  const recoveryRate = totalEverFailed > 0
-    ? Math.round((recoveryStats.recovered / totalEverFailed) * 100)
-    : null;
 
   // Geographic helpers (computed once, used in the panel)
   const COUNTRY_NAMES: Record<string, string> = {
@@ -369,116 +317,6 @@ export default async function ReportingPage() {
                 ? `As of ${fmtDate(stripeSnapDate)}${earliestChargeDate ? ` · since ${fmtDate(earliestChargeDate)}` : ""}`
                 : "Upload a WP snapshot or wait for the weekly cron"}
             </p>
-          </div>
-        </div>
-
-        {/* Membership health panel */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900">Membership health</h2>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {/* Retention */}
-            {(() => {
-              const status = monthlyChurnPct === null ? "neutral" : monthlyChurnPct === 0 ? "green" : monthlyChurnPct <= 2 ? "amber" : "red";
-              const dot = status === "green" ? "bg-green-500" : status === "amber" ? "bg-amber-400" : status === "red" ? "bg-red-500" : "bg-gray-300";
-              return (
-                <div className="px-5 py-3 flex items-start gap-4">
-                  <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
-                  <div className="flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-sm font-semibold text-gray-900">Retention</span>
-                      <span className="text-sm font-black text-gray-900 tabular-nums">
-                        {monthlyChurnPct !== null ? `${monthlyChurnPct}% monthly churn` : "Insufficient snapshot history"}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {monthlyChurnPct === null
-                        ? "More snapshots needed to calculate a reliable churn rate. Check back after a few weekly cycles."
-                        : monthlyChurnPct === 0
-                        ? "No net membership losses recorded across snapshots. Retention is stable."
-                        : monthlyChurnPct <= 2
-                        ? "Low churn — within a healthy range for a membership organisation."
-                        : "Churn is elevated. Review cancellation reasons and consider a re-engagement campaign."}
-                    </p>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Revenue per member */}
-            {(() => {
-              return (
-                <div className="px-5 py-3 flex items-start gap-4">
-                  <span className="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 bg-green-500" />
-                  <div className="flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-sm font-semibold text-gray-900">Revenue per member</span>
-                      <span className="text-sm font-black text-gray-900 tabular-nums">{fmtGbp(arpmPence)}/month average</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Blended across all active subscription tiers. As the member mix shifts toward higher tiers this figure will rise and accelerate progress toward financial targets.
-                    </p>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Growth trajectory */}
-            {(() => {
-              const dot = trendDirection === "growing" ? "bg-green-500" : trendDirection === "declining" ? "bg-red-500" : trendDirection === "flat" ? "bg-amber-400" : "bg-gray-300";
-              return (
-                <div className="px-5 py-3 flex items-start gap-4">
-                  <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
-                  <div className="flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-sm font-semibold text-gray-900">Growth trajectory</span>
-                      <span className="text-sm font-black text-gray-900 tabular-nums">
-                        {netGrowthSinceFirst !== null
-                          ? `${netGrowthSinceFirst >= 0 ? "+" : ""}${fmt(netGrowthSinceFirst)} since ${firstSnapshotDate}`
-                          : "No baseline yet"}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {trendDirection === "insufficient"
-                        ? "Not enough snapshot history to determine a trend. This will populate automatically as weekly snapshots accumulate."
-                        : trendDirection === "growing"
-                        ? `Membership has grown across recorded snapshots. At current pace, reaching the 5,000 target will require sustained acquisition campaigns.`
-                        : trendDirection === "flat"
-                        ? "Membership is stable but not growing. New joiners are offsetting leavers. Consider a recruitment push to break through the current level."
-                        : "Membership has declined since the first snapshot. Investigate and prioritise retention before launching acquisition."}
-                    </p>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Payment health */}
-            {(() => {
-              const dot = totalEverFailed === 0 ? "bg-green-500" : recoveryStats.stillFailing > 0 ? "bg-red-500" : "bg-amber-400";
-              return (
-                <div className="px-5 py-3 flex items-start gap-4">
-                  <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
-                  <div className="flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-sm font-semibold text-gray-900">Payment health</span>
-                      <span className="text-sm font-black text-gray-900 tabular-nums">
-                        {totalEverFailed === 0
-                          ? "No failures recorded"
-                          : recoveryRate !== null
-                          ? `${recoveryRate}% recovery rate`
-                          : "Failures recorded"}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {totalEverFailed === 0
-                        ? "No payment failures recorded on the new platform."
-                        : `${fmt(recoveryStats.recovered)} members recovered · ${fmt(recoveryStats.stillFailing)} still failing · ${fmt(recoveryStats.lost)} lost to cancellation. ${recoveryStats.stillFailing > 0 ? "Members with outstanding failures should be contacted." : ""}`}
-                    </p>
-                  </div>
-                </div>
-              );
-            })()}
           </div>
         </div>
 
