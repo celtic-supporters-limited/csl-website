@@ -3,7 +3,12 @@ import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
-import { sendPaymentFailedEmail, sendWelcomeEmail } from "@/lib/resend";
+import {
+  sendPaymentFailedEmail,
+  sendPaymentFailedVolunteerAlert,
+  sendCardExpiryWarningEmail,
+  sendWelcomeEmail,
+} from "@/lib/resend";
 import { logMemberEvent } from "@/lib/member-events";
 
 // ── Derivation helpers ────────────────────────────────────────────────────────
@@ -281,7 +286,7 @@ export async function POST(req: NextRequest) {
           .from("members")
           .update({ status: "payment_failed", payment_failed_at: new Date().toISOString() })
           .eq("stripe_customer_id", cid)
-          .select("id, email")
+          .select("id, email, first_name, plan_name")
           .maybeSingle();
 
         if (error) {
@@ -292,22 +297,40 @@ export async function POST(req: NextRequest) {
         }
 
         if (member?.email) {
+          const attemptCount = (invoice as Stripe.Invoice & { attempt_count?: number }).attempt_count ?? 1;
+
           logMemberEvent({
             memberId: member.id ?? null,
             eventType: "payment.failed",
+            detail: { attempt_count: attemptCount },
             stripeEventId: event.id,
             eventEmail: member.email,
             isTest: isTestMode,
           }).catch((err) => console.error("[stripe-webhook] Event log error (payment.failed):", err));
 
-          try {
-            await sendPaymentFailedEmail(member.email);
-          } catch (emailErr) {
-            console.error(
-              "[stripe-webhook] Resend error (payment_failed):",
-              emailErr
-            );
-          }
+          (async () => {
+            try {
+              await sendPaymentFailedEmail({
+                to: member.email,
+                firstName: member.first_name ?? null,
+                attemptCount,
+              });
+            } catch (e) {
+              console.error("[stripe-webhook] Resend error (payment_failed member):", e);
+            }
+          })();
+
+          (async () => {
+            try {
+              await sendPaymentFailedVolunteerAlert({
+                memberEmail: member.email,
+                planName: member.plan_name ?? null,
+                attemptCount,
+              });
+            } catch (e) {
+              console.error("[stripe-webhook] Resend error (payment_failed volunteer):", e);
+            }
+          })();
         }
 
         console.log(
@@ -390,6 +413,45 @@ export async function POST(req: NextRequest) {
             isTest: isTestMode,
           }).catch((err) => console.error("[stripe-webhook] Event log error (subscription.cancelled):", err));
         }
+        break;
+      }
+
+      // ── customer.source.expiring ────────────────────────────────────────
+      // Stripe fires this ~30 days before a saved card expires.
+      // We look up the member and email them a prompt to update their card.
+      case "customer.source.expiring": {
+        const source = event.data.object as Stripe.Card;
+        const cid = typeof source.customer === "string" ? source.customer : null;
+
+        if (!cid) {
+          console.warn("[stripe-webhook] customer.source.expiring: no customer ID");
+          break;
+        }
+
+        const { data: expiringMember } = await db
+          .from("members")
+          .select("email, first_name")
+          .eq("stripe_customer_id", cid)
+          .eq("status", "active")
+          .maybeSingle();
+
+        if (expiringMember?.email) {
+          (async () => {
+            try {
+              await sendCardExpiryWarningEmail({
+                to: expiringMember.email,
+                firstName: expiringMember.first_name ?? null,
+                cardBrand: source.brand ?? null,
+                expMonth: source.exp_month,
+                expYear: source.exp_year,
+              });
+            } catch (e) {
+              console.error("[stripe-webhook] Resend error (card.expiring):", e);
+            }
+          })();
+        }
+
+        console.log(`[stripe-webhook] customer.source.expiring processed for customer ${cid}`);
         break;
       }
 

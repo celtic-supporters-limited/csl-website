@@ -37,7 +37,11 @@ function sign(payload: object, secret: string): { body: string; sig: string } {
 
 // ── Payload factories ─────────────────────────────────────────────────────────
 
-function invoiceEvent(type: "invoice.payment_failed" | "invoice.paid", customerId: string) {
+function invoiceEvent(
+  type: "invoice.payment_failed" | "invoice.paid",
+  customerId: string,
+  opts: { attemptCount?: number } = {}
+) {
   return {
     id:       `evt_test_${type.replace(/\./g, "_")}_${Date.now()}`,
     object:   "event",
@@ -45,13 +49,34 @@ function invoiceEvent(type: "invoice.payment_failed" | "invoice.paid", customerI
     livemode: false,
     data: {
       object: {
-        id:         `in_test_${Date.now()}`,
-        object:     "invoice",
-        customer:   customerId,
-        amount_due:  1000,
-        amount_paid: type === "invoice.paid" ? 1000 : 0,
-        currency:   "gbp",
-        status:     type === "invoice.paid" ? "paid" : "open",
+        id:            `in_test_${Date.now()}`,
+        object:        "invoice",
+        customer:      customerId,
+        amount_due:    1000,
+        amount_paid:   type === "invoice.paid" ? 1000 : 0,
+        currency:      "gbp",
+        status:        type === "invoice.paid" ? "paid" : "open",
+        attempt_count: opts.attemptCount ?? 1,
+      },
+    },
+  };
+}
+
+function cardExpiringEvent(customerId: string, opts: { expMonth?: number; expYear?: number } = {}) {
+  return {
+    id:       `evt_test_card_expiring_${Date.now()}`,
+    object:   "event",
+    type:     "customer.source.expiring",
+    livemode: false,
+    data: {
+      object: {
+        id:        `card_test_${Date.now()}`,
+        object:    "card",
+        customer:  customerId,
+        brand:     "Visa",
+        last4:     "4242",
+        exp_month: opts.expMonth ?? 7,
+        exp_year:  opts.expYear ?? 2026,
       },
     },
   };
@@ -128,6 +153,24 @@ test.describe("invoice.payment_failed", () => {
 
   test("returns 200 even when customer ID matches no member row", async ({ request }) => {
     const payload = invoiceEvent("invoice.payment_failed", "cus_nonexistent_xyz");
+    const res = await postWebhook(request, payload);
+    expect(res.status()).toBe(200);
+  });
+
+  test("returns 200 with attempt_count=1 (first failure)", async ({ request }) => {
+    const payload = invoiceEvent("invoice.payment_failed", "cus_dunning_attempt1", { attemptCount: 1 });
+    const res = await postWebhook(request, payload);
+    expect(res.status()).toBe(200);
+  });
+
+  test("returns 200 with attempt_count=2 (second retry)", async ({ request }) => {
+    const payload = invoiceEvent("invoice.payment_failed", "cus_dunning_attempt2", { attemptCount: 2 });
+    const res = await postWebhook(request, payload);
+    expect(res.status()).toBe(200);
+  });
+
+  test("returns 200 with attempt_count=3 (final retry)", async ({ request }) => {
+    const payload = invoiceEvent("invoice.payment_failed", "cus_dunning_attempt3", { attemptCount: 3 });
     const res = await postWebhook(request, payload);
     expect(res.status()).toBe(200);
   });
@@ -233,6 +276,53 @@ test.describe("customer.subscription.updated", () => {
       subscriptionEvent("customer.subscription.updated", "cus_nonexistent_upd")
     );
     expect(res.status()).toBe(200);
+  });
+});
+
+// ── customer.source.expiring ─────────────────────────────────────────────────
+
+test.describe("customer.source.expiring", () => {
+  test("returns 200 for a valid signed payload", async ({ request }) => {
+    const res = await postWebhook(request, cardExpiringEvent("cus_no_match_expiring"));
+    expect(res.status()).toBe(200);
+  });
+
+  test("returns 200 even when customer ID matches no member row", async ({ request }) => {
+    const res = await postWebhook(request, cardExpiringEvent("cus_nonexistent_expiring"));
+    expect(res.status()).toBe(200);
+  });
+
+  test("returns 200 with card expiring next month", async ({ request }) => {
+    const now = new Date();
+    const res = await postWebhook(
+      request,
+      cardExpiringEvent("cus_expiring_soon", {
+        expMonth: now.getMonth() + 2 || 1,
+        expYear:  now.getFullYear(),
+      })
+    );
+    expect(res.status()).toBe(200);
+  });
+
+  test("returns 400 for tampered payload", async ({ request }) => {
+    const { body } = sign(cardExpiringEvent("cus_tamper_expiring"), WEBHOOK_SECRET);
+    const res = await request.post(WEBHOOK_URL, {
+      data: body,
+      headers: {
+        "content-type": "application/json",
+        "stripe-signature": "t=1,v1=badhash",
+      },
+    });
+    expect(res.status()).toBe(400);
+  });
+
+  test("returns 400 when stripe-signature header is absent", async ({ request }) => {
+    const { body } = sign(cardExpiringEvent("cus_nosig_expiring"), WEBHOOK_SECRET);
+    const res = await request.post(WEBHOOK_URL, {
+      data: body,
+      headers: { "content-type": "application/json" },
+    });
+    expect(res.status()).toBe(400);
   });
 });
 
