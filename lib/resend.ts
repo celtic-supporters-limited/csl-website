@@ -96,20 +96,94 @@ export async function sendWelcomeEmail({
   });
 }
 
-export async function sendPaymentFailedEmail(to: string): Promise<void> {
+export async function sendPaymentFailedEmail({
+  to,
+  firstName,
+  attemptCount,
+}: {
+  to: string;
+  firstName: string | null;
+  attemptCount: number;
+}): Promise<void> {
   const resend = getResend();
   if (!resend) return;
 
-  // The from domain must be verified in the Resend Dashboard before this sends.
+  const greeting = firstName ? `Hello ${firstName},` : "Hello,";
+  const attemptNote =
+    attemptCount > 1 ? ` (attempt ${attemptCount})` : "";
+
   await resend.emails.send({
     from: "CSL Membership <membership@celticsupporters.net>",
     to,
     subject: "Action required: your CSL membership payment failed",
     html: `
-      <p>Hello,</p>
-      <p>We were unable to collect your Celtic Supporters Limited membership payment. This may be because your card has expired or your bank declined the charge.</p>
+      <p>${greeting}</p>
+      <p>We were unable to collect your Celtic Supporters Limited membership payment${attemptNote}. This may be because your card has expired or your bank declined the charge.</p>
       <p>To keep your membership active, please update your payment details as soon as possible:</p>
-      <p><a href="${SITE_URL}/member-portal/subscription">Update your payment details</a></p>
+      <p><a href="${SITE_URL}/member-portal?tab=subscription">Update your payment details</a></p>
+      <p>If you have any questions, contact us at <a href="mailto:membership@celticsupporters.net">membership@celticsupporters.net</a>.</p>
+      <p>Celtic Supporters Limited</p>
+    `,
+  });
+}
+
+export async function sendPaymentFailedVolunteerAlert({
+  memberEmail,
+  planName,
+  attemptCount,
+}: {
+  memberEmail: string;
+  planName: string | null;
+  attemptCount: number;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  await resend.emails.send({
+    from: "CSL Website <info@celticsupporters.net>",
+    to: "membership@celticsupporters.net",
+    subject: `Payment failure: ${memberEmail} (attempt ${attemptCount})`,
+    html: `
+      <p>A membership payment has failed.</p>
+      <p><strong>Member:</strong> ${memberEmail}</p>
+      <p><strong>Plan:</strong> ${planName ?? "Unknown"}</p>
+      <p><strong>Attempt:</strong> ${attemptCount}</p>
+      <p>Stripe will retry automatically. The member has been notified by email and directed to update their card.</p>
+      <p><a href="${SITE_URL}/member-portal/admin/members?q=${encodeURIComponent(memberEmail)}">View member timeline</a></p>
+    `,
+  });
+}
+
+export async function sendCardExpiryWarningEmail({
+  to,
+  firstName,
+  cardBrand,
+  expMonth,
+  expYear,
+}: {
+  to: string;
+  firstName: string | null;
+  cardBrand: string | null;
+  expMonth: number;
+  expYear: number;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const greeting = firstName ? `Hello ${firstName},` : "Hello,";
+  const cardDesc = cardBrand
+    ? `Your ${cardBrand.charAt(0).toUpperCase() + cardBrand.slice(1)} card ending in the details we hold`
+    : "Your card on file";
+  const expiry = `${String(expMonth).padStart(2, "0")}/${expYear}`;
+
+  await resend.emails.send({
+    from: "CSL Membership <membership@celticsupporters.net>",
+    to,
+    subject: "Your CSL membership card expires soon",
+    html: `
+      <p>${greeting}</p>
+      <p>${cardDesc} expires ${expiry}. To avoid any interruption to your Celtic Supporters Limited membership, please update your payment details before then.</p>
+      <p><a href="${SITE_URL}/member-portal?tab=subscription">Update your payment details</a></p>
       <p>If you have any questions, contact us at <a href="mailto:membership@celticsupporters.net">membership@celticsupporters.net</a>.</p>
       <p>Celtic Supporters Limited</p>
     `,
