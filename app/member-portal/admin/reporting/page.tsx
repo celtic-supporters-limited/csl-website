@@ -61,18 +61,55 @@ function StatusRow({ label, sb, wp, total, highlight }: {
   );
 }
 
+// Normalise raw plan name strings (from both platforms) into a consistent
+// display label. WordPress uses "PWYW Monthly" / "PWYW - Annual" regardless of
+// amount; the new platform uses "Monthly {N}" / "Annual {N}". Both represent
+// the same four billing models — group them so the table shows one row per model.
+function normalisePlanLabel(raw: string): string {
+  if (raw === "Monthly 10")                          return "Monthly 10 (Standard)";
+  if (raw === "Monthly 25")                          return "Monthly 25 (Accelerator)";
+  if (raw === "Lifetime Member" || raw === "Lifetime Membership") return "Lifetime";
+  if (raw === "PWYW - Annual" || /^Annual \d+$/.test(raw))       return "Custom Annual";
+  // "PWYW Monthly", "PWYW Monthly N", "Monthly N" (N≥30) — all custom monthly
+  if (raw === "PWYW Monthly" || /^PWYW Monthly/.test(raw) || /^Monthly \d+$/.test(raw)) return "Custom Monthly";
+  return raw; // unknown — pass through so the Unknown badge still shows
+}
+
+// Canonical display order for the four billing models
+const PLAN_ORDER: Record<string, number> = {
+  "Monthly 10 (Standard)": 0,
+  "Monthly 25 (Accelerator)": 1,
+  "Custom Monthly": 2,
+  "Custom Annual": 3,
+  "Lifetime": 4,
+};
+
 function PlanTable({ sb, wp }: { sb: SourceMetrics; wp: SourceMetrics | null }) {
-  const allPlans = new Set([
-    ...Object.keys(sb.by_plan),
-    ...(wp ? Object.keys(wp.by_plan) : []),
-  ]);
-  const planRows = Array.from(allPlans)
-    .map((plan) => ({
-      plan,
-      sbCount: sb.by_plan[plan] ?? 0,
-      wpCount: wp?.by_plan[plan] ?? 0,
-    }))
-    .sort((a, b) => (b.sbCount + b.wpCount) - (a.sbCount + a.wpCount));
+  // Aggregate counts by normalised label across both platforms
+  const totals = new Map<string, { sbCount: number; wpCount: number; hasUnknown: boolean }>();
+
+  const addCounts = (byPlan: Record<string, number>, unknownPlans: string[], platform: "sb" | "wp") => {
+    for (const [raw, count] of Object.entries(byPlan)) {
+      const label = normalisePlanLabel(raw);
+      const existing = totals.get(label) ?? { sbCount: 0, wpCount: 0, hasUnknown: false };
+      if (platform === "sb") existing.sbCount += count;
+      else existing.wpCount += count;
+      if (unknownPlans.includes(raw)) existing.hasUnknown = true;
+      totals.set(label, existing);
+    }
+  };
+
+  addCounts(sb.by_plan, sb.unknown_plans, "sb");
+  if (wp) addCounts(wp.by_plan, wp.unknown_plans, "wp");
+
+  const planRows = Array.from(totals.entries())
+    .map(([label, counts]) => ({ label, ...counts }))
+    .sort((a, b) => {
+      const oa = PLAN_ORDER[a.label] ?? 99;
+      const ob = PLAN_ORDER[b.label] ?? 99;
+      if (oa !== ob) return oa - ob;
+      return (b.sbCount + b.wpCount) - (a.sbCount + a.wpCount);
+    });
 
   const hasWp = wp !== null;
 
@@ -88,13 +125,13 @@ function PlanTable({ sb, wp }: { sb: SourceMetrics; wp: SourceMetrics | null }) 
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {planRows.map(({ plan, sbCount, wpCount }) => (
-            <tr key={plan}>
+          {planRows.map(({ label, sbCount, wpCount, hasUnknown }) => (
+            <tr key={label}>
               <td className="px-4 py-2.5 text-sm text-gray-700">
-                {plan}
-                {sb.unknown_plans.includes(plan) || wp?.unknown_plans.includes(plan) ? (
+                {label}
+                {hasUnknown && (
                   <span className="ml-1.5 text-[0.6rem] font-bold uppercase text-amber-700 bg-amber-100 px-1 py-0.5 rounded">Unknown</span>
-                ) : null}
+                )}
               </td>
               <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-700">{sbCount > 0 ? fmt(sbCount) : <span className="text-gray-300">-</span>}</td>
               {hasWp && <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-700">{wpCount > 0 ? fmt(wpCount) : <span className="text-gray-300">-</span>}</td>}
