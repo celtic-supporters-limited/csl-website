@@ -157,7 +157,7 @@ function PlanTable({ sb, wp }: { sb: SourceMetrics; wp: SourceMetrics | null }) 
         <tbody className="divide-y divide-gray-100">
           {planRows.map(({ label, sbCount, wpCount, hasUnknown }) => (
             <tr key={label}>
-              <td className="px-4 py-2.5 text-sm text-gray-700">
+              <td className="px-4 py-2.5 text-sm text-gray-700 whitespace-nowrap">
                 {label}
                 {hasUnknown && (
                   <span className="ml-1.5 text-[0.6rem] font-bold uppercase text-amber-700 bg-amber-100 px-1 py-0.5 rounded">Unknown</span>
