@@ -7,8 +7,10 @@ const KNOWN_PLAN_PATTERNS: RegExp[] = [
   /^Monthly \d+$/,          // new platform: Monthly 10, Monthly 25, Monthly 30, etc.
   /^Annual \d+$/,            // new platform: Annual 300, Annual 600, etc.
   /^Lifetime Member$/,       // new platform
-  /^PWYW Monthly$/,          // WordPress legacy
-  /^PWYW - Annual$/,         // WordPress legacy
+  /^PWYW Monthly$/,          // WordPress legacy (bare — old snapshots without amount)
+  /^PWYW Monthly \d+$/,      // WordPress legacy with amount appended
+  /^PWYW - Annual$/,         // WordPress legacy (bare — old snapshots without amount)
+  /^PWYW Annual \d+$/,       // WordPress legacy with amount appended
   /^PWYW$/,                  // WordPress legacy (bare)
   /^Monthly 20$/,            // WordPress legacy
   /^Lifetime Membership$/,   // WordPress legacy
@@ -260,10 +262,19 @@ export function computeWordPressMetrics(
 
     // Only count plan breakdown and MRR for active members
     if (s === "active") {
-      const plan = row.plan_name;
-      metrics.by_plan[plan] = (metrics.by_plan[plan] ?? 0) + 1;
-      if (!isKnownPlan(plan) && !metrics.unknown_plans.includes(plan)) {
-        metrics.unknown_plans.push(plan);
+      const rawPlan = row.plan_name;
+      // Append billing amount to PWYW plans so each amount is a distinct key.
+      // "PWYW Monthly" at £30 → "PWYW Monthly 30"; "PWYW - Annual" at £300 → "PWYW Annual 300".
+      // This lets the reporting dashboard align them with new-platform "Monthly 30" / "Annual 300" keys.
+      const amt = Math.round(row.billing_amount);
+      const planKey = rawPlan === "PWYW Monthly" && amt > 0
+        ? `PWYW Monthly ${amt}`
+        : rawPlan === "PWYW - Annual" && amt > 0
+        ? `PWYW Annual ${amt}`
+        : rawPlan;
+      metrics.by_plan[planKey] = (metrics.by_plan[planKey] ?? 0) + 1;
+      if (!isKnownPlan(rawPlan) && !metrics.unknown_plans.includes(planKey)) {
+        metrics.unknown_plans.push(planKey);
       }
     }
 

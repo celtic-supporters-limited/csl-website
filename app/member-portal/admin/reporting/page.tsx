@@ -61,18 +61,85 @@ function StatusRow({ label, sb, wp, total, highlight }: {
   );
 }
 
+// Normalise raw plan name strings (from both platforms) into a consistent
+// display label. Each custom plan amount gets its own row so directors can
+// see the exact amounts members pay. Members may change amounts at any time
+// so this reflects the current snapshot.
+//
+// Mapping:
+//   "Monthly 10"          -> "Monthly £10 (Standard)"
+//   "Monthly 25"          -> "Monthly £25 (Accelerator)"
+//   "PWYW Monthly 30" /
+//   "Monthly 30"          -> "Custom Monthly £30"   (one row per distinct amount)
+//   "PWYW Annual 300" /
+//   "Annual 300"          -> "Custom Annual £300"
+//   "Lifetime Member" /
+//   "Lifetime Membership" -> "Lifetime"
+//   bare "PWYW Monthly" / "PWYW - Annual" (old snapshots before amount was appended)
+//                         -> "Custom Monthly" / "Custom Annual" (amount unknown)
+function normalisePlanLabel(raw: string): string {
+  if (raw === "Monthly 10")  return "Monthly £10 (Standard)";
+  if (raw === "Monthly 25")  return "Monthly £25 (Accelerator)";
+  if (raw === "Lifetime Member" || raw === "Lifetime Membership") return "Lifetime";
+
+  const pwywMonthly = raw.match(/^PWYW Monthly (\d+)$/);
+  if (pwywMonthly) return `Custom Monthly £${pwywMonthly[1]}`;
+
+  const newMonthly = raw.match(/^Monthly (\d+)$/);
+  if (newMonthly) return `Custom Monthly £${newMonthly[1]}`;
+
+  const pwywAnnual = raw.match(/^PWYW Annual (\d+)$/);
+  if (pwywAnnual) return `Custom Annual £${pwywAnnual[1]}`;
+
+  const newAnnual = raw.match(/^Annual (\d+)$/);
+  if (newAnnual) return `Custom Annual £${newAnnual[1]}`;
+
+  // Bare labels from old snapshots before amount was appended
+  if (raw === "PWYW Monthly")   return "Custom Monthly";
+  if (raw === "PWYW - Annual")  return "Custom Annual";
+
+  return raw; // unknown — pass through so the Unknown badge still shows
+}
+
+// Sort key: [family order, amount]. Custom rows sort by amount ascending within family.
+function planSortKey(label: string): [number, number] {
+  if (label === "Monthly £10 (Standard)")   return [0, 0];
+  if (label === "Monthly £25 (Accelerator)") return [1, 0];
+  const cm = label.match(/^Custom Monthly £(\d+)$/);
+  if (cm) return [2, parseInt(cm[1])];
+  if (label.startsWith("Custom Monthly"))   return [2, 999999];
+  const ca = label.match(/^Custom Annual £(\d+)$/);
+  if (ca) return [3, parseInt(ca[1])];
+  if (label.startsWith("Custom Annual"))    return [3, 999999];
+  if (label === "Lifetime")                 return [4, 0];
+  return [5, 0];
+}
+
 function PlanTable({ sb, wp }: { sb: SourceMetrics; wp: SourceMetrics | null }) {
-  const allPlans = new Set([
-    ...Object.keys(sb.by_plan),
-    ...(wp ? Object.keys(wp.by_plan) : []),
-  ]);
-  const planRows = Array.from(allPlans)
-    .map((plan) => ({
-      plan,
-      sbCount: sb.by_plan[plan] ?? 0,
-      wpCount: wp?.by_plan[plan] ?? 0,
-    }))
-    .sort((a, b) => (b.sbCount + b.wpCount) - (a.sbCount + a.wpCount));
+  // Aggregate counts by normalised label across both platforms
+  const totals = new Map<string, { sbCount: number; wpCount: number; hasUnknown: boolean }>();
+
+  const addCounts = (byPlan: Record<string, number>, unknownPlans: string[], platform: "sb" | "wp") => {
+    for (const [raw, count] of Object.entries(byPlan)) {
+      const label = normalisePlanLabel(raw);
+      const existing = totals.get(label) ?? { sbCount: 0, wpCount: 0, hasUnknown: false };
+      if (platform === "sb") existing.sbCount += count;
+      else existing.wpCount += count;
+      if (unknownPlans.includes(raw)) existing.hasUnknown = true;
+      totals.set(label, existing);
+    }
+  };
+
+  addCounts(sb.by_plan, sb.unknown_plans, "sb");
+  if (wp) addCounts(wp.by_plan, wp.unknown_plans, "wp");
+
+  const planRows = Array.from(totals.entries())
+    .map(([label, counts]) => ({ label, ...counts }))
+    .sort((a, b) => {
+      const [fa, aa] = planSortKey(a.label);
+      const [fb, ab] = planSortKey(b.label);
+      return fa !== fb ? fa - fb : aa - ab;
+    });
 
   const hasWp = wp !== null;
 
@@ -88,13 +155,13 @@ function PlanTable({ sb, wp }: { sb: SourceMetrics; wp: SourceMetrics | null }) 
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {planRows.map(({ plan, sbCount, wpCount }) => (
-            <tr key={plan}>
+          {planRows.map(({ label, sbCount, wpCount, hasUnknown }) => (
+            <tr key={label}>
               <td className="px-4 py-2.5 text-sm text-gray-700">
-                {plan}
-                {sb.unknown_plans.includes(plan) || wp?.unknown_plans.includes(plan) ? (
+                {label}
+                {hasUnknown && (
                   <span className="ml-1.5 text-[0.6rem] font-bold uppercase text-amber-700 bg-amber-100 px-1 py-0.5 rounded">Unknown</span>
-                ) : null}
+                )}
               </td>
               <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-700">{sbCount > 0 ? fmt(sbCount) : <span className="text-gray-300">-</span>}</td>
               {hasWp && <td className="px-4 py-2.5 text-sm text-right tabular-nums text-gray-700">{wpCount > 0 ? fmt(wpCount) : <span className="text-gray-300">-</span>}</td>}
