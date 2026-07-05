@@ -62,27 +62,58 @@ function StatusRow({ label, sb, wp, total, highlight }: {
 }
 
 // Normalise raw plan name strings (from both platforms) into a consistent
-// display label. WordPress uses "PWYW Monthly" / "PWYW - Annual" regardless of
-// amount; the new platform uses "Monthly {N}" / "Annual {N}". Both represent
-// the same four billing models — group them so the table shows one row per model.
+// display label. Each custom plan amount gets its own row so directors can
+// see the exact amounts members pay. Members may change amounts at any time
+// so this reflects the current snapshot.
+//
+// Mapping:
+//   "Monthly 10"          -> "Monthly £10 (Standard)"
+//   "Monthly 25"          -> "Monthly £25 (Accelerator)"
+//   "PWYW Monthly 30" /
+//   "Monthly 30"          -> "Custom Monthly £30"   (one row per distinct amount)
+//   "PWYW Annual 300" /
+//   "Annual 300"          -> "Custom Annual £300"
+//   "Lifetime Member" /
+//   "Lifetime Membership" -> "Lifetime"
+//   bare "PWYW Monthly" / "PWYW - Annual" (old snapshots before amount was appended)
+//                         -> "Custom Monthly" / "Custom Annual" (amount unknown)
 function normalisePlanLabel(raw: string): string {
-  if (raw === "Monthly 10")                          return "Monthly 10 (Standard)";
-  if (raw === "Monthly 25")                          return "Monthly 25 (Accelerator)";
+  if (raw === "Monthly 10")  return "Monthly £10 (Standard)";
+  if (raw === "Monthly 25")  return "Monthly £25 (Accelerator)";
   if (raw === "Lifetime Member" || raw === "Lifetime Membership") return "Lifetime";
-  if (raw === "PWYW - Annual" || /^Annual \d+$/.test(raw))       return "Custom Annual";
-  // "PWYW Monthly", "PWYW Monthly N", "Monthly N" (N≥30) — all custom monthly
-  if (raw === "PWYW Monthly" || /^PWYW Monthly/.test(raw) || /^Monthly \d+$/.test(raw)) return "Custom Monthly";
+
+  const pwywMonthly = raw.match(/^PWYW Monthly (\d+)$/);
+  if (pwywMonthly) return `Custom Monthly £${pwywMonthly[1]}`;
+
+  const newMonthly = raw.match(/^Monthly (\d+)$/);
+  if (newMonthly) return `Custom Monthly £${newMonthly[1]}`;
+
+  const pwywAnnual = raw.match(/^PWYW Annual (\d+)$/);
+  if (pwywAnnual) return `Custom Annual £${pwywAnnual[1]}`;
+
+  const newAnnual = raw.match(/^Annual (\d+)$/);
+  if (newAnnual) return `Custom Annual £${newAnnual[1]}`;
+
+  // Bare labels from old snapshots before amount was appended
+  if (raw === "PWYW Monthly")   return "Custom Monthly";
+  if (raw === "PWYW - Annual")  return "Custom Annual";
+
   return raw; // unknown — pass through so the Unknown badge still shows
 }
 
-// Canonical display order for the four billing models
-const PLAN_ORDER: Record<string, number> = {
-  "Monthly 10 (Standard)": 0,
-  "Monthly 25 (Accelerator)": 1,
-  "Custom Monthly": 2,
-  "Custom Annual": 3,
-  "Lifetime": 4,
-};
+// Sort key: [family order, amount]. Custom rows sort by amount ascending within family.
+function planSortKey(label: string): [number, number] {
+  if (label === "Monthly £10 (Standard)")   return [0, 0];
+  if (label === "Monthly £25 (Accelerator)") return [1, 0];
+  const cm = label.match(/^Custom Monthly £(\d+)$/);
+  if (cm) return [2, parseInt(cm[1])];
+  if (label.startsWith("Custom Monthly"))   return [2, 999999];
+  const ca = label.match(/^Custom Annual £(\d+)$/);
+  if (ca) return [3, parseInt(ca[1])];
+  if (label.startsWith("Custom Annual"))    return [3, 999999];
+  if (label === "Lifetime")                 return [4, 0];
+  return [5, 0];
+}
 
 function PlanTable({ sb, wp }: { sb: SourceMetrics; wp: SourceMetrics | null }) {
   // Aggregate counts by normalised label across both platforms
@@ -105,10 +136,9 @@ function PlanTable({ sb, wp }: { sb: SourceMetrics; wp: SourceMetrics | null }) 
   const planRows = Array.from(totals.entries())
     .map(([label, counts]) => ({ label, ...counts }))
     .sort((a, b) => {
-      const oa = PLAN_ORDER[a.label] ?? 99;
-      const ob = PLAN_ORDER[b.label] ?? 99;
-      if (oa !== ob) return oa - ob;
-      return (b.sbCount + b.wpCount) - (a.sbCount + a.wpCount);
+      const [fa, aa] = planSortKey(a.label);
+      const [fb, ab] = planSortKey(b.label);
+      return fa !== fb ? fa - fb : aa - ab;
     });
 
   const hasWp = wp !== null;
