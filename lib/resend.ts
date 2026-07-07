@@ -96,6 +96,30 @@ export async function sendWelcomeEmail({
   });
 }
 
+export async function sendPasswordResetEmail({
+  to,
+  resetLink,
+}: {
+  to: string;
+  resetLink: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  await resend.emails.send({
+    from: "CSL Membership <membership@celticsupporters.net>",
+    to,
+    subject: "Reset your CSL password",
+    html: `
+      <p>Hello,</p>
+      <p>We received a request to reset the password for your Celtic Supporters Limited account.</p>
+      <p><a href="${resetLink}" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Reset my password</a></p>
+      <p style="color:#666;font-size:0.9em">This link expires in 24 hours. If you did not request a password reset, you can ignore this email — your account is safe.</p>
+      <p>Celtic Supporters Limited</p>
+    `,
+  });
+}
+
 export async function sendPaymentFailedEmail({
   to,
   firstName,
