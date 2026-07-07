@@ -38,8 +38,7 @@ export default function AuthCallbackPage() {
         });
         if (error) {
           console.error("[auth/callback] setSession error:", error.message);
-          const detail = encodeURIComponent(error.message.slice(0, 120));
-          window.location.href = `/login?error=auth_failed&detail=${detail}`;
+          window.location.href = "/login?error=auth_failed";
           return;
         }
         sessionStorage.setItem("csl-auth-alive", "1");
@@ -60,8 +59,7 @@ export default function AuthCallbackPage() {
 
       if (error) {
         console.error("[auth/callback] exchangeCodeForSession error:", error.message);
-        const detail = encodeURIComponent(error.message.slice(0, 120));
-        window.location.href = `/login?error=auth_failed&detail=${detail}`;
+        window.location.href = "/login?error=auth_failed";
         return;
       }
 
