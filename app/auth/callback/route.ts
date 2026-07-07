@@ -1,5 +1,4 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getSupabase } from "@/lib/supabase";
@@ -17,19 +16,26 @@ export async function GET(request: NextRequest) {
       : "/member-portal";
 
   if (code) {
-    const cookieStore = cookies();
+    // Buffer cookies that Supabase wants to set during exchangeCodeForSession.
+    // We cannot use cookies() from next/headers here because Set-Cookie headers
+    // set that way are attached to an implicit response object, not to the
+    // NextResponse.redirect() we return — so the browser never receives them
+    // and the session is never established. We collect them and apply to the
+    // redirect response explicitly.
+    const pendingCookies: Array<{ name: string; value: string; options?: CookieOptions }> = [];
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           getAll() {
-            return cookieStore.getAll();
+            return request.cookies.getAll();
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
+            for (const cookie of cookiesToSet) {
+              pendingCookies.push(cookie);
+            }
           },
         },
       }
@@ -138,7 +144,11 @@ export async function GET(request: NextRequest) {
         // change succeeded regardless of whether the DB/Stripe updates did.
         const portalNext = "/member-portal?tab=profile&email_updated=true";
         const initUrl = `${origin}/auth/session-init?next=${encodeURIComponent(portalNext)}`;
-        return NextResponse.redirect(initUrl);
+        const response = NextResponse.redirect(initUrl);
+        pendingCookies.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options ?? {})
+        );
+        return response;
       }
 
       // ── Standard flow: magic link login or password reset ──────────────────
@@ -155,7 +165,11 @@ export async function GET(request: NextRequest) {
         }
       }
       const initUrl = `${origin}/auth/session-init?next=${encodeURIComponent(finalRedirect)}`;
-      return NextResponse.redirect(initUrl);
+      const response = NextResponse.redirect(initUrl);
+      pendingCookies.forEach(({ name, value, options }) =>
+        response.cookies.set(name, value, options ?? {})
+      );
+      return response;
     }
   }
 
