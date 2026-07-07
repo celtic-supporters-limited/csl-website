@@ -46,9 +46,38 @@ function adminSupabase() {
   return createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 }
 
-// Generate a password-recovery link via the Supabase admin API (no email sent),
-// navigate to it, and wait for /auth/update-password to appear.
+// Establish a session and navigate to /auth/update-password.
+//
+// UpdatePasswordForm only requires an active session (any kind) to show the form —
+// it calls supabase.auth.getSession() and redirects to /login if null. A regular
+// email/password login is enough for form-validation tests.
+//
+// For the true e2e reset test we use a separate helper that goes through the
+// admin recovery link and sets the session via the Supabase REST API.
 async function navigateToResetPage(page: Page): Promise<void> {
+  await page.goto("/login");
+  await page.waitForLoadState("networkidle", { timeout: 20_000 });
+  await page.fill("#email", SMOKE_EMAIL);
+  await page.fill("#password", SMOKE_PASSWORD);
+  await page.locator('button[type="submit"]').click();
+  await page.waitForURL(/\/member-portal/, { timeout: 20_000 });
+
+  // Use JavaScript navigation so Sec-Fetch-Site is same-origin — a direct
+  // page.goto() sends Sec-Fetch-Site: none which triggers the browser-restart
+  // middleware guard and deletes the session cookies before the form loads.
+  await page.evaluate(() => { window.location.href = "/auth/update-password"; });
+  await page.waitForURL(/\/auth\/update-password/, { timeout: 10_000 });
+  // Wait for the session check useEffect to resolve and render the form.
+  await page.waitForSelector("#new-password", { timeout: 15_000 });
+}
+
+// Navigate to /auth/update-password via a genuine recovery session.
+//
+// supabase.auth.admin.generateLink uses implicit flow — Supabase redirects to the
+// Site URL with tokens in the # hash fragment. @supabase/ssr's createBrowserClient
+// is PKCE-first and does not auto-process hash fragments, so we extract the tokens
+// from the hash and call setSession via the Supabase REST API from the browser context.
+async function navigateToResetPageViaRecoveryLink(page: Page): Promise<void> {
   const supabase = adminSupabase();
   const { data, error } = await supabase.auth.admin.generateLink({
     type: "recovery",
@@ -60,8 +89,49 @@ async function navigateToResetPage(page: Page): Promise<void> {
     (data as { properties?: { action_link?: string } })?.properties?.action_link;
   expect(actionLink).toBeTruthy();
 
+  // Navigate — Supabase redirects to Site URL with #access_token=...&type=recovery.
   await page.goto(actionLink!, { waitUntil: "domcontentloaded", timeout: 30_000 });
-  await page.waitForURL(/\/auth\/update-password/, { timeout: 20_000 });
+
+  // Extract tokens from the hash fragment and establish a session via Supabase REST.
+  const sessionOk = await page.evaluate(
+    async ({ supabaseUrl, anonKey }: { supabaseUrl: string; anonKey: string }) => {
+      const hash = window.location.hash.slice(1);
+      const params = new URLSearchParams(hash);
+      const access_token = params.get("access_token");
+      const refresh_token = params.get("refresh_token");
+      if (!access_token || !refresh_token) return false;
+
+      // POST to Supabase token endpoint to get a session object, then store it
+      // in the format @supabase/ssr expects (a single auth-token cookie).
+      const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: anonKey,
+          Authorization: `Bearer ${access_token}`,
+        },
+        body: JSON.stringify({ refresh_token }),
+      });
+      if (!res.ok) return false;
+      const session = await res.json() as Record<string, unknown>;
+
+      // Write the session as the cookie @supabase/ssr reads. The project ref is
+      // extracted from the Supabase URL (subdomain before .supabase.co).
+      const ref = supabaseUrl.replace("https://", "").split(".")[0];
+      const cookieName = `sb-${ref}-auth-token`;
+      const cookieValue = encodeURIComponent(JSON.stringify(session));
+      document.cookie = `${cookieName}=${cookieValue}; Path=/; SameSite=Lax; Secure`;
+      return true;
+    },
+    {
+      supabaseUrl: SUPABASE_URL,
+      anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+    }
+  );
+  expect(sessionOk).toBe(true);
+
+  await page.goto("/auth/update-password");
+  await page.waitForURL(/\/auth\/update-password/, { timeout: 10_000 });
 }
 
 // Restore the test-account password via the Supabase admin API.
