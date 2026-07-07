@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 export default function LoginPage({
   searchParams,
 }: {
-  searchParams: { redirectTo?: string; error?: string; reason?: string };
+  searchParams: { redirectTo?: string; error?: string; reason?: string; detail?: string };
 }) {
   return (
     <main className="min-h-[calc(100vh-160px)] flex items-center justify-center bg-csl-light py-16 px-4">
