@@ -142,7 +142,19 @@ export async function GET(request: NextRequest) {
       }
 
       // ── Standard flow: magic link login or password reset ──────────────────
-      const initUrl = `${origin}/auth/session-init?next=${encodeURIComponent(redirectTo)}`;
+      // When Supabase drops redirectTo (PKCE allowlist rejection), the code
+      // lands on /?code=... and is forwarded here without a redirectTo param,
+      // so it defaults to /member-portal. Detect recovery sessions via AMR
+      // and send those to /auth/update-password instead.
+      let finalRedirect = redirectTo;
+      if (redirectTo === "/member-portal") {
+        const amr: { method: string; timestamp: number }[] =
+          (data.session?.user as unknown as { amr?: { method: string; timestamp: number }[] })?.amr ?? [];
+        if (amr.some((a) => a.method === "recovery")) {
+          finalRedirect = "/auth/update-password";
+        }
+      }
+      const initUrl = `${origin}/auth/session-init?next=${encodeURIComponent(finalRedirect)}`;
       return NextResponse.redirect(initUrl);
     }
   }

@@ -3,6 +3,20 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // Supabase PKCE sends auth codes to {siteURL}?code=... when redirectTo is
+  // rejected by its allowlist (e.g. nested query params). Intercept the code
+  // here and forward to /auth/callback, which handles all PKCE exchanges.
+  if (
+    request.nextUrl.pathname === "/" &&
+    request.nextUrl.searchParams.has("code")
+  ) {
+    const callbackUrl = new URL("/auth/callback", request.nextUrl.origin);
+    callbackUrl.searchParams.set("code", request.nextUrl.searchParams.get("code")!);
+    const type = request.nextUrl.searchParams.get("type");
+    if (type) callbackUrl.searchParams.set("type", type);
+    return NextResponse.redirect(callbackUrl);
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
