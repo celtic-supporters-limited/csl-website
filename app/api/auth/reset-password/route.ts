@@ -7,19 +7,8 @@ const RATE_LIMIT = 3;
 const WINDOW_MS = 15 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-
-  if (entry && now - entry.windowStart < WINDOW_MS) {
-    entry.count += 1;
-    if (entry.count >= RATE_LIMIT) {
-      return NextResponse.json({ sent: true }, { status: 200 });
-    }
-  } else {
-    rateLimitMap.set(ip, { count: 1, windowStart: now });
-  }
-
+  // Validate input before rate-limiting — invalid requests should always get
+  // 400 regardless of rate-limit state, and should not consume the quota.
   let body: unknown;
   try {
     body = await req.json();
@@ -32,6 +21,19 @@ export async function POST(req: NextRequest) {
 
   if (!email) {
     return NextResponse.json({ error: "Email is required." }, { status: 400 });
+  }
+
+  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (entry && now - entry.windowStart < WINDOW_MS) {
+    entry.count += 1;
+    if (entry.count >= RATE_LIMIT) {
+      return NextResponse.json({ sent: true }, { status: 200 });
+    }
+  } else {
+    rateLimitMap.set(ip, { count: 1, windowStart: now });
   }
 
   // Log the event fire-and-forget — the actual Supabase call is made client-side
