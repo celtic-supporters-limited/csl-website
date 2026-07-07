@@ -62,11 +62,16 @@ export async function POST(req: NextRequest) {
   });
 
   if (!linkError && linkData?.properties?.action_link) {
-    // Send via Resend. Fire-and-forget — a failed email never blocks the response.
-    sendPasswordResetEmail({
-      to: email,
-      resetLink: linkData.properties.action_link,
-    }).catch((err) => console.error("[reset-password] Resend error:", err));
+    // Await the Resend call — fire-and-forget is terminated by Vercel before the
+    // promise resolves in a serverless context.
+    try {
+      await sendPasswordResetEmail({
+        to: email,
+        resetLink: linkData.properties.action_link,
+      });
+    } catch (err) {
+      console.error("[reset-password] Resend error:", err);
+    }
   } else if (linkError) {
     // User may not exist — log but do not reveal to caller.
     console.log("[reset-password] generateLink skipped:", linkError.message);
