@@ -54,6 +54,13 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  console.log("[reset-password] generateLink result:", {
+    hasError: !!linkError,
+    errorMsg: linkError?.message ?? null,
+    hasActionLink: !!linkData?.properties?.action_link,
+    linkDataKeys: linkData ? Object.keys(linkData) : null,
+  });
+
   if (!linkError && linkData?.properties?.action_link) {
     // Send via Resend. Fire-and-forget — a failed email never blocks the response.
     sendPasswordResetEmail({
@@ -63,6 +70,8 @@ export async function POST(req: NextRequest) {
   } else if (linkError) {
     // User may not exist — log but do not reveal to caller.
     console.log("[reset-password] generateLink skipped:", linkError.message);
+  } else {
+    console.log("[reset-password] generateLink returned no action_link:", JSON.stringify(linkData));
   }
 
   // Log the event fire-and-forget.
