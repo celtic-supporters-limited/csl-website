@@ -81,7 +81,7 @@ export async function sendWelcomeEmail({
   const displayName = name ?? "Member";
 
   await resend.emails.send({
-    from: "CSL Membership <membership@celticsupporters.net>",
+    from: "Celtic Supporters Limited <info@celticsupporters.net>",
     to: email,
     subject: "Welcome to Celtic Supporters Limited",
     html: `
@@ -107,7 +107,7 @@ export async function sendPasswordResetEmail({
   if (!resend) return;
 
   await resend.emails.send({
-    from: "CSL Membership <membership@celticsupporters.net>",
+    from: "Celtic Supporters Limited <info@celticsupporters.net>",
     to,
     subject: "Reset your CSL password",
     html: `
@@ -137,7 +137,7 @@ export async function sendPaymentFailedEmail({
     attemptCount > 1 ? ` (attempt ${attemptCount})` : "";
 
   await resend.emails.send({
-    from: "CSL Membership <membership@celticsupporters.net>",
+    from: "Celtic Supporters Limited <info@celticsupporters.net>",
     to,
     subject: "Action required: your CSL membership payment failed",
     html: `
@@ -201,7 +201,7 @@ export async function sendCardExpiryWarningEmail({
   const expiry = `${String(expMonth).padStart(2, "0")}/${expYear}`;
 
   await resend.emails.send({
-    from: "CSL Membership <membership@celticsupporters.net>",
+    from: "Celtic Supporters Limited <info@celticsupporters.net>",
     to,
     subject: "Your CSL membership card expires soon",
     html: `
