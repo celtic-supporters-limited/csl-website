@@ -27,6 +27,11 @@ export default function LoginPage({
         {searchParams.error === "auth_failed" && (
           <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
             That sign-in link has expired or is invalid. Please sign in again.
+            {searchParams.detail && (
+              <p className="mt-1 text-xs font-mono break-all opacity-75">
+                {decodeURIComponent(searchParams.detail)}
+              </p>
+            )}
           </div>
         )}
 

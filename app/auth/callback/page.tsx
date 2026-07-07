@@ -30,7 +30,10 @@ export default function AuthCallbackPage() {
 
       if (error) {
         console.error("[auth/callback] exchangeCodeForSession error:", error.message);
-        window.location.href = "/login?error=auth_failed";
+        // Include error detail in URL (first 120 chars) so it shows on the login
+        // page during diagnosis — remove before go-live.
+        const detail = encodeURIComponent(error.message.slice(0, 120));
+        window.location.href = `/login?error=auth_failed&detail=${detail}`;
         return;
       }
 
