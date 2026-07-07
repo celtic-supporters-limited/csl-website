@@ -64,20 +64,14 @@ export default function LoginForm({ redirectTo, reason }: { redirectTo?: string;
 
     const trimmedEmail = email.trim().toLowerCase();
 
-    // Server-side rate limit check + event logging — always returns 200.
+    // Server handles rate limiting, admin link generation, and Resend delivery.
+    // No browser-side Supabase call needed — the server uses admin.generateLink
+    // (implicit flow) so the reset link works in any browser, not just the one
+    // where the request was initiated.
     await fetch("/api/auth/reset-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: trimmedEmail }),
-    });
-
-    // Call Supabase from the browser so the PKCE code verifier is stored in
-    // localStorage (not server response cookies), ensuring exchangeCodeForSession
-    // succeeds when the user clicks the email link. redirectTo uses no nested
-    // query params so Supabase allowlist accepts it; AMR detection in
-    // /auth/callback routes recovery sessions to /auth/update-password.
-    await createBrowserSupabase().auth.resetPasswordForEmail(trimmedEmail, {
-      redirectTo: `${window.location.origin}/auth/callback`,
     });
 
     setLoading(false);

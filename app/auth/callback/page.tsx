@@ -13,25 +13,53 @@ export default function AuthCallbackPage() {
     async function handleCallback() {
       const params = new URLSearchParams(window.location.search);
       const code = params.get("code");
-      const type = params.get("type");
       const rawRedirect = params.get("redirectTo") ?? "";
       const redirectTo =
         rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
           ? rawRedirect
           : "/member-portal";
 
+      const supabase = createBrowserSupabase();
+
+      // ── Implicit flow (admin-generated recovery links) ───────────────────────
+      // Server-side admin.generateLink produces links that put tokens in the URL
+      // hash rather than a PKCE code. This works in any browser — no stored
+      // code verifier required — which is critical when the email client opens
+      // links in a different browser than the one used to request the reset.
+      const hash = new URLSearchParams(window.location.hash.slice(1));
+      const hashAccessToken = hash.get("access_token");
+      const hashRefreshToken = hash.get("refresh_token");
+      const hashType = hash.get("type");
+
+      if (hashAccessToken && hashRefreshToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: hashAccessToken,
+          refresh_token: hashRefreshToken,
+        });
+        if (error) {
+          console.error("[auth/callback] setSession error:", error.message);
+          const detail = encodeURIComponent(error.message.slice(0, 120));
+          window.location.href = `/login?error=auth_failed&detail=${detail}`;
+          return;
+        }
+        sessionStorage.setItem("csl-auth-alive", "1");
+        window.location.href =
+          hashType === "recovery" ? "/auth/update-password" : redirectTo;
+        return;
+      }
+
+      // ── PKCE flow (Supabase-sent magic links) ────────────────────────────────
+      const type = params.get("type");
+
       if (!code) {
         window.location.href = "/login?error=auth_failed";
         return;
       }
 
-      const supabase = createBrowserSupabase();
       const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
       if (error) {
         console.error("[auth/callback] exchangeCodeForSession error:", error.message);
-        // Include error detail in URL (first 120 chars) so it shows on the login
-        // page during diagnosis — remove before go-live.
         const detail = encodeURIComponent(error.message.slice(0, 120));
         window.location.href = `/login?error=auth_failed&detail=${detail}`;
         return;
@@ -39,8 +67,6 @@ export default function AuthCallbackPage() {
 
       // ── Email change ─────────────────────────────────────────────────────────
       if (type === "email_change" && data.user?.email) {
-        // Sync new email into members, Stripe, and shareholder_cases server-side.
-        // Fire-and-forget — a failed sync never blocks the user.
         fetch("/api/auth/email-change-confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -48,13 +74,12 @@ export default function AuthCallbackPage() {
         }).catch((err) =>
           console.error("[auth/callback] email-change-confirm error:", err)
         );
-
         sessionStorage.setItem("csl-auth-alive", "1");
         window.location.href = "/member-portal?tab=profile&email_updated=true";
         return;
       }
 
-      // ── Standard flow: magic link or password reset ──────────────────────────
+      // ── Magic link / standard PKCE ───────────────────────────────────────────
       // Detect recovery sessions via AMR claim and route to update-password.
       let finalRedirect = redirectTo;
       if (redirectTo === "/member-portal") {

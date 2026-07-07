@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSupabase } from "@/lib/supabase";
 import { logMemberEvent } from "@/lib/member-events";
+import { sendPasswordResetEmail } from "@/lib/resend";
 
 // In-memory rate limiter — resets on cold starts; best-effort deterrent only.
 const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
 const RATE_LIMIT = 3;
 const WINDOW_MS = 15 * 60 * 1000;
+
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://csl-website-ten.vercel.app";
 
 export async function POST(req: NextRequest) {
   // Validate input before rate-limiting — invalid requests should always get
@@ -36,9 +41,31 @@ export async function POST(req: NextRequest) {
     rateLimitMap.set(ip, { count: 1, windowStart: now });
   }
 
-  // Log the event fire-and-forget — the actual Supabase call is made client-side
-  // so the browser stores the PKCE code verifier in localStorage (not server cookies),
-  // ensuring exchangeCodeForSession succeeds when the user clicks the link.
+  // Generate a password recovery link server-side via the admin API.
+  // This uses implicit flow (tokens in URL hash) rather than PKCE, so it works
+  // regardless of which browser the user clicks the link in — no stored code
+  // verifier required.
+  const supabase = getSupabase();
+  const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+    type: "recovery",
+    email,
+    options: {
+      redirectTo: `${SITE_URL}/auth/callback`,
+    },
+  });
+
+  if (!linkError && linkData?.properties?.action_link) {
+    // Send via Resend. Fire-and-forget — a failed email never blocks the response.
+    sendPasswordResetEmail({
+      to: email,
+      resetLink: linkData.properties.action_link,
+    }).catch((err) => console.error("[reset-password] Resend error:", err));
+  } else if (linkError) {
+    // User may not exist — log but do not reveal to caller.
+    console.log("[reset-password] generateLink skipped:", linkError.message);
+  }
+
+  // Log the event fire-and-forget.
   logMemberEvent({
     memberEmail: email,
     eventType: "password_reset.requested",
