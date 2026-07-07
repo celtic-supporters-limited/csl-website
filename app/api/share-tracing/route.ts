@@ -119,29 +119,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Notification email: fire-and-forget, never block or throw
-  (async () => {
-    try {
-      await sendShareTracingNotification({
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        message: combinedNotes,
-        submittedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("[share-tracing] Notification email error (non-blocking):", err);
-    }
-  })();
+  try {
+    await sendShareTracingNotification({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      message: combinedNotes,
+      submittedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("[share-tracing] Notification email error:", err);
+  }
 
-  // Zoho: fire-and-forget, never block or throw
-  (async () => {
-    try {
-      const contactId = await findOrCreateZohoContact(name.trim(), email.trim());
-      await createZohoCase(contactId, "Share Tracing", combinedNotes);
-    } catch (err) {
-      console.error("[share-tracing] Zoho error (non-blocking):", err);
-    }
-  })();
+  try {
+    const contactId = await findOrCreateZohoContact(name.trim(), email.trim());
+    await createZohoCase(contactId, "Share Tracing", combinedNotes);
+  } catch (err) {
+    console.error("[share-tracing] Zoho error:", err);
+  }
 
   return NextResponse.json({ success: true });
 }
