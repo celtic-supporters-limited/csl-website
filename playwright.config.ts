@@ -18,6 +18,9 @@ if (fs.existsSync(envFile)) {
   }
 }
 
+const externalTarget = process.env.PLAYWRIGHT_BASE_URL &&
+  !process.env.PLAYWRIGHT_BASE_URL.startsWith("http://localhost");
+
 export default defineConfig({
   testDir: "./tests",
   timeout: 120_000,
@@ -37,16 +40,16 @@ export default defineConfig({
     },
   ],
 
-  // Tests run on port 3001 so they never interfere with the developer's port-3000
-  // server. Playwright starts the test server automatically if nothing is on 3001.
+  // Skip the local dev server when targeting an external URL (production, preview).
+  // When PLAYWRIGHT_BASE_URL points to a deployed site, there is nothing to start locally.
   //
-  // REQUIREMENT: .env.local must exist with real Supabase/Stripe keys — the test
-  // server reads it on startup exactly like the regular dev server.
-  // Copy .env.local.example to .env.local and fill in values from Vercel dashboard.
-  webServer: {
-    command: "npm run dev -- --port 3001",
-    url: "http://localhost:3001",
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  // REQUIREMENT for local runs: .env.local must exist with real Supabase/Stripe keys.
+  ...(!externalTarget && {
+    webServer: {
+      command: "npm run dev -- --port 3001",
+      url: "http://localhost:3001",
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+  }),
 });

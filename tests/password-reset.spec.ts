@@ -49,10 +49,17 @@ function adminSupabase() {
 // Generate a password-recovery link via the Supabase admin API (no email sent),
 // navigate to it, and wait for /auth/update-password to appear.
 async function navigateToResetPage(page: Page): Promise<void> {
+  const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3001";
   const supabase = adminSupabase();
   const { data, error } = await supabase.auth.admin.generateLink({
     type: "recovery",
     email: SMOKE_EMAIL,
+    options: {
+      // Point the recovery link directly at /auth/callback so Supabase does not
+      // fall back to the Site URL. The /auth/callback client page exchanges the
+      // code in the browser and redirects to /auth/update-password via AMR detection.
+      redirectTo: `${baseURL}/auth/callback`,
+    },
   });
   expect(error).toBeNull();
 
