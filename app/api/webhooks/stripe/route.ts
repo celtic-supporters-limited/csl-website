@@ -207,18 +207,15 @@ export async function POST(req: NextRequest) {
           isTest: isTestMode,
         }).catch((err) => console.error("[stripe-webhook] Event log error (checkout.completed):", err));
 
-        // Welcome email: fire-and-forget, never block or throw
-        (async () => {
-          try {
-            await sendWelcomeEmail({
-              name: session.customer_details?.name ?? null,
-              email,
-              planName,
-            });
-          } catch (err) {
-            console.error("[stripe-webhook] Welcome email error (non-blocking):", err);
-          }
-        })();
+        try {
+          await sendWelcomeEmail({
+            name: session.customer_details?.name ?? null,
+            email,
+            planName,
+          });
+        } catch (err) {
+          console.error("[stripe-webhook] Welcome email error:", err);
+        }
 
         break;
       }
@@ -308,29 +305,25 @@ export async function POST(req: NextRequest) {
             isTest: isTestMode,
           }).catch((err) => console.error("[stripe-webhook] Event log error (payment.failed):", err));
 
-          (async () => {
-            try {
-              await sendPaymentFailedEmail({
-                to: member.email,
-                firstName: member.first_name ?? null,
-                attemptCount,
-              });
-            } catch (e) {
-              console.error("[stripe-webhook] Resend error (payment_failed member):", e);
-            }
-          })();
+          try {
+            await sendPaymentFailedEmail({
+              to: member.email,
+              firstName: member.first_name ?? null,
+              attemptCount,
+            });
+          } catch (e) {
+            console.error("[stripe-webhook] Resend error (payment_failed member):", e);
+          }
 
-          (async () => {
-            try {
-              await sendPaymentFailedVolunteerAlert({
-                memberEmail: member.email,
-                planName: member.plan_name ?? null,
-                attemptCount,
-              });
-            } catch (e) {
-              console.error("[stripe-webhook] Resend error (payment_failed volunteer):", e);
-            }
-          })();
+          try {
+            await sendPaymentFailedVolunteerAlert({
+              memberEmail: member.email,
+              planName: member.plan_name ?? null,
+              attemptCount,
+            });
+          } catch (e) {
+            console.error("[stripe-webhook] Resend error (payment_failed volunteer):", e);
+          }
         }
 
         console.log(
@@ -436,19 +429,17 @@ export async function POST(req: NextRequest) {
           .maybeSingle();
 
         if (expiringMember?.email) {
-          (async () => {
-            try {
-              await sendCardExpiryWarningEmail({
-                to: expiringMember.email,
-                firstName: expiringMember.first_name ?? null,
-                cardBrand: source.brand ?? null,
-                expMonth: source.exp_month,
-                expYear: source.exp_year,
-              });
-            } catch (e) {
-              console.error("[stripe-webhook] Resend error (card.expiring):", e);
-            }
-          })();
+          try {
+            await sendCardExpiryWarningEmail({
+              to: expiringMember.email,
+              firstName: expiringMember.first_name ?? null,
+              cardBrand: source.brand ?? null,
+              expMonth: source.exp_month,
+              expYear: source.exp_year,
+            });
+          } catch (e) {
+            console.error("[stripe-webhook] Resend error (card.expiring):", e);
+          }
         }
 
         console.log(`[stripe-webhook] customer.source.expiring processed for customer ${cid}`);

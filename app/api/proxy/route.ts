@@ -119,29 +119,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Notification email: fire-and-forget, never block or throw
-  (async () => {
-    try {
-      await sendProxyNotification({
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        message: notes,
-        submittedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("[proxy] Notification email error (non-blocking):", err);
-    }
-  })();
+  try {
+    await sendProxyNotification({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      message: notes,
+      submittedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("[proxy] Notification email error:", err);
+  }
 
-  // Zoho: fire-and-forget, never block or throw
-  (async () => {
-    try {
-      const contactId = await findOrCreateZohoContact(name.trim(), email.trim());
-      await createZohoCase(contactId, "Proxy Assignment", notes);
-    } catch (err) {
-      console.error("[proxy] Zoho error (non-blocking):", err);
-    }
-  })();
+  try {
+    const contactId = await findOrCreateZohoContact(name.trim(), email.trim());
+    await createZohoCase(contactId, "Proxy Assignment", notes);
+  } catch (err) {
+    console.error("[proxy] Zoho error:", err);
+  }
 
   return NextResponse.json({ success: true });
 }
