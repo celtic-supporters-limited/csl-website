@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
-import { sweepStripeCharges } from "@/lib/stripe";
+import { sweepStripeCharges, getStripe } from "@/lib/stripe";
 import {
   parseWordPressCsv,
   buildSnapshot,
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
   const { data: supabaseMembers, error: dbError } = await db
     .from("members")
-    .select("email, status, plan_name, amount_pence, membership_tier, stripe_subscription_id, user_id, created_at");
+    .select("email, status, plan_name, amount_pence, membership_tier, stripe_subscription_id, user_id, created_at, subscription_start_date");
 
   if (dbError) {
     console.error("[upload-wp-snapshot] DB error:", dbError.message);
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
   const wpByEmail = new Map(wpRows.map((r) => [r.email, r]));
   for (const sbRow of supabaseRows) {
     const wpRow = wpByEmail.get(sbRow.email.toLowerCase());
-    if (wpRow?.start_date && wpRow.status === "active") {
+    if (wpRow?.start_date) {
       const { error: backfillError } = await db
         .from("members")
         .update({ subscription_start_date: new Date(wpRow.start_date).toISOString() })
@@ -94,7 +94,35 @@ export async function POST(req: NextRequest) {
     }
   }
   if (backfilled > 0) {
-    console.log(`[upload-wp-snapshot] Backfilled subscription_start_date for ${backfilled} members`);
+    console.log(`[upload-wp-snapshot] Backfilled subscription_start_date for ${backfilled} WP members`);
+  }
+
+  // Stripe-based backfill for new-platform members not in the WP export.
+  // Any member who has a stripe_subscription_id but still null subscription_start_date
+  // joined via the new Stripe checkout before PR #69 added automatic population.
+  const needsStripeFetch = supabaseRows.filter(
+    (r) => r.stripe_subscription_id && !r.subscription_start_date
+  );
+  let stripeBackfilled = 0;
+  for (const sbRow of needsStripeFetch) {
+    try {
+      const sub = await getStripe().subscriptions.retrieve(sbRow.stripe_subscription_id!);
+      const startDate = new Date(sub.start_date * 1000).toISOString();
+      const { error: stripeBackfillError } = await db
+        .from("members")
+        .update({ subscription_start_date: startDate })
+        .eq("email", sbRow.email)
+        .is("subscription_start_date", null);
+      if (!stripeBackfillError) {
+        stripeBackfilled++;
+        console.log(`[upload-wp-snapshot] Stripe backfill: ${sbRow.email} start_date=${startDate}`);
+      }
+    } catch (e) {
+      console.error(`[upload-wp-snapshot] Stripe fetch failed for ${sbRow.email}:`, e);
+    }
+  }
+  if (stripeBackfilled > 0) {
+    console.log(`[upload-wp-snapshot] Stripe-backfilled subscription_start_date for ${stripeBackfilled} members`);
   }
 
   return NextResponse.json({
@@ -102,6 +130,6 @@ export async function POST(req: NextRequest) {
     rows_parsed: wpRows.length,
     legacy_count: snapshot.migration?.not_yet_migrated ?? 0,
     active_combined: snapshot.combined.active_total,
-    start_dates_backfilled: backfilled,
+    start_dates_backfilled: backfilled + stripeBackfilled,
   });
 }

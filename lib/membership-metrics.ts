@@ -94,6 +94,7 @@ export type SupabaseMemberRow = {
   stripe_subscription_id: string | null;
   user_id: string | null;
   created_at: string | null;
+  subscription_start_date: string | null;
 };
 
 export function computeSupabaseMetrics(rows: SupabaseMemberRow[]): {
