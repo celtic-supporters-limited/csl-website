@@ -29,6 +29,13 @@ export function isKnownPlan(name: string): boolean {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export type TenureBuckets = {
+  under3m: number;       // < 3 months
+  threeToTwelve: number; // 3 – 12 months
+  oneToTwo: number;      // 1 – 2 years
+  overTwo: number;       // > 2 years
+};
+
 export type SourceMetrics = {
   active: number;
   payment_failed: number;
@@ -40,6 +47,7 @@ export type SourceMetrics = {
   by_plan: Record<string, number>;
   mrr_pence: number;           // excludes lifetime members; annual amounts divided by 12
   unknown_plans: string[];     // plan names not matching KNOWN_PLAN_PATTERNS
+  tenure_buckets: TenureBuckets | null;  // null when start dates not available
 };
 
 export type MigrationMetrics = {
@@ -85,6 +93,7 @@ export type SupabaseMemberRow = {
   membership_tier: string | null;
   stripe_subscription_id: string | null;
   user_id: string | null;
+  created_at: string | null;
 };
 
 export function computeSupabaseMetrics(rows: SupabaseMemberRow[]): {
@@ -95,10 +104,12 @@ export function computeSupabaseMetrics(rows: SupabaseMemberRow[]): {
   const metrics: SourceMetrics = {
     active: 0, payment_failed: 0, cancelled: 0, expired: 0, pending: 0, spam: 0, other: 0,
     by_plan: {}, mrr_pence: 0, unknown_plans: [],
+    tenure_buckets: { under3m: 0, threeToTwelve: 0, oneToTwo: 0, overTwo: 0 },
   };
   let migrated = 0;
   let migrationInProgress = 0;
   let noAuth = 0;
+  const now = Date.now();
 
   for (const row of rows) {
     const s = (row.status ?? "").toLowerCase();
@@ -131,6 +142,19 @@ export function computeSupabaseMetrics(rows: SupabaseMemberRow[]): {
     else migrationInProgress++;
 
     if (!row.user_id) noAuth++;
+
+    // Tenure: bucket active members by subscription start date
+    if ((s === "active" || s === "trialing") && row.created_at) {
+      const ms = new Date(row.created_at).getTime();
+      if (!isNaN(ms)) {
+        const months = (now - ms) / (1000 * 60 * 60 * 24 * 30.44);
+        const tb = metrics.tenure_buckets!;
+        if      (months < 3)  tb.under3m++;
+        else if (months < 12) tb.threeToTwelve++;
+        else if (months < 24) tb.oneToTwo++;
+        else                  tb.overTwo++;
+      }
+    }
   }
 
   return {
@@ -160,6 +184,7 @@ export type WordPressRow = {
   billing_amount: number;
   billing_unit: string;  // 'month' | 'year'
   is_spam: boolean;
+  start_date: string | null;  // subscription_start_date from WP export, ISO-ish "YYYY-MM-DD HH:MM:SS"
 };
 
 // Splits a CSV text into rows, correctly handling quoted fields that contain newlines.
@@ -212,6 +237,7 @@ export function parseWordPressCsv(csvText: string): WordPressRow[] {
   const unitIdx      = idx("subscription_billing_duration_unit");
   const firstNameIdx = idx("user_firstname");
   const lastNameIdx  = idx("user_lastname");
+  const startDateIdx = idx("subscription_start_date");
 
   if (emailIdx === -1 || statusIdx === -1) return [];
 
@@ -220,6 +246,7 @@ export function parseWordPressCsv(csvText: string): WordPressRow[] {
     if (!email) return [];
     const firstName = (cols[firstNameIdx] ?? "").trim();
     const lastName  = (cols[lastNameIdx]  ?? "").trim();
+    const rawStart  = startDateIdx !== -1 ? (cols[startDateIdx] ?? "").trim() : "";
     return [{
       email,
       status:         (cols[statusIdx] ?? "").toLowerCase().trim(),
@@ -227,6 +254,7 @@ export function parseWordPressCsv(csvText: string): WordPressRow[] {
       billing_amount: parseFloat(cols[amountIdx] ?? "0") || 0,
       billing_unit:   (cols[unitIdx]  ?? "month").toLowerCase(),
       is_spam:        isGibberishName(firstName, lastName),
+      start_date:     rawStart || null,
     }];
   });
 }
@@ -240,8 +268,10 @@ export function computeWordPressMetrics(
   const metrics: SourceMetrics = {
     active: 0, payment_failed: 0, cancelled: 0, expired: 0, pending: 0, spam: 0, other: 0,
     by_plan: {}, mrr_pence: 0, unknown_plans: [],
+    tenure_buckets: { under3m: 0, threeToTwelve: 0, oneToTwo: 0, overTwo: 0 },
   };
   let wpPendingCount = 0;
+  const now = Date.now();
 
   // De-dup: skip emails already in Supabase — migrated members take precedence
   const legacyRows = rows.filter((r) => !supabaseEmails.has(r.email));
@@ -275,6 +305,19 @@ export function computeWordPressMetrics(
       metrics.by_plan[planKey] = (metrics.by_plan[planKey] ?? 0) + 1;
       if (!isKnownPlan(rawPlan) && !metrics.unknown_plans.includes(planKey)) {
         metrics.unknown_plans.push(planKey);
+      }
+
+      // Tenure: bucket by subscription_start_date from WP export
+      if (row.start_date) {
+        const ms = new Date(row.start_date).getTime();
+        if (!isNaN(ms)) {
+          const months = (now - ms) / (1000 * 60 * 60 * 24 * 30.44);
+          const tb = metrics.tenure_buckets!;
+          if      (months < 3)  tb.under3m++;
+          else if (months < 12) tb.threeToTwelve++;
+          else if (months < 24) tb.oneToTwo++;
+          else                  tb.overTwo++;
+        }
       }
     }
 

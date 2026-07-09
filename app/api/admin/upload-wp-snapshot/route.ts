@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
   const { data: supabaseMembers, error: dbError } = await db
     .from("members")
-    .select("email, status, plan_name, amount_pence, membership_tier, stripe_subscription_id, user_id");
+    .select("email, status, plan_name, amount_pence, membership_tier, stripe_subscription_id, user_id, created_at");
 
   if (dbError) {
     console.error("[upload-wp-snapshot] DB error:", dbError.message);
