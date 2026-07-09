@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
   const wpByEmail = new Map(wpRows.map((r) => [r.email, r]));
   for (const sbRow of supabaseRows) {
     const wpRow = wpByEmail.get(sbRow.email.toLowerCase());
-    if (wpRow?.start_date && wpRow.status === "active") {
+    if (wpRow?.start_date) {
       const { error: backfillError } = await db
         .from("members")
         .update({ subscription_start_date: new Date(wpRow.start_date).toISOString() })
