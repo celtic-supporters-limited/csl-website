@@ -109,10 +109,10 @@ export async function POST(req: NextRequest) {
       case "checkout.session.completed": {
         const partial = event.data.object as Stripe.Checkout.Session;
 
-        // Retrieve the full session so line_items and customer are expanded.
+        // Retrieve the full session so line_items, customer, and subscription are expanded.
         const session = await getStripe().checkout.sessions.retrieve(
           partial.id,
-          { expand: ["line_items", "customer"] }
+          { expand: ["line_items", "customer", "subscription"] }
         );
 
         const email = session.customer_details?.email;
@@ -172,6 +172,16 @@ export async function POST(req: NextRequest) {
         // A second checkout by the same Stripe customer (e.g. plan change)
         // updates their record; a brand-new customer always inserts.
         const tier = deriveTier(session);
+
+        // Derive subscription start date: use Stripe subscription.start_date for
+        // recurring plans, or session.created for one-off lifetime payments.
+        const sub = typeof session.subscription === "object" && session.subscription !== null
+          ? session.subscription as Stripe.Subscription
+          : null;
+        const subStartDate = sub?.start_date
+          ? new Date(sub.start_date * 1000).toISOString()
+          : new Date(session.created * 1000).toISOString();
+
         const { data: upsertedMember, error: upsertError } = await db
           .from("members")
           .upsert(
@@ -185,6 +195,7 @@ export async function POST(req: NextRequest) {
               amount_pence: session.amount_total ?? 0,
               status: "active",
               is_lifetime: tier === "Lifetime",
+              subscription_start_date: subStartDate,
             },
             { onConflict: "stripe_customer_id" }
           )
