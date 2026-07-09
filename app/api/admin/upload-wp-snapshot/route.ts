@@ -77,10 +77,31 @@ export async function POST(req: NextRequest) {
   );
   revalidatePath("/");
 
+  // Backfill subscription_start_date for any members row where it is null.
+  // Matches by email — only updates migrated WP members who already have a row.
+  // WP-only members (no members row yet) are handled by the migration scripts.
+  let backfilled = 0;
+  const wpByEmail = new Map(wpRows.map((r) => [r.email, r]));
+  for (const sbRow of supabaseRows) {
+    const wpRow = wpByEmail.get(sbRow.email.toLowerCase());
+    if (wpRow?.start_date && wpRow.status === "active") {
+      const { error: backfillError } = await db
+        .from("members")
+        .update({ subscription_start_date: new Date(wpRow.start_date).toISOString() })
+        .eq("email", sbRow.email)
+        .is("subscription_start_date", null);
+      if (!backfillError) backfilled++;
+    }
+  }
+  if (backfilled > 0) {
+    console.log(`[upload-wp-snapshot] Backfilled subscription_start_date for ${backfilled} members`);
+  }
+
   return NextResponse.json({
     ok: true,
     rows_parsed: wpRows.length,
     legacy_count: snapshot.migration?.not_yet_migrated ?? 0,
     active_combined: snapshot.combined.active_total,
+    start_dates_backfilled: backfilled,
   });
 }
