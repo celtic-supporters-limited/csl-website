@@ -295,19 +295,19 @@ export default async function ReportingPage() {
   const firstSnapshotActive = snapshotGrowth[0]?.active ?? null;
   const netGrowthSinceFirst = firstSnapshotActive !== null ? combinedActive - firstSnapshotActive : null;
 
-  // ── Member tenure distribution (active new-platform members only) ─────────
-  const now = Date.now();
-  const tenureBuckets = { under3m: 0, threeToTwelve: 0, oneToTwo: 0, overTwo: 0 };
-  for (const row of supabaseMembers ?? []) {
-    if ((row.status ?? "").toLowerCase() !== "active") continue;
-    const createdAt = row.created_at ? new Date(row.created_at as string).getTime() : null;
-    if (!createdAt) continue;
-    const months = (now - createdAt) / (1000 * 60 * 60 * 24 * 30.44);
-    if      (months < 3)   tenureBuckets.under3m++;
-    else if (months < 12)  tenureBuckets.threeToTwelve++;
-    else if (months < 24)  tenureBuckets.oneToTwo++;
-    else                   tenureBuckets.overTwo++;
-  }
+  // ── Member tenure distribution — combined WP + new platform ─────────────
+  // Supabase: tenure_buckets computed in computeSupabaseMetrics from created_at.
+  // WordPress: tenure_buckets computed in computeWordPressMetrics from subscription_start_date.
+  // Both are stored in the snapshot; sum them here for a combined view.
+  const sbTenure = liveMetrics.tenure_buckets ?? { under3m: 0, threeToTwelve: 0, oneToTwo: 0, overTwo: 0 };
+  const wpTenure = wpData?.tenure_buckets ?? { under3m: 0, threeToTwelve: 0, oneToTwo: 0, overTwo: 0 };
+  const tenureBuckets = {
+    under3m:       sbTenure.under3m       + wpTenure.under3m,
+    threeToTwelve: sbTenure.threeToTwelve + wpTenure.threeToTwelve,
+    oneToTwo:      sbTenure.oneToTwo      + wpTenure.oneToTwo,
+    overTwo:       sbTenure.overTwo       + wpTenure.overTwo,
+  };
+  const tenureHasWpDates = (wpData?.tenure_buckets ?? null) !== null;
 
   // Geographic helpers (computed once, used in the panel)
   const COUNTRY_NAMES: Record<string, string> = {
@@ -555,7 +555,11 @@ export default async function ReportingPage() {
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
               <h2 className="text-sm font-bold text-gray-900">Member tenure</h2>
-              <p className="text-xs text-gray-500 mt-0.5">New platform members only — WP join dates not available in current export</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {tenureHasWpDates
+                  ? "Combined — new platform (join date) + WordPress (subscription start date)"
+                  : "New platform members only — upload a WP export to include legacy members"}
+              </p>
             </div>
             <table className="w-full">
               <thead>
