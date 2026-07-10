@@ -17,6 +17,13 @@ function trafficLight(used: number, limit: number): TrafficLight {
   return "green";
 }
 
+// Bounce rate uses different thresholds — Resend flags >5% as a deliverability risk.
+function bounceStatus(ratePct: number): TrafficLight {
+  if (ratePct >= 5)  return "red";
+  if (ratePct >= 2)  return "amber";
+  return "green";
+}
+
 function worstStatus(statuses: TrafficLight[]): TrafficLight {
   if (statuses.includes("red"))   return "red";
   if (statuses.includes("amber")) return "amber";
@@ -153,13 +160,20 @@ export default async function OperationsPage() {
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
 
-  const [{ count: emailsToday }, { count: emailsThisMonth }] = await Promise.all([
+  const [
+    { count: emailsToday },
+    { count: emailsThisMonth },
+    { count: bouncesThisMonth },
+  ] = await Promise.all([
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", todayStart.toISOString()),
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", monthStart.toISOString()),
+    db.from("email_bounces").select("id", { count: "exact", head: true }).gte("bounced_at", monthStart.toISOString()),
   ]);
 
-  const todayCount  = emailsToday    ?? 0;
-  const monthCount  = emailsThisMonth ?? 0;
+  const todayCount   = emailsToday       ?? 0;
+  const monthCount   = emailsThisMonth   ?? 0;
+  const bounceCount  = bouncesThisMonth  ?? 0;
+  const bounceRatePct = monthCount > 0 ? (bounceCount / monthCount) * 100 : 0;
 
   // ── Supabase: database size ───────────────────────────────────────────────
 
@@ -179,6 +193,7 @@ export default async function OperationsPage() {
   const allStatuses: TrafficLight[] = [
     trafficLight(todayCount,  100),
     trafficLight(monthCount,  3000),
+    bounceStatus(bounceRatePct),
     trafficLight(dbSizeMb,    DB_LIMIT_MB),
   ];
   const overall = worstStatus(allStatuses);
@@ -232,6 +247,35 @@ export default async function OperationsPage() {
             limit={3000}
             warning="Monthly limit reached. No further emails can be sent this month."
           />
+          {/* Bounce rate — uses Resend webhook data, thresholds differ from capacity metrics */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 text-gray-700 font-medium">
+                <StatusDot s={bounceStatus(bounceRatePct)} />
+                Bounce rate this month
+              </span>
+              <span className="tabular-nums text-gray-600 text-xs">
+                {bounceCount} bounced / {monthCount} sent
+                <span className="text-gray-400 ml-1">({bounceRatePct.toFixed(1)}%)</span>
+              </span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-gray-100">
+              <div
+                className={`h-2 rounded-full ${bounceStatus(bounceRatePct) === "red" ? "bg-red-500" : bounceStatus(bounceRatePct) === "amber" ? "bg-amber-400" : "bg-green-500"}`}
+                style={{ width: `${Math.min(100, bounceRatePct * 10)}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-500">
+              {monthCount === 0
+                ? "No emails sent this month — rate unavailable"
+                : bounceRatePct >= 5
+                ? "Resend may suspend sending if bounce rate exceeds 5%. Investigate bounced addresses immediately."
+                : bounceRatePct >= 2
+                ? "Approaching Resend's 5% concern threshold. Check bounced addresses."
+                : "Within safe range. Resend flags concern above 5%."}
+            </p>
+          </div>
+
           {todayCount >= 80 && todayCount < 100 && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
               Approaching daily limit. If a member migration run is planned today, upgrade Resend to Pro first to avoid blocked sends.
