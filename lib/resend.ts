@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { getSupabase } from "@/lib/supabase";
 
 let _client: Resend | null = null;
 
@@ -10,6 +11,17 @@ function getResend(): Resend | null {
   }
   if (!_client) _client = new Resend(key);
   return _client;
+}
+
+function logEmailSend(emailType: string): void {
+  // fire-and-forget — never blocks the send, never throws
+  ;(async () => {
+    try {
+      await getSupabase().from("email_log").insert({ email_type: emailType });
+    } catch (e) {
+      console.error("[resend] email_log insert failed:", e);
+    }
+  })();
 }
 
 const SITE_URL =
@@ -50,6 +62,7 @@ export async function sendShareTracingNotification(
     subject: `New Share Tracing Enquiry - ${params.name}`,
     html: intakeHtml(params),
   });
+  logEmailSend("share_tracing");
 }
 
 export async function sendProxyNotification(
@@ -64,6 +77,7 @@ export async function sendProxyNotification(
     subject: `New Proxy Assignment Request - ${params.name}`,
     html: intakeHtml(params),
   });
+  logEmailSend("proxy");
 }
 
 export async function sendWelcomeEmail({
@@ -94,6 +108,7 @@ export async function sendWelcomeEmail({
       <p>Celtic Supporters Limited</p>
     `,
   });
+  logEmailSend("welcome");
 }
 
 export async function sendPasswordResetEmail({
@@ -118,6 +133,7 @@ export async function sendPasswordResetEmail({
       <p>Celtic Supporters Limited</p>
     `,
   });
+  logEmailSend("password_reset");
 }
 
 export async function sendMagicLinkEmail({
@@ -142,6 +158,7 @@ export async function sendMagicLinkEmail({
       <p>Celtic Supporters Limited</p>
     `,
   });
+  logEmailSend("magic_link");
 }
 
 export async function sendPaymentFailedEmail({
@@ -173,6 +190,7 @@ export async function sendPaymentFailedEmail({
       <p>Celtic Supporters Limited</p>
     `,
   });
+  logEmailSend("payment_failed");
 }
 
 export async function sendPaymentFailedVolunteerAlert({
@@ -200,6 +218,7 @@ export async function sendPaymentFailedVolunteerAlert({
       <p><a href="${SITE_URL}/member-portal/admin/members?q=${encodeURIComponent(memberEmail)}">View member timeline</a></p>
     `,
   });
+  logEmailSend("payment_failed_alert");
 }
 
 export async function sendCardExpiryWarningEmail({
@@ -236,4 +255,5 @@ export async function sendCardExpiryWarningEmail({
       <p>Celtic Supporters Limited</p>
     `,
   });
+  logEmailSend("card_expiry");
 }
