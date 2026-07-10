@@ -84,19 +84,14 @@ export default function LoginForm({ redirectTo, reason }: { redirectTo?: string;
     setLoading(true);
     setErrorMsg("");
 
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-    if (redirectTo) callbackUrl.searchParams.set("redirectTo", redirectTo);
-
-    const { error } = await createBrowserSupabase().auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: { emailRedirectTo: callbackUrl.toString() },
+    // Server handles admin link generation and Resend delivery — same pattern as
+    // password reset. Avoids signInWithOtp (PKCE, cross-browser breakage) and
+    // Supabase's verify endpoint (consumed by Microsoft SafeLinks pre-fetch).
+    await fetch("/api/auth/magic-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim().toLowerCase() }),
     });
-
-    if (error) {
-      setLoading(false);
-      setErrorMsg(error.message);
-      return;
-    }
 
     setLoading(false);
     setView("magic-sent");
