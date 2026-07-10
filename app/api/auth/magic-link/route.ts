@@ -55,20 +55,8 @@ export async function POST(req: NextRequest) {
     email,
   });
 
-  if (!linkError && linkData?.properties?.action_link) {
-    const actionLink = linkData.properties.action_link;
-    const hashIndex = actionLink.indexOf("#");
-    let magicLink = `${SITE_URL}/auth/reset?error=missing_tokens`;
-
-    if (hashIndex !== -1) {
-      const hashParams = new URLSearchParams(actionLink.slice(hashIndex + 1));
-      const accessToken = hashParams.get("access_token");
-      const refreshToken = hashParams.get("refresh_token");
-
-      if (accessToken && refreshToken) {
-        magicLink = `${SITE_URL}/auth/reset?access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
-      }
-    }
+  if (!linkError && linkData?.properties?.hashed_token) {
+    const magicLink = `${SITE_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink`;
 
     try {
       await sendMagicLinkEmail({ to: email, magicLink });

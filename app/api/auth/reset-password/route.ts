@@ -54,21 +54,8 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  if (!linkError && linkData?.properties?.action_link) {
-    console.log("[reset-password] hashed_token:", linkData.properties.hashed_token);
-    const actionLink = linkData.properties.action_link;
-    const hashIndex = actionLink.indexOf("#");
-    let resetLink = `${SITE_URL}/auth/reset?error=missing_tokens`;
-
-    if (hashIndex !== -1) {
-      const hashParams = new URLSearchParams(actionLink.slice(hashIndex + 1));
-      const accessToken = hashParams.get("access_token");
-      const refreshToken = hashParams.get("refresh_token");
-
-      if (accessToken && refreshToken) {
-        resetLink = `${SITE_URL}/auth/reset?access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
-      }
-    }
+  if (!linkError && linkData?.properties?.hashed_token) {
+    const resetLink = `${SITE_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=recovery`;
 
     try {
       await sendPasswordResetEmail({ to: email, resetLink });
