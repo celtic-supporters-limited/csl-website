@@ -54,29 +54,33 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  console.log("[reset-password] generateLink result:", {
-    hasError: !!linkError,
-    errorMsg: linkError?.message ?? null,
-    hasActionLink: !!linkData?.properties?.action_link,
-    linkDataKeys: linkData ? Object.keys(linkData) : null,
-  });
-
   if (!linkError && linkData?.properties?.action_link) {
-    // Await the Resend call — fire-and-forget is terminated by Vercel before the
-    // promise resolves in a serverless context.
+    // Supabase returns tokens in the URL hash fragment (#access_token=...&refresh_token=...).
+    // Hash fragments are stripped by email link-scanning proxies (Microsoft SafeLinks,
+    // Proofpoint, Mimecast) because hashes are client-side only and never sent over HTTP.
+    // Extract the tokens and rebuild the link with query parameters, which are preserved
+    // through URL rewriting.
+    const actionLink = linkData.properties.action_link;
+    const hashIndex = actionLink.indexOf("#");
+    let resetLink = `${SITE_URL}/auth/reset?error=missing_tokens`;
+
+    if (hashIndex !== -1) {
+      const hashParams = new URLSearchParams(actionLink.slice(hashIndex + 1));
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (accessToken && refreshToken) {
+        resetLink = `${SITE_URL}/auth/reset?access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
+      }
+    }
+
     try {
-      await sendPasswordResetEmail({
-        to: email,
-        resetLink: linkData.properties.action_link,
-      });
+      await sendPasswordResetEmail({ to: email, resetLink });
     } catch (err) {
       console.error("[reset-password] Resend error:", err);
     }
   } else if (linkError) {
-    // User may not exist — log but do not reveal to caller.
     console.log("[reset-password] generateLink skipped:", linkError.message);
-  } else {
-    console.log("[reset-password] generateLink returned no action_link:", JSON.stringify(linkData));
   }
 
   // Log the event fire-and-forget.
