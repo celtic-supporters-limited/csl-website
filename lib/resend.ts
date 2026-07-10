@@ -120,6 +120,30 @@ export async function sendPasswordResetEmail({
   });
 }
 
+export async function sendMagicLinkEmail({
+  to,
+  magicLink,
+}: {
+  to: string;
+  magicLink: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  await resend.emails.send({
+    from: "Celtic Supporters Limited <info@celticsupporters.net>",
+    to,
+    subject: "Your CSL sign-in link",
+    html: `
+      <p>Hello,</p>
+      <p>Here is your one-click sign-in link for Celtic Supporters Limited. This link is valid for 24 hours.</p>
+      <p><a href="${magicLink}" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Sign in to CSL</a></p>
+      <p style="color:#666;font-size:0.9em">If you did not request this link, you can ignore this email — your account is safe.</p>
+      <p>Celtic Supporters Limited</p>
+    `,
+  });
+}
+
 export async function sendPaymentFailedEmail({
   to,
   firstName,
