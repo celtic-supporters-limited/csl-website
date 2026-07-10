@@ -8,13 +8,14 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { createBrowserSupabase } from "@/lib/supabase-browser";
 
 function ConfirmInner() {
   const params = useSearchParams();
   const tokenHash = params.get("token_hash");
   const type = params.get("type") as "recovery" | "magiclink" | null;
+  const expired = params.get("error") === "expired";
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
 
   if (!tokenHash || !type) {
     return (
@@ -27,38 +28,71 @@ function ConfirmInner() {
     );
   }
 
+  const isReset = type === "recovery";
+
+  // The server redirected back here with ?error=expired — token is used or stale.
+  if (expired) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center">
+        <div className="text-4xl mb-4">🔗</div>
+        <h2 className="font-bold text-xl text-gray-900 mb-2">Link expired</h2>
+        <p className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-2.5 text-sm text-red-700">
+          This link has expired or already been used.{" "}
+          <a href={isReset ? "/login#forgot" : "/login"} className="underline">
+            Request a new link.
+          </a>
+        </p>
+        <a href="/login" className="text-sm text-gray-400 hover:text-gray-600 hover:underline">
+          Back to sign in
+        </a>
+      </div>
+    );
+  }
+
   async function handleContinue() {
     setLoading(true);
-    setErrorMsg("");
-
     try {
+      // Step 1: redeem the OTP server-side to get session tokens.
       const res = await fetch("/api/auth/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token_hash: tokenHash, type }),
       });
+      const json = await res.json() as {
+        ok: boolean;
+        message?: string;
+        access_token?: string;
+        refresh_token?: string;
+        destination?: string;
+      };
 
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as { message?: string };
-        setErrorMsg(body.message ?? "This link has expired or already been used.");
-        setLoading(false);
+      if (!json.ok || !json.access_token || !json.refresh_token) {
+        // Token expired — redirect to the expired card.
+        window.location.href = `/auth/confirm?token_hash=${encodeURIComponent(tokenHash!)}&type=${type}&error=expired`;
         return;
       }
 
-      sessionStorage.setItem("csl-auth-alive", "1");
+      // Step 2: store the session in browser cookies via setSession().
+      // This mirrors the working /auth/callback hash flow and produces a
+      // session cookie that the middleware's getUser() call accepts.
+      const supabase = createBrowserSupabase();
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: json.access_token,
+        refresh_token: json.refresh_token,
+      });
 
-      if (type === "recovery") {
-        window.location.href = "/auth/update-password";
-      } else {
-        window.location.href = "/member-portal";
+      if (sessionError) {
+        window.location.href = "/login?error=auth_failed";
+        return;
       }
+
+      // Step 3: navigate to the destination.
+      sessionStorage.setItem("csl-auth-alive", "1");
+      window.location.href = json.destination ?? "/member-portal";
     } catch {
-      setErrorMsg("Something went wrong. Please try again or request a new link.");
-      setLoading(false);
+      window.location.href = "/login?error=auth_failed";
     }
   }
-
-  const isReset = type === "recovery";
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center">
@@ -71,15 +105,6 @@ function ConfirmInner() {
           ? "Click the button below to continue to the password reset form."
           : "Click the button below to sign in to your member portal."}
       </p>
-
-      {errorMsg && (
-        <p className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-2.5 text-sm text-red-700">
-          {errorMsg}{" "}
-          <a href={isReset ? "/login#forgot" : "/login"} className="underline">
-            Request a new link.
-          </a>
-        </p>
-      )}
 
       <button
         onClick={handleContinue}
