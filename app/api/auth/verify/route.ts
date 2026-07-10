@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { maxAge: _m, expires: _e, ...sessionOptions } =
               (options ?? {}) as { maxAge?: unknown; expires?: unknown; [k: string]: unknown };
             successResponse.cookies.set(
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
     }
   );
 
-  const { data: verifyData, error } = await supabase.auth.verifyOtp({
+  const { error } = await supabase.auth.verifyOtp({
     token_hash,
     type: type as "recovery" | "magiclink",
   });
