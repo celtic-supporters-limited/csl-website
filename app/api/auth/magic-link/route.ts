@@ -5,7 +5,7 @@ import { sendMagicLinkEmail } from "@/lib/resend";
 // In-memory rate limiter — resets on cold starts; best-effort deterrent only.
 const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
 const RATE_LIMIT = 5;
-const WINDOW_MS = 15 * 60 * 1000;
+const WINDOW_MS = 30 * 60 * 1000;
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://csl-website-ten.vercel.app";
