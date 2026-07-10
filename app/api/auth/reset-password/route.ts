@@ -55,11 +55,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (!linkError && linkData?.properties?.action_link) {
-    // Supabase returns tokens in the URL hash fragment (#access_token=...&refresh_token=...).
-    // Hash fragments are stripped by email link-scanning proxies (Microsoft SafeLinks,
-    // Proofpoint, Mimecast) because hashes are client-side only and never sent over HTTP.
-    // Extract the tokens and rebuild the link with query parameters, which are preserved
-    // through URL rewriting.
+    console.log("[reset-password] hashed_token:", linkData.properties.hashed_token);
     const actionLink = linkData.properties.action_link;
     const hashIndex = actionLink.indexOf("#");
     let resetLink = `${SITE_URL}/auth/reset?error=missing_tokens`;
