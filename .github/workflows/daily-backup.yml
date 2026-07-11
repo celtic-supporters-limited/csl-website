@@ -1,0 +1,31 @@
+name: Daily database backup
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 02:00 UTC every day
+  workflow_dispatch:        # Allow manual trigger from the Actions tab
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Trigger backup endpoint
+        run: |
+          response=$(curl -s -o response.json -w "%{http_code}" \
+            -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://csl-website-ten.vercel.app/api/cron/backup-members)
+
+          echo "HTTP status: $response"
+          echo "Response body:"
+          cat response.json
+
+          if [ "$response" != "200" ]; then
+            echo "Backup failed with HTTP status $response"
+            exit 1
+          fi
+
+          total_rows=$(cat response.json | python3 -c "import sys,json; print(json.load(sys.stdin).get('totalRows', 'unknown'))")
+          echo "Backup successful — $total_rows rows exported"
