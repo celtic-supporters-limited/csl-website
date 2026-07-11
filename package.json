@@ -16,12 +16,12 @@
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
     "docx": "^9.7.1",
+    "exceljs": "^4.4.0",
     "next": "14.2.35",
     "react": "^18",
     "react-dom": "^18",
     "resend": "^6.12.4",
-    "stripe": "^22.2.0",
-    "xlsx": "^0.18.5"
+    "stripe": "^22.2.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
