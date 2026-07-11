@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import PortalShell from "@/components/PortalShell";
+import BackupButton from "@/components/BackupButton";
 
 export const metadata: Metadata = { title: "Operations | CSL Admin" };
 export const dynamic = "force-dynamic";
@@ -313,6 +314,18 @@ export default async function OperationsPage() {
               note="Free tier has daily backups only — no rollback to arbitrary point in time"
             />
           </div>
+        </ServiceCard>
+
+        {/* Database Backup */}
+        <ServiceCard
+          title="Database Backup"
+          plan="Daily automated backup via GitHub Actions — sent to info@celticsupporters.net"
+        >
+          <p className="text-sm text-gray-600">
+            Exports all member data as CSV attachments and emails them to the volunteer inbox.
+            Run a manual backup before any migration script or bulk data operation.
+          </p>
+          <BackupButton />
         </ServiceCard>
 
         {/* Vercel */}
