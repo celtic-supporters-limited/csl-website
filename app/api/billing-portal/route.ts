@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import { getStripe } from "@/lib/stripe";
 
-export async function POST(req: NextRequest) {
+export async function POST() {
   const authClient = createServerSupabase();
   const {
     data: { user },
@@ -46,10 +46,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const origin =
-    req.headers.get("origin") ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "http://localhost:3000";
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
   try {
     const portalSession = await getStripe().billingPortal.sessions.create({
