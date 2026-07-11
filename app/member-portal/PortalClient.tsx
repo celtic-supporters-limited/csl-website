@@ -1539,6 +1539,7 @@ const NAV_ITEMS: NavItem[] = [
   { kind: "tab",  tab: "membership", label: "My Membership", icon: "&#128179;" },
   { kind: "tab",  tab: "documents",  label: "Documents",     icon: "&#128218;" },
   { kind: "tab",  tab: "enquiries",  label: "My Enquiries",  icon: "&#128269;" },
+  { kind: "link", href: "/resolution", label: "Sign Resolution", icon: "&#9998;" },
   { kind: "tab",  tab: "profile",    label: "Edit Profile",  icon: "&#9998;"   },
 ];
 
