@@ -1,7 +1,10 @@
 import { getSupabase } from "@/lib/supabase";
 import { Resend } from "resend";
 
-// Tables exported in this order — payments and events are confirmed obsolete and excluded.
+// Tables exported in this order.
+// Excluded: payments, events (confirmed obsolete).
+// Excluded: email_log, email_bounces (operational metrics only — RLS blocks service_role
+//   SELECT; not needed for member data recovery; operations page re-populates from live sends).
 const BACKUP_TABLES = [
   "members",
   "shareholder_cases",
@@ -10,8 +13,6 @@ const BACKUP_TABLES = [
   "site_config",
   "member_events",
   "membership_snapshots",
-  "email_log",
-  "email_bounces",
 ] as const;
 
 export type TableBackup = {
