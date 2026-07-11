@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   const dateSlug = new Date().toISOString().slice(0, 10);
 
   if (format === "xlsx") {
-    const buf = buildReportXlsx(data);
+    const buf = await buildReportXlsx(data);
     return new NextResponse(new Uint8Array(buf), {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
