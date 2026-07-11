@@ -67,8 +67,8 @@ export async function POST(req: NextRequest) {
   });
 
   if (insertError) {
-    console.error("[upload-wp-snapshot] Insert failed:", insertError.message, insertError.code, insertError.details);
-    return NextResponse.json({ error: `Failed to save snapshot: ${insertError.message} (${insertError.code})` }, { status: 500 });
+    console.error("[upload-wp-snapshot] insert error:", insertError.message, insertError.code, insertError.details);
+    return NextResponse.json({ error: "Failed to save snapshot. Check server logs." }, { status: 500 });
   }
 
   await db.from("site_config").upsert(
