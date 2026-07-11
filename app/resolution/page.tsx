@@ -20,7 +20,6 @@ export default async function ResolutionPage() {
     redirect("/login?redirectTo=/resolution");
   }
 
-  // Fetch signature counts and resolution target
   const supabase = getSupabase();
 
   const [signaturesRes, configRes] = await Promise.all([
@@ -47,8 +46,45 @@ export default async function ResolutionPage() {
             Support the CSL Resolution
           </h1>
           <p className="text-white/80 max-w-2xl text-base sm:text-lg leading-relaxed">
-            Celtic Supporters Limited is requisitioning a resolution at the next Celtic plc Annual General Meeting. We need signatures from Celtic shareholders and supporters to demonstrate the breadth of backing for shareholder accountability. Add your name below to support this initiative.
+            Celtic Supporters Limited is requisitioning a resolution at the next Celtic plc Annual General Meeting. Use the form below to add your name and tell us whether you hold Celtic shares. You do not need to be a CSL member to sign.
           </p>
+        </Container>
+      </section>
+
+      {/* Explainer */}
+      <section className="bg-white border-b border-gray-200 py-10">
+        <Container>
+          <div className="max-w-3xl grid sm:grid-cols-2 gap-8">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 mb-3">What this is</h2>
+              <p className="text-gray-600 text-sm leading-relaxed">
+                CSL is putting a formal resolution to Celtic plc shareholders at the next Annual General Meeting. To lodge the resolution with Celtic, we must demonstrate sufficient shareholder support. We are collecting signatures now so we can submit on time.
+              </p>
+              <p className="text-gray-600 text-sm leading-relaxed mt-3">
+                The signatures must be with Celtic by early October. We are going to members first, then opening wider through August and September.
+              </p>
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 mb-3">Who should sign</h2>
+              <p className="text-gray-600 text-sm leading-relaxed">
+                Everyone who supports this initiative is welcome to sign, whether or not you hold Celtic shares.
+              </p>
+              <ul className="mt-3 space-y-2 text-sm text-gray-600">
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 text-csl-dark font-bold shrink-0">&#10003;</span>
+                  <span><strong className="text-gray-800">Direct registered shareholders</strong> — those named on the Celtic share register via Computershare. These signatures count toward the legal threshold we need to lodge the resolution.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 text-gray-400 font-bold shrink-0">&#10003;</span>
+                  <span><strong className="text-gray-800">Nominee and platform holders</strong> — shares held through a broker, ISA, SIPP or investment platform. These signatures strengthen the campaign but do not count toward the legal threshold.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 text-gray-400 font-bold shrink-0">&#10003;</span>
+                  <span><strong className="text-gray-800">Non-shareholders</strong> — supporters who do not hold Celtic shares. Your backing matters for the campaign even if it does not count toward the requisition threshold.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
         </Container>
       </section>
 
@@ -71,7 +107,8 @@ export default async function ResolutionPage() {
               />
             </div>
             <p className="text-[0.8rem] text-gray-500 mt-2">
-              Total signatures (all supporters): <span className="font-semibold text-gray-700">{totalCount.toLocaleString("en-GB")}</span>
+              Total signatures (all supporters):{" "}
+              <span className="font-semibold text-gray-700">{totalCount.toLocaleString("en-GB")}</span>
             </p>
           </div>
         </Container>
