@@ -307,7 +307,7 @@ export default function ResolutionForm() {
           Are you a CSL member? <span className="text-red-500">*</span>
         </p>
         <p className="text-[0.78rem] text-gray-500 mb-1.5">
-          For information only — we will verify automatically.
+          For information only. We will verify automatically.
         </p>
         <div className="flex gap-6">
           {(["Yes", "No"] as const).map((opt) => (
@@ -381,7 +381,7 @@ export default function ResolutionForm() {
 
       {/* Privacy notice */}
       <p className="text-center text-[0.78rem] text-gray-400 mt-4 leading-relaxed">
-        Celtic Supporters Limited is registered with the ICO (ZB985030). The information you provide will be used solely to submit and verify this AGM requisition and for related campaign communications. Your data will not be shared with third parties outside of this purpose. You may request deletion of your data by contacting{" "}
+        Celtic Supporters Limited is registered with the ICO (ZB985030). Your details will be used to submit and verify this requisition and for related campaign communications. They will not be passed to third parties. To request deletion, contact{" "}
         <a href="mailto:info@celticsupporters.net" className="underline">info@celticsupporters.net</a>.
         {" "}
         <Link href="/privacy" className="underline">Full privacy policy.</Link>
