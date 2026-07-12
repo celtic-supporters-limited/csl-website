@@ -1569,25 +1569,21 @@ export default function PortalClient({
   const pathname = usePathname();
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // sessionStorage is cleared on browser close and is never restored by bfcache
-  // or Chrome's "Continue where you left off". If the flag is absent the user
-  // returned without actively signing in — enforce re-login.
-  // The pageshow handler catches bfcache restores (event.persisted === true),
-  // which bypass the initial mount check entirely.
+  // On bfcache restore (back/forward navigation), verify the session is still
+  // valid with a live getUser() call — bfcache restores bypass React mount and
+  // middleware, so we must check the Supabase session directly.
   useEffect(() => {
     const supabase = createBrowserSupabase();
 
-    function enforceSession() {
-      if (!sessionStorage.getItem("csl-auth-alive")) {
-        void supabase.auth.signOut();
+    async function enforceSession() {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) {
         window.location.href = "/login";
       }
     }
 
-    enforceSession();
-
     function handlePageShow(event: PageTransitionEvent) {
-      if (event.persisted) enforceSession();
+      if (event.persisted) void enforceSession();
     }
 
     window.addEventListener("pageshow", handlePageShow);
@@ -1602,6 +1598,7 @@ export default function PortalClient({
       if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
       inactivityTimer.current = setTimeout(() => {
         void supabase.auth.signOut();
+        sessionStorage.clear();
         window.location.href = "/login?reason=timeout";
       }, INACTIVITY_MS);
     }
@@ -1622,6 +1619,7 @@ export default function PortalClient({
   async function handleSignOut() {
     setSigningOut(true);
     await createBrowserSupabase().auth.signOut();
+    sessionStorage.clear();
     router.push("/");
     router.refresh();
   }

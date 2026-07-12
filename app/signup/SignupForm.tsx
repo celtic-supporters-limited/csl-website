@@ -62,7 +62,6 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
       // swallow — don't block the user from accessing their portal
     }
 
-    sessionStorage.setItem("csl-auth-alive", "1");
     // window.location.href ensures the browser sends the new session cookie
     // with the request so middleware sees the session immediately.
     // router.push races the cookie and causes a redirect back to /login.

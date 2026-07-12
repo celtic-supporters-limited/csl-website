@@ -41,7 +41,6 @@ export default function AuthCallbackPage() {
           window.location.href = "/login?error=auth_failed";
           return;
         }
-        sessionStorage.setItem("csl-auth-alive", "1");
         window.location.href =
           hashType === "recovery" ? "/auth/update-password" : redirectTo;
         return;
@@ -72,7 +71,6 @@ export default function AuthCallbackPage() {
         }).catch((err) =>
           console.error("[auth/callback] email-change-confirm error:", err)
         );
-        sessionStorage.setItem("csl-auth-alive", "1");
         window.location.href = "/member-portal?tab=profile&email_updated=true";
         return;
       }
@@ -90,7 +88,6 @@ export default function AuthCallbackPage() {
         }
       }
 
-      sessionStorage.setItem("csl-auth-alive", "1");
       window.location.href = finalRedirect;
     }
 
