@@ -1539,6 +1539,7 @@ const NAV_ITEMS: NavItem[] = [
   { kind: "tab",  tab: "membership", label: "My Membership", icon: "&#128179;" },
   { kind: "tab",  tab: "documents",  label: "Documents",     icon: "&#128218;" },
   { kind: "tab",  tab: "enquiries",  label: "My Enquiries",  icon: "&#128269;" },
+  { kind: "link", href: "/resolution", label: "Sign Resolution", icon: "&#9998;" },
   { kind: "tab",  tab: "profile",    label: "Edit Profile",  icon: "&#9998;"   },
 ];
 
@@ -1672,6 +1673,7 @@ export default function PortalClient({
                         { href: "/member-portal/admin/members",       label: "Member Events" },
                         { href: "/member-portal/admin/reporting",     label: "Reporting"     },
                         { href: "/member-portal/admin/operations",    label: "Operations"    },
+                        { href: "/member-portal/admin/resolution",    label: "Resolution"    },
                         { href: "/member-portal/admin/documents/new", label: "Add Document"  },
                       ].map((item) => (
                         <Link
@@ -1742,6 +1744,7 @@ export default function PortalClient({
                         { href: "/member-portal/admin/members",       icon: "&#128203;", label: "Member Events" },
                         { href: "/member-portal/admin/reporting",     icon: "&#128202;", label: "Reporting"      },
                         { href: "/member-portal/admin/operations",    icon: "&#9881;",   label: "Operations"     },
+                        { href: "/member-portal/admin/resolution",    icon: "&#9998;",   label: "Resolution"     },
                         { href: "/member-portal/admin/documents/new", icon: "&#128196;", label: "Add Document"   },
                       ].map((item) => (
                         <li key={item.href}>
