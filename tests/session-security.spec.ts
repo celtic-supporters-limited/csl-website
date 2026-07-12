@@ -117,17 +117,16 @@ test("session does not persist after browser close", async ({ browser }) => {
 });
 
 // ---------------------------------------------------------------------------
-// TEST 3 — Session rejected when cookies are restored but sessionStorage is not
+// TEST 3 — Session accepted when auth cookies are present (no sessionStorage needed)
 // ---------------------------------------------------------------------------
-// Chrome's "Continue where you left off" restores session cookies on browser
-// reopen, which bypasses the session-cookie approach. sessionStorage is the
-// only browser storage Chrome does NOT restore. We simulate this by copying
-// the auth cookies into a fresh browser context (no sessionStorage) and
-// confirming the portal kicks the user back to /login.
+// After removing the csl-auth-alive sessionStorage flag, the portal relies
+// solely on the Supabase session cookie (validated server-side by the middleware).
+// A fresh browser context with valid auth cookies (simulating Chrome session
+// restore or a second tab) should load the portal without signing the user out.
 // ---------------------------------------------------------------------------
 
 test(
-  "portal rejects session if cookies are restored but sessionStorage is absent",
+  "portal accepts session when cookies are present and sessionStorage is absent",
   async ({ browser }) => {
     test.skip(
       !hasCredentials,
@@ -144,15 +143,15 @@ test(
     );
     await ctx1.close();
 
-    // Create a fresh context with the auth cookies injected (simulates Chrome
-    // session restore) but with no sessionStorage (never set in this context).
+    // Create a fresh context with the auth cookies injected but no sessionStorage
+    // (simulates Chrome session restore or opening a second tab directly).
     const ctx2 = await browser.newContext();
     await ctx2.addCookies(authCookies);
     const page2 = await ctx2.newPage();
     await page2.goto("/member-portal");
 
-    // PortalClient should detect the missing liveness flag, sign out, and redirect.
-    await expect(page2).toHaveURL(/\/login/, { timeout: 15_000 });
+    // Portal should load — middleware validates the cookie and permits entry.
+    await expect(page2).toHaveURL(/\/member-portal/, { timeout: 15_000 });
     await ctx2.close();
   }
 );

@@ -52,7 +52,6 @@ export default function UpdatePasswordForm() {
       return;
     }
 
-    sessionStorage.setItem("csl-auth-alive", "1");
     window.location.href = "/member-portal";
   }
 

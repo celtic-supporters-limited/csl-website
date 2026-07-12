@@ -85,15 +85,14 @@ export default function PortalShell({ user, member, children }: Props) {
 
   useEffect(() => {
     const supabase = createBrowserSupabase();
-    function enforceSession() {
-      if (!sessionStorage.getItem("csl-auth-alive")) {
-        void supabase.auth.signOut();
+    async function enforceSession() {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) {
         window.location.href = "/login";
       }
     }
-    enforceSession();
     function handlePageShow(event: PageTransitionEvent) {
-      if (event.persisted) enforceSession();
+      if (event.persisted) void enforceSession();
     }
     window.addEventListener("pageshow", handlePageShow);
     return () => window.removeEventListener("pageshow", handlePageShow);
@@ -105,6 +104,7 @@ export default function PortalShell({ user, member, children }: Props) {
       if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
       inactivityTimer.current = setTimeout(() => {
         void supabase.auth.signOut();
+        sessionStorage.clear();
         window.location.href = "/login?reason=timeout";
       }, INACTIVITY_MS);
     }
@@ -123,6 +123,7 @@ export default function PortalShell({ user, member, children }: Props) {
   async function handleSignOut() {
     setSigningOut(true);
     await createBrowserSupabase().auth.signOut();
+    sessionStorage.clear();
     router.push("/");
     router.refresh();
   }

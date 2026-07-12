@@ -87,7 +87,6 @@ function ConfirmInner() {
       }
 
       // Step 3: navigate to the destination.
-      sessionStorage.setItem("csl-auth-alive", "1");
       window.location.href = json.destination ?? "/member-portal";
     } catch {
       window.location.href = "/login?error=auth_failed";
