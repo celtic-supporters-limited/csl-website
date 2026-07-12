@@ -72,15 +72,15 @@ export default async function ResolutionPage() {
               <ul className="mt-3 space-y-2 text-sm text-gray-600">
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 text-csl-dark font-bold shrink-0">&#10003;</span>
-                  <span><strong className="text-gray-800">Direct registered shareholders</strong> — those named on the Celtic share register via Computershare. These signatures count toward the legal threshold we need to lodge the resolution.</span>
+                  <span><strong className="text-gray-800">Direct registered shareholders</strong> - those named on the Celtic share register via Computershare. These signatures count toward the legal threshold we need to lodge the resolution.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 text-gray-400 font-bold shrink-0">&#10003;</span>
-                  <span><strong className="text-gray-800">Nominee and platform holders</strong> — shares held through a broker, ISA, SIPP or investment platform. These signatures strengthen the campaign but do not count toward the legal threshold.</span>
+                  <span><strong className="text-gray-800">Nominee and platform holders</strong> - shares held through a broker, ISA, SIPP or investment platform. These signatures strengthen the campaign but do not count toward the legal threshold.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 text-gray-400 font-bold shrink-0">&#10003;</span>
-                  <span><strong className="text-gray-800">Non-shareholders</strong> — supporters who do not hold Celtic shares. Your backing matters for the campaign even if it does not count toward the requisition threshold.</span>
+                  <span><strong className="text-gray-800">Non-shareholders</strong> - supporters who do not hold Celtic shares. Your backing matters for the campaign even if it does not count toward the requisition threshold.</span>
                 </li>
               </ul>
             </div>
