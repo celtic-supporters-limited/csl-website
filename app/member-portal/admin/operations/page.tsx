@@ -18,7 +18,7 @@ function trafficLight(used: number, limit: number): TrafficLight {
   return "green";
 }
 
-// Bounce rate uses different thresholds — Resend flags >5% as a deliverability risk.
+// Bounce rate uses different thresholds - Resend flags >5% as a deliverability risk.
 function bounceStatus(ratePct: number): TrafficLight {
   if (ratePct >= 5)  return "red";
   if (ratePct >= 2)  return "amber";
@@ -183,7 +183,7 @@ export default async function OperationsPage() {
     const { data } = await db.rpc("admin_get_db_size_bytes");
     dbSizeBytes = typeof data === "number" ? data : 0;
   } catch {
-    // RPC not yet created — show 0 until migration is run
+    // RPC not yet created - show 0 until migration is run
   }
 
   const dbSizeMb   = Math.round(dbSizeBytes / 1024 / 1024);
@@ -233,8 +233,8 @@ export default async function OperationsPage() {
     overall === "amber" ? "bg-amber-50 border-amber-200 text-amber-800" :
                           "bg-green-50 border-green-200 text-green-800";
   const bannerMsg =
-    overall === "red"   ? "One or more services are at or near their free-tier limit. Action required." :
-    overall === "amber" ? "One or more services are approaching their free-tier limit. Monitor closely." :
+    overall === "red"   ? "One or more services are at or near their free-tier limit. Check the items marked red below." :
+    overall === "amber" ? "One or more services are approaching their free-tier limit. Review the items marked amber below." :
                           "All services are within safe operating limits.";
 
   const lastChecked = now.toLocaleString("en-GB", {
@@ -262,7 +262,7 @@ export default async function OperationsPage() {
         {/* Resend */}
         <ServiceCard
           title="Resend"
-          plan="Free — 100 emails/day, 3,000 emails/month"
+          plan="Free - 100 emails/day, 3,000 emails/month"
           upgrade="Pro plan: £20/month removes the daily cap and raises the monthly limit to 50,000."
         >
           <Metric
@@ -277,7 +277,7 @@ export default async function OperationsPage() {
             limit={3000}
             warning="Monthly limit reached. No further emails can be sent this month."
           />
-          {/* Bounce rate — uses Resend webhook data, thresholds differ from capacity metrics */}
+          {/* Bounce rate - uses Resend webhook data, thresholds differ from capacity metrics */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2 text-gray-700 font-medium">
@@ -297,9 +297,9 @@ export default async function OperationsPage() {
             </div>
             <p className="text-xs text-gray-500">
               {monthCount === 0
-                ? "No emails sent this month — rate unavailable"
+                ? "No emails sent this month - rate unavailable"
                 : bounceRatePct >= 5
-                ? "Resend may suspend sending if bounce rate exceeds 5%. Investigate bounced addresses immediately."
+                ? "Resend may suspend sending if bounce rate exceeds 5%. Check Resend Logs for bounced addresses."
                 : bounceRatePct >= 2
                 ? "Approaching Resend's 5% concern threshold. Check bounced addresses."
                 : "Within safe range. Resend flags concern above 5%."}
@@ -316,7 +316,7 @@ export default async function OperationsPage() {
         {/* Supabase */}
         <ServiceCard
           title="Supabase"
-          plan="Free — 500 MB database, 2 active projects"
+          plan="Free - 500 MB database, 2 active projects"
           upgrade="Pro plan: ~£25/month per project removes auto-pause and adds daily backups with 7-day retention."
         >
           <Metric
@@ -330,7 +330,7 @@ export default async function OperationsPage() {
             <StaticLimit
               label="Active projects"
               value="2 / 2"
-              note="At ceiling — no headroom for additional environments"
+              note="At ceiling - no headroom for additional environments"
             />
             <StaticLimit
               label="Auto-pause (inactivity)"
@@ -348,7 +348,7 @@ export default async function OperationsPage() {
         {/* Database Backup */}
         <ServiceCard
           title="Database Backup"
-          plan="Daily at 02:00 UTC via GitHub Actions — CSV export emailed to info@celticsupporters.net"
+          plan="Daily at 02:00 UTC via GitHub Actions - CSV export emailed to info@celticsupporters.net"
           upgrade="Workaround: Supabase free tier has no point-in-time recovery. This export-to-email approach provides a daily snapshot but cannot restore to an arbitrary point in time. Upgrade to Supabase Pro (~£25/month) for true PITR with 7-day retention."
         >
           {/* Last known good backup */}
@@ -375,14 +375,14 @@ export default async function OperationsPage() {
                   {lastSuccess.total_rows != null && (
                     <p className="text-xs mt-0.5 text-gray-600">
                       {lastSuccess.total_rows.toLocaleString("en-GB")} rows across{" "}
-                      {lastSuccess.table_counts ? Object.keys(lastSuccess.table_counts).length : "—"} tables
+                      {lastSuccess.table_counts ? Object.keys(lastSuccess.table_counts).length : "unknown number of"} tables
                     </p>
                   )}
                   {backupStatusValue === "amber" && (
                     <p className="text-xs mt-1 text-amber-700">One scheduled backup may have been missed.</p>
                   )}
                   {backupStatusValue === "red" && lastSuccessAge !== null && lastSuccessAge > 48 && (
-                    <p className="text-xs mt-1 text-red-700">More than 48 hours since last successful backup. Investigate GitHub Actions.</p>
+                    <p className="text-xs mt-1 text-red-700">More than 48 hours since last successful backup. Check GitHub Actions for failures.</p>
                   )}
                 </>
               ) : (
@@ -426,10 +426,10 @@ export default async function OperationsPage() {
                           )}
                         </td>
                         <td className="py-1.5 text-right tabular-nums">
-                          {row.total_rows != null ? row.total_rows.toLocaleString("en-GB") : "—"}
+                          {row.total_rows != null ? row.total_rows.toLocaleString("en-GB") : "-"}
                         </td>
                         <td className="py-1.5 text-right tabular-nums">
-                          {memberCount != null ? memberCount.toLocaleString("en-GB") : "—"}
+                          {memberCount != null ? memberCount.toLocaleString("en-GB") : "-"}
                         </td>
                       </tr>
                     );
@@ -449,13 +449,13 @@ export default async function OperationsPage() {
         {/* Vercel */}
         <ServiceCard
           title="Vercel"
-          plan="Hobby (Free) — no SLA"
+          plan="Hobby (Free) - no SLA"
           upgrade="Pro plan: £20/month adds longer function timeouts, additional cron slots, and team access."
         >
           <div className="space-y-0">
             <StaticLimit label="Bandwidth"             value="100 GB / month"  />
             <StaticLimit label="Serverless function timeout" value="10 seconds max" note="WP snapshot upload and Stripe webhook may approach this limit at scale" />
-            <StaticLimit label="Cron jobs"             value="1 / 1 (in use)"  note="Slot fully consumed — no headroom for additional scheduled jobs" />
+            <StaticLimit label="Cron jobs"             value="1 / 1 (in use)"  note="Slot fully consumed - no headroom for additional scheduled jobs" />
             <StaticLimit label="Team collaborators"    value="1 (Gary only)"   note="Martin cannot be added as a Vercel collaborator on the Hobby plan" />
             <StaticLimit label="Uptime SLA"            value="None"            />
           </div>
