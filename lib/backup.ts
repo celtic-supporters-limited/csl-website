@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
+import { logEmailSend } from "@/lib/resend";
 import { Resend } from "resend";
 
 // Tables exported in this order.
@@ -186,6 +187,7 @@ export async function sendBackupEmail(result: BackupResult): Promise<void> {
     attachments,
   });
 
+  logEmailSend("backup");
   console.log(`[backup] Email sent — ${subject}`);
 }
 
@@ -216,6 +218,7 @@ export async function sendBackupFailureAlert(err: unknown): Promise<void> {
         "Action required: investigate immediately and run a manual backup from the Operations page once resolved.",
       ].join("\n"),
     });
+    logEmailSend("backup_failure_alert");
   } catch (alertErr) {
     console.error("[backup] Failed to send failure alert:", alertErr);
   }

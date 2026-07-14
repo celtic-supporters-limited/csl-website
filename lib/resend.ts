@@ -13,7 +13,7 @@ function getResend(): Resend | null {
   return _client;
 }
 
-function logEmailSend(emailType: string): void {
+export function logEmailSend(emailType: string): void {
   // fire-and-forget — never blocks the send, never throws
   ;(async () => {
     try {
