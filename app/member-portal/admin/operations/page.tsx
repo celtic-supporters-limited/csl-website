@@ -189,6 +189,34 @@ export default async function OperationsPage() {
   const dbSizeMb   = Math.round(dbSizeBytes / 1024 / 1024);
   const DB_LIMIT_MB = 500;
 
+  // ── Backup log: last 7 runs ───────────────────────────────────────────────
+
+  const { data: backupRows } = await db
+    .from("backup_log")
+    .select("ran_at, status, total_rows, table_counts, error_msg")
+    .order("ran_at", { ascending: false })
+    .limit(7);
+
+  const backupLog = (backupRows ?? []) as {
+    ran_at: string;
+    status: string;
+    total_rows: number | null;
+    table_counts: Record<string, number> | null;
+    error_msg: string | null;
+  }[];
+
+  const lastSuccess = backupLog.find((r) => r.status === "success") ?? null;
+  const lastSuccessAge = lastSuccess
+    ? (now.getTime() - new Date(lastSuccess.ran_at).getTime()) / 1000 / 60 / 60
+    : null;
+
+  // Green: last success < 26h ago. Amber: 26-48h (one missed). Red: >48h or none.
+  const backupStatusValue: TrafficLight =
+    lastSuccessAge === null      ? "red"   :
+    lastSuccessAge > 48          ? "red"   :
+    lastSuccessAge > 26          ? "amber" :
+                                   "green";
+
   // ── Overall status ────────────────────────────────────────────────────────
 
   const allStatuses: TrafficLight[] = [
@@ -196,6 +224,7 @@ export default async function OperationsPage() {
     trafficLight(monthCount,  3000),
     bounceStatus(bounceRatePct),
     trafficLight(dbSizeMb,    DB_LIMIT_MB),
+    backupStatusValue,
   ];
   const overall = worstStatus(allStatuses);
 
@@ -311,7 +340,7 @@ export default async function OperationsPage() {
             <StaticLimit
               label="Point-in-time recovery"
               value="Not available"
-              note="Free tier has daily backups only — no rollback to arbitrary point in time"
+              note="See Database Backup section below for the current workaround"
             />
           </div>
         </ServiceCard>
@@ -319,13 +348,102 @@ export default async function OperationsPage() {
         {/* Database Backup */}
         <ServiceCard
           title="Database Backup"
-          plan="Daily automated backup via GitHub Actions — sent to info@celticsupporters.net"
+          plan="Daily at 02:00 UTC via GitHub Actions — CSV export emailed to info@celticsupporters.net"
+          upgrade="Workaround: Supabase free tier has no point-in-time recovery. This export-to-email approach provides a daily snapshot but cannot restore to an arbitrary point in time. Upgrade to Supabase Pro (~£25/month) for true PITR with 7-day retention."
         >
-          <p className="text-sm text-gray-600">
-            Exports all member data as CSV attachments and emails them to the volunteer inbox.
-            Run a manual backup before any migration script or bulk data operation.
-          </p>
-          <BackupButton />
+          {/* Last known good backup */}
+          <div className={`flex items-start gap-3 px-3 py-2.5 rounded-lg border text-sm ${
+            backupStatusValue === "red"   ? "bg-red-50 border-red-200"     :
+            backupStatusValue === "amber" ? "bg-amber-50 border-amber-200" :
+                                            "bg-green-50 border-green-200"
+          }`}>
+            <StatusDot s={backupStatusValue} />
+            <div>
+              {lastSuccess ? (
+                <>
+                  <p className={`font-medium ${
+                    backupStatusValue === "red"   ? "text-red-800"   :
+                    backupStatusValue === "amber" ? "text-amber-800" :
+                                                    "text-green-800"
+                  }`}>
+                    Last known good backup:{" "}
+                    {new Date(lastSuccess.ran_at).toLocaleString("en-GB", {
+                      day: "numeric", month: "short", year: "numeric",
+                      hour: "2-digit", minute: "2-digit", timeZone: "UTC", timeZoneName: "short",
+                    })}
+                  </p>
+                  {lastSuccess.total_rows != null && (
+                    <p className="text-xs mt-0.5 text-gray-600">
+                      {lastSuccess.total_rows.toLocaleString("en-GB")} rows across{" "}
+                      {lastSuccess.table_counts ? Object.keys(lastSuccess.table_counts).length : "—"} tables
+                    </p>
+                  )}
+                  {backupStatusValue === "amber" && (
+                    <p className="text-xs mt-1 text-amber-700">One scheduled backup may have been missed.</p>
+                  )}
+                  {backupStatusValue === "red" && lastSuccessAge !== null && lastSuccessAge > 48 && (
+                    <p className="text-xs mt-1 text-red-700">More than 48 hours since last successful backup. Investigate GitHub Actions.</p>
+                  )}
+                </>
+              ) : (
+                <p className="font-medium text-red-800">
+                  No successful backup recorded. History will appear after the next scheduled run at 02:00 UTC.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Recent run history */}
+          {backupLog.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Recent runs</p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-400 border-b border-gray-100">
+                    <th className="text-left pb-1.5 font-medium">Date / Time (UTC)</th>
+                    <th className="text-left pb-1.5 font-medium">Outcome</th>
+                    <th className="text-right pb-1.5 font-medium">Rows</th>
+                    <th className="text-right pb-1.5 font-medium">Members</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {backupLog.map((row, i) => {
+                    const isSuccess = row.status === "success";
+                    const memberCount = row.table_counts?.members ?? null;
+                    return (
+                      <tr key={i} className="text-gray-700">
+                        <td className="py-1.5 tabular-nums">
+                          {new Date(row.ran_at).toLocaleString("en-GB", {
+                            day: "numeric", month: "short",
+                            hour: "2-digit", minute: "2-digit", timeZone: "UTC",
+                          })}
+                        </td>
+                        <td className="py-1.5">
+                          {isSuccess ? (
+                            <span className="text-green-700 font-medium">Success</span>
+                          ) : (
+                            <span className="text-red-600 font-medium" title={row.error_msg ?? undefined}>Failed</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums">
+                          {row.total_rows != null ? row.total_rows.toLocaleString("en-GB") : "—"}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums">
+                          {memberCount != null ? memberCount.toLocaleString("en-GB") : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Manual backup */}
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs text-gray-500 mb-2">Run a manual backup before any migration or bulk data operation.</p>
+            <BackupButton />
+          </div>
         </ServiceCard>
 
         {/* Vercel */}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runBackup, sendBackupEmail, sendBackupFailureAlert } from "@/lib/backup";
+import { runBackup, sendBackupEmail, sendBackupFailureAlert, logBackupResult } from "@/lib/backup";
 
 // Triggered daily at 02:00 UTC by GitHub Actions (.github/workflows/daily-backup.yml).
 // Authorization header set by the workflow using the CRON_SECRET env var.
@@ -12,7 +12,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const result = await runBackup();
-    await sendBackupEmail(result);
+    await Promise.all([
+      sendBackupEmail(result),
+      logBackupResult("success", result),
+    ]);
 
     return NextResponse.json({
       ok: true,
@@ -22,10 +25,11 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     console.error("[cron/backup-members] Backup failed:", err);
-    await sendBackupFailureAlert(err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Backup failed" },
-      { status: 500 }
-    );
+    const errorMsg = err instanceof Error ? err.message : "Backup failed";
+    await Promise.all([
+      sendBackupFailureAlert(err),
+      logBackupResult("failed", undefined, errorMsg),
+    ]);
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
   }
 }

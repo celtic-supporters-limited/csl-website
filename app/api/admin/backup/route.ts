@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
-import { runBackup, sendBackupEmail, sendBackupFailureAlert } from "@/lib/backup";
+import { runBackup, sendBackupEmail, sendBackupFailureAlert, logBackupResult } from "@/lib/backup";
 
 export async function POST() {
   const authClient = createServerSupabase();
@@ -17,7 +17,10 @@ export async function POST() {
 
   try {
     const result = await runBackup();
-    await sendBackupEmail(result);
+    await Promise.all([
+      sendBackupEmail(result),
+      logBackupResult("success", result),
+    ]);
 
     return NextResponse.json({
       ok: true,
@@ -27,10 +30,11 @@ export async function POST() {
     });
   } catch (err) {
     console.error("[admin/backup] Backup failed:", err);
-    await sendBackupFailureAlert(err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Backup failed" },
-      { status: 500 }
-    );
+    const errorMsg = err instanceof Error ? err.message : "Backup failed";
+    await Promise.all([
+      sendBackupFailureAlert(err),
+      logBackupResult("failed", undefined, errorMsg),
+    ]);
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
   }
 }
