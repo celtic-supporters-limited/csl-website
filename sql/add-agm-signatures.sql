@@ -27,6 +27,10 @@ CREATE POLICY "agm_signatures_insert" ON agm_signatures
 
 -- SELECT / UPDATE / DELETE restricted to service role only (no policy = blocked)
 
+-- Grant table-level privileges (SQL editor does not auto-grant unlike the table editor)
+GRANT ALL ON TABLE agm_signatures TO service_role;
+GRANT INSERT ON TABLE agm_signatures TO anon, authenticated;
+
 -- Add resolution_target to site_config (configurable without a code deployment)
 INSERT INTO site_config (key, value, updated_at)
 VALUES ('resolution_target', '100', NOW())
