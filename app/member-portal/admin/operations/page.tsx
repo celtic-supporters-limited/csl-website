@@ -335,7 +335,7 @@ export default async function OperationsPage() {
             <StaticLimit
               label="Auto-pause (inactivity)"
               value="After 7 days"
-              note="Production mitigated by 3-day cron. Staging requires external keep-alive."
+              note="Production: cron runs every 3 days at 06:00 UTC, keeping 4 days of headroom. Staging requires external keep-alive."
             />
             <StaticLimit
               label="Point-in-time recovery"
