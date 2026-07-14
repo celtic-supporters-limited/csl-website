@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
+import { getStripe } from "@/lib/stripe";
 import PortalShell from "@/components/PortalShell";
 import BackupButton from "@/components/BackupButton";
 
@@ -176,6 +177,23 @@ export default async function OperationsPage() {
   const bounceCount  = bouncesThisMonth  ?? 0;
   const bounceRatePct = monthCount > 0 ? (bounceCount / monthCount) * 100 : 0;
 
+  // ── Stripe: connectivity check via balance.retrieve() ────────────────────
+
+  type StripeHealth = { ok: true; latencyMs: number; mode: "test" | "live" } | { ok: false; latencyMs: number; mode: "unknown" };
+
+  let stripeHealth: StripeHealth;
+  try {
+    const t0 = Date.now();
+    await getStripe().balance.retrieve();
+    const latencyMs = Date.now() - t0;
+    const mode = (process.env.STRIPE_SECRET_KEY ?? "").startsWith("sk_test_") ? "test" : "live";
+    stripeHealth = { ok: true, latencyMs, mode };
+  } catch {
+    stripeHealth = { ok: false, latencyMs: 0, mode: "unknown" };
+  }
+
+  const stripeStatus: TrafficLight = stripeHealth.ok ? "green" : "red";
+
   // ── Supabase: database size ───────────────────────────────────────────────
 
   let dbSizeBytes = 0;
@@ -223,6 +241,7 @@ export default async function OperationsPage() {
     trafficLight(todayCount,  100),
     trafficLight(monthCount,  3000),
     bounceStatus(bounceRatePct),
+    stripeStatus,
     trafficLight(dbSizeMb,    DB_LIMIT_MB),
     backupStatusValue,
   ];
@@ -311,6 +330,40 @@ export default async function OperationsPage() {
               Approaching daily limit. If a member migration run is planned today, upgrade Resend to Pro first to avoid blocked sends.
             </p>
           )}
+        </ServiceCard>
+
+        {/* Stripe */}
+        <ServiceCard
+          title="Stripe"
+          plan={`Payments API - ${stripeHealth.ok && stripeHealth.mode === "test" ? "test mode" : stripeHealth.ok && stripeHealth.mode === "live" ? "live mode" : "mode unknown"}`}
+        >
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 text-gray-700 font-medium">
+                <StatusDot s={stripeStatus} />
+                API connectivity
+              </span>
+              <span className="tabular-nums text-gray-600 text-xs">
+                {stripeHealth.ok
+                  ? `${stripeHealth.latencyMs} ms`
+                  : "Unreachable"}
+              </span>
+            </div>
+            {stripeHealth.ok ? (
+              <div className="space-y-0">
+                <StaticLimit
+                  label="Key mode"
+                  value={stripeHealth.mode === "test" ? "Test" : "Live"}
+                  note={stripeHealth.mode === "test" ? "Switch to live keys before go-live" : undefined}
+                />
+                <StaticLimit label="Response time" value={`${stripeHealth.latencyMs} ms`} />
+              </div>
+            ) : (
+              <p className="text-xs text-red-600 font-medium">
+                Stripe API is unreachable or the secret key is invalid. Checkout and webhook processing will fail.
+              </p>
+            )}
+          </div>
         </ServiceCard>
 
         {/* Supabase */}
