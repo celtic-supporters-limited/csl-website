@@ -145,7 +145,7 @@ function CaseRow({ c, onUpdated }: { c: Case; onUpdated: (updated: Partial<Case>
             onClick={() => setExpanded((x) => !x)}
             className="w-full text-left px-5 py-2 text-xs text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-1"
           >
-            <span>{expanded ? "&#9650;" : "&#9660;"}</span>
+            <span>{expanded ? "▲" : "▼"}</span>
             {expanded ? "Hide notes" : "Show notes"}
           </button>
           {expanded && (
