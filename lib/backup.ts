@@ -66,6 +66,27 @@ function formatDateLabel(date: Date): string {
   return date.toUTCString();
 }
 
+export async function logBackupResult(
+  status: "success" | "failed",
+  result?: BackupResult,
+  errorMsg?: string
+): Promise<void> {
+  try {
+    const db = getSupabase();
+    const tableCounts = result
+      ? Object.fromEntries(result.tables.map((t) => [t.name, t.rows]))
+      : null;
+    await db.from("backup_log").insert({
+      status,
+      total_rows: result?.totalRows ?? null,
+      table_counts: tableCounts ?? null,
+      error_msg: errorMsg ?? null,
+    });
+  } catch (e) {
+    console.error("[backup] Failed to write backup_log:", e);
+  }
+}
+
 export async function runBackup(): Promise<BackupResult> {
   const db = getSupabase();
   const now = new Date();
