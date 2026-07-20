@@ -324,7 +324,194 @@ test.describe("Switch to annual — validation and Stripe redirect", () => {
 
 });
 
-// ── 6. API security guards ────────────────────────────────────────────────────
+// ── 6. Annual→monthly accordion ──────────────────────────────────────────────
+//
+// These tests require membership_tier === "annual" && status === "active".
+// Switch the test account to an annual plan in Stripe, verify the
+// customer.subscription.updated webhook fires and Supabase reflects annual,
+// then run: npx playwright test tests/subscription-management.spec.ts
+//
+// The real Stripe call test (6c) stages the switch — it does NOT take effect
+// until the annual period ends. Supabase is NOT updated immediately by this
+// route (only by the webhook when the interval actually changes at renewal).
+
+function requireAnnualActive(member: Awaited<ReturnType<typeof getMember>>) {
+  return member?.membership_tier === "annual" && member?.status === "active";
+}
+
+test.describe("Annual subscriber accordion — rendering", () => {
+
+  test.beforeEach(({}, testInfo) => {
+    skip(testInfo, "TEST_USER_EMAIL",           SMOKE_EMAIL);
+    skip(testInfo, "TEST_USER_PASSWORD",        SMOKE_PASSWORD);
+    skip(testInfo, "NEXT_PUBLIC_SUPABASE_URL",  SUPABASE_URL);
+    skip(testInfo, "SUPABASE_SERVICE_ROLE_KEY", SERVICE_KEY);
+  });
+
+  test("both annual accordion rows are visible", async ({ page }) => {
+    const member = await getMember();
+    if (!requireAnnualActive(member)) { test.skip(); return; }
+
+    await goToMyMembership(page);
+    await expect(page.locator("text=/switch to monthly at renewal/i")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("text=/update card or cancel/i")).toBeVisible();
+  });
+
+  test("monthly-only rows are not shown for annual members", async ({ page }) => {
+    const member = await getMember();
+    if (!requireAnnualActive(member)) { test.skip(); return; }
+
+    await goToMyMembership(page);
+    await expect(page.locator("text=/change monthly amount/i")).not.toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("text=/switch to annual billing/i")).not.toBeVisible();
+  });
+
+  test("clicking switch-to-monthly row expands plan options", async ({ page }) => {
+    const member = await getMember();
+    if (!requireAnnualActive(member)) { test.skip(); return; }
+
+    await goToMyMembership(page);
+    await page.locator("button", { hasText: /switch to monthly at renewal/i }).click();
+
+    await expect(page.locator("label", { hasText: /^standard/i })).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("label", { hasText: /^accelerator/i })).toBeVisible();
+    await expect(page.locator("label", { hasText: /^custom/i })).toBeVisible();
+    await expect(page.locator("button", { hasText: /preview switch/i })).toBeVisible();
+  });
+
+  test("clicking open row again collapses it", async ({ page }) => {
+    const member = await getMember();
+    if (!requireAnnualActive(member)) { test.skip(); return; }
+
+    await goToMyMembership(page);
+    const btn = page.locator("button", { hasText: /switch to monthly at renewal/i });
+    await btn.click();
+    await expect(page.locator("label", { hasText: /^standard/i })).toBeVisible({ timeout: 5_000 });
+
+    await btn.click();
+    await expect(page.locator("label", { hasText: /^standard/i })).not.toBeVisible({ timeout: 3_000 });
+  });
+
+});
+
+test.describe("Annual→monthly switch — UI validation", () => {
+
+  test.beforeEach(({}, testInfo) => {
+    skip(testInfo, "TEST_USER_EMAIL",           SMOKE_EMAIL);
+    skip(testInfo, "TEST_USER_PASSWORD",        SMOKE_PASSWORD);
+    skip(testInfo, "NEXT_PUBLIC_SUPABASE_URL",  SUPABASE_URL);
+    skip(testInfo, "SUPABASE_SERVICE_ROLE_KEY", SERVICE_KEY);
+  });
+
+  test("valid plan shows confirm box on preview", async ({ page }) => {
+    const member = await getMember();
+    if (!requireAnnualActive(member)) { test.skip(); return; }
+
+    await goToMyMembership(page);
+    await page.locator("button", { hasText: /switch to monthly at renewal/i }).click();
+    await page.locator("label", { hasText: /^standard/i }).click();
+    await page.locator("button", { hasText: /preview switch/i }).click();
+
+    await expect(page.locator("text=/confirm switch to monthly/i")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("text=/no change to your current billing period/i")).toBeVisible();
+    await expect(page.locator("button", { hasText: /^confirm switch$/i })).toBeVisible();
+  });
+
+  test("custom amount below £30 shows validation error", async ({ page }) => {
+    const member = await getMember();
+    if (!requireAnnualActive(member)) { test.skip(); return; }
+
+    await goToMyMembership(page);
+    await page.locator("button", { hasText: /switch to monthly at renewal/i }).click();
+    await page.locator("label", { hasText: /^custom/i }).click();
+    await page.locator("input[placeholder='30']").fill("20");
+    await page.locator("button", { hasText: /preview switch/i }).click();
+
+    await expect(page.locator("text=/at least £30/i")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("custom amount not in £5 increments shows validation error", async ({ page }) => {
+    const member = await getMember();
+    if (!requireAnnualActive(member)) { test.skip(); return; }
+
+    await goToMyMembership(page);
+    await page.locator("button", { hasText: /switch to monthly at renewal/i }).click();
+    await page.locator("label", { hasText: /^custom/i }).click();
+    await page.locator("input[placeholder='30']").fill("32");
+    await page.locator("button", { hasText: /preview switch/i }).click();
+
+    await expect(page.locator("text=/must be in £5 increments/i")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("cancel on confirm box returns to plan selection", async ({ page }) => {
+    const member = await getMember();
+    if (!requireAnnualActive(member)) { test.skip(); return; }
+
+    await goToMyMembership(page);
+    await page.locator("button", { hasText: /switch to monthly at renewal/i }).click();
+    await page.locator("label", { hasText: /^accelerator/i }).click();
+    await page.locator("button", { hasText: /preview switch/i }).click();
+    await expect(page.locator("text=/confirm switch to monthly/i")).toBeVisible({ timeout: 5_000 });
+
+    await page.locator("button", { hasText: /^cancel$/i }).click();
+    await expect(page.locator("text=/confirm switch to monthly/i")).not.toBeVisible({ timeout: 3_000 });
+    await expect(page.locator("label", { hasText: /^standard/i })).toBeVisible({ timeout: 3_000 });
+  });
+
+});
+
+test.describe("Annual→monthly switch — real Stripe call", () => {
+
+  test.beforeEach(({}, testInfo) => {
+    skip(testInfo, "TEST_USER_EMAIL",           SMOKE_EMAIL);
+    skip(testInfo, "TEST_USER_PASSWORD",        SMOKE_PASSWORD);
+    skip(testInfo, "NEXT_PUBLIC_SUPABASE_URL",  SUPABASE_URL);
+    skip(testInfo, "SUPABASE_SERVICE_ROLE_KEY", SERVICE_KEY);
+  });
+
+  test("stages monthly switch and shows scheduled success state", async ({ page }) => {
+    const member = await getMember();
+    if (!requireAnnualActive(member)) { test.skip(); return; }
+
+    await goToMyMembership(page);
+    await page.locator("button", { hasText: /switch to monthly at renewal/i }).click();
+    await page.locator("label", { hasText: /^standard/i }).click();
+    await page.locator("button", { hasText: /preview switch/i }).click();
+    await expect(page.locator("text=/confirm switch to monthly/i")).toBeVisible({ timeout: 5_000 });
+
+    await page.locator("button", { hasText: /^confirm switch$/i }).click();
+
+    // Success state — switch is staged, not immediate
+    await expect(page.locator("text=/scheduled.*monthly 10.*from next renewal/i")).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator("text=/annual subscription continues until its end date/i")).toBeVisible();
+
+    // Supabase membership_tier must NOT change yet — it stays "annual" until renewal
+    await page.waitForTimeout(2_000);
+    const updated = await getMember();
+    expect(updated?.membership_tier).toBe("annual");
+
+    console.log(`PASS: Switch to Monthly 10 staged. Supabase still shows annual (correct — webhook fires at renewal).`);
+  });
+
+  test("Change again link resets to plan selection after success", async ({ page }) => {
+    const member = await getMember();
+    if (!requireAnnualActive(member)) { test.skip(); return; }
+
+    await goToMyMembership(page);
+    await page.locator("button", { hasText: /switch to monthly at renewal/i }).click();
+    await page.locator("label", { hasText: /^accelerator/i }).click();
+    await page.locator("button", { hasText: /preview switch/i }).click();
+    await page.locator("button", { hasText: /^confirm switch$/i }).click();
+    await expect(page.locator("text=/scheduled.*from next renewal/i")).toBeVisible({ timeout: 20_000 });
+
+    await page.locator("button", { hasText: /change again/i }).click();
+    await expect(page.locator("label", { hasText: /^standard/i })).toBeVisible({ timeout: 3_000 });
+    await expect(page.locator("text=/scheduled.*from next renewal/i")).not.toBeVisible();
+  });
+
+});
+
+// ── 7. API security guards ────────────────────────────────────────────────────
 
 test.describe("Subscription API — security guards", () => {
 
