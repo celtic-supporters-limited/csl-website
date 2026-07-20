@@ -122,8 +122,9 @@ export async function POST(req: NextRequest) {
       proration_behavior: "none",
     });
   } catch (err) {
-    console.error("[switch-to-monthly] Stripe update error:", err);
-    return NextResponse.json({ error: "Failed to update your subscription. Please try again." }, { status: 500 });
+    const stripeMsg = err instanceof Error ? err.message : String(err);
+    console.error("[switch-to-monthly] Stripe update error:", stripeMsg);
+    return NextResponse.json({ error: `Stripe: ${stripeMsg}` }, { status: 500 });
   }
 
   // ── 7. Audit log ───────────────────────────────────────────────────────────
