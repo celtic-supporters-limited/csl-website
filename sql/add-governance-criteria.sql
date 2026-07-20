@@ -17,6 +17,10 @@ alter table governance_criteria enable row level security;
 create policy "Public read" on governance_criteria
   for select using (true);
 
+-- Grant table-level privileges (SQL editor does not auto-grant unlike the table editor)
+grant select on table governance_criteria to anon, authenticated;
+grant all    on table governance_criteria to service_role;
+
 -- service_role bypasses RLS by default - no separate write policy needed
 
 -- Seed all 12 demands from Chapter 13 of The Celtic Paradox (v8.5, May 2026)
