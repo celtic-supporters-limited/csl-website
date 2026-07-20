@@ -74,8 +74,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Could not retrieve your current subscription." }, { status: 500 });
   }
 
+  const currentItem = currentSub.items.data[0];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const currentPeriodEnd = (currentSub.items.data[0] as any)?.current_period_end ?? (currentSub as any).current_period_end as number;
+  const currentPeriodEnd = (currentItem as any)?.current_period_end ?? (currentSub as any).current_period_end as number;
+  // Reuse the existing Stripe product ID — dahlia API rejects product_data on price_data
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const productId = typeof currentItem?.price?.product === "string" ? currentItem.price.product : (currentItem?.price?.product as any)?.id as string | undefined;
+
+  if (!productId) {
+    console.error("[switch-to-annual] No product ID on current subscription item:", member.stripe_subscription_id);
+    return NextResponse.json({ error: "Could not read subscription details. Please contact support." }, { status: 500 });
+  }
 
   // ── 6. Create Checkout session for the annual plan ────────────────────────
   const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL ?? "";
@@ -93,7 +102,7 @@ export async function POST(req: NextRequest) {
             currency: "gbp",
             unit_amount: unitAmount,
             recurring: { interval: "year" },
-            product_data: { name: planName },
+            product: productId,
           },
           quantity: 1,
         },
