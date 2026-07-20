@@ -100,20 +100,25 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 6. Stage the monthly switch at next renewal ────────────────────────────
+  // Create a Price first — the dahlia API rejects price_data[product] on subscriptions.update.
   // proration_behavior: "none" means the annual subscription runs its full period,
   // then renews as monthly at the chosen amount. No immediate charge or credit.
+  let newPrice;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (stripe.subscriptions.update as any)(member.stripe_subscription_id, {
-      items: [{
-        id: itemId,
-        price_data: {
-          currency: "gbp",
-          unit_amount: unitAmount,
-          recurring: { interval: "month" },
-          product: productId,
-        },
-      }],
+    newPrice = await stripe.prices.create({
+      currency: "gbp",
+      unit_amount: unitAmount,
+      recurring: { interval: "month" },
+      product: productId,
+    });
+  } catch (err) {
+    console.error("[switch-to-monthly] Stripe prices.create error:", err);
+    return NextResponse.json({ error: "Failed to prepare your new plan. Please try again." }, { status: 500 });
+  }
+
+  try {
+    await stripe.subscriptions.update(member.stripe_subscription_id, {
+      items: [{ id: itemId, price: newPrice.id }],
       proration_behavior: "none",
     });
   } catch (err) {

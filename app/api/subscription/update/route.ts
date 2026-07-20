@@ -112,18 +112,24 @@ export async function POST(req: NextRequest) {
 
   const newPlanName = planLabel(plan, amount);
 
+  // Create a Price first — the dahlia API rejects price_data[product] on subscriptions.update.
+  // Creating a Price object separately and referencing it by ID is the reliable path.
+  let newPrice;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (stripe.subscriptions.update as any)(member.stripe_subscription_id, {
-      items: [{
-        id: itemId,
-        price_data: {
-          currency: "gbp",
-          unit_amount: newUnitAmount,
-          recurring: { interval: "month" },
-          product: productId,
-        },
-      }],
+    newPrice = await stripe.prices.create({
+      currency: "gbp",
+      unit_amount: newUnitAmount,
+      recurring: { interval: "month" },
+      product: productId,
+    });
+  } catch (err) {
+    console.error("[subscription/update] Stripe prices.create error:", err);
+    return NextResponse.json({ error: "Failed to prepare your new plan. Please try again." }, { status: 500 });
+  }
+
+  try {
+    await stripe.subscriptions.update(member.stripe_subscription_id, {
+      items: [{ id: itemId, price: newPrice.id }],
       proration_behavior: "none",
     });
   } catch (err) {
