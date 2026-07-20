@@ -35,7 +35,7 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
 
     setLoading(true);
 
-    const { error } = await createBrowserSupabase().auth.signUp({
+    const { data, error } = await createBrowserSupabase().auth.signUp({
       email: email.trim().toLowerCase(),
       password,
     });
@@ -43,6 +43,14 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
     if (error) {
       setLoading(false);
       setErrorMsg(error.message);
+      return;
+    }
+
+    // If Supabase requires email confirmation, signUp() succeeds but returns
+    // no session. Redirect to /login with a message so the member knows to
+    // confirm their email before signing in.
+    if (!data.session) {
+      window.location.href = "/login?notice=confirm-email";
       return;
     }
 
