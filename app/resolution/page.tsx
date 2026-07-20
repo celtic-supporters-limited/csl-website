@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { getSupabase } from "@/lib/supabase";
-import Nav from "@/components/Nav";
-import Footer from "@/components/Footer";
 import { Container } from "@/components/Container";
 import ResolutionForm from "./ResolutionForm";
 
@@ -33,7 +31,6 @@ export default async function ResolutionPage() {
 
   return (
     <>
-      <Nav />
       <main>
         {/* Hero */}
         <section className="bg-csl-dark text-white py-16 lg:py-20">
@@ -134,7 +131,6 @@ export default async function ResolutionPage() {
           </Container>
         </section>
       </main>
-      <Footer />
     </>
   );
 }
