@@ -651,6 +651,224 @@ function DashboardTab({
   );
 }
 
+// ── Change plan card ──────────────────────────────────────────────────────────
+
+type ChangePlanState = "idle" | "confirming" | "submitting" | "success" | "error";
+
+function ChangePlanCard({ currentAmountPence }: { currentAmountPence: number }) {
+  const router = useRouter();
+  const [planState, setPlanState] = useState<ChangePlanState>("idle");
+  const [selected, setSelected] = useState<"standard" | "accelerator" | "custom">("standard");
+  const [customAmt, setCustomAmt] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [newPlanName, setNewPlanName] = useState("");
+
+  function targetUnitAmount(): number {
+    if (selected === "standard")    return 1000;
+    if (selected === "accelerator") return 2500;
+    const n = parseInt(customAmt, 10);
+    return isNaN(n) ? 0 : n * 100;
+  }
+
+  function validateLocal(): string | null {
+    const ua = targetUnitAmount();
+    if (ua === currentAmountPence) return "You are already on this plan.";
+    if (selected === "custom") {
+      const n = parseInt(customAmt, 10);
+      if (!n || n < 30)        return "Custom monthly amount must be at least £30.";
+      if (n % 5 !== 0)         return "Custom monthly amount must be in £5 increments.";
+    }
+    return null;
+  }
+
+  function handlePreview() {
+    const err = validateLocal();
+    if (err) { setErrorMsg(err); setPlanState("error"); return; }
+    setErrorMsg("");
+    setPlanState("confirming");
+  }
+
+  async function handleConfirm() {
+    setPlanState("submitting");
+    setErrorMsg("");
+    const payload =
+      selected === "custom"
+        ? { plan: "custom_monthly", amount: parseInt(customAmt, 10) }
+        : { plan: selected };
+    try {
+      const res = await fetch("/api/subscription/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string; newPlanName?: string };
+      if (!res.ok) {
+        setErrorMsg(data.error ?? "Something went wrong. Please try again.");
+        setPlanState("error");
+        return;
+      }
+      setNewPlanName(data.newPlanName ?? "");
+      setPlanState("success");
+      // Refresh server data so the membership details card shows the new plan
+      router.refresh();
+    } catch {
+      setErrorMsg("Network error. Please check your connection and try again.");
+      setPlanState("error");
+    }
+  }
+
+  function reset() {
+    setPlanState("idle");
+    setErrorMsg("");
+    setSelected("standard");
+    setCustomAmt("");
+  }
+
+  const targetPence = targetUnitAmount();
+  const isUpgrade = targetPence > currentAmountPence;
+  const prorateNote = isUpgrade
+    ? "The difference will be charged on a prorated basis on your next invoice."
+    : "A prorated credit will be applied to your next invoice.";
+
+  const targetLabel =
+    selected === "standard"    ? "£10/month (Standard)"
+    : selected === "accelerator" ? "£25/month (Accelerator)"
+    : customAmt ? `£${customAmt}/month` : "custom amount";
+
+  if (planState === "success") {
+    return (
+      <Card>
+        <div className="flex items-start gap-3">
+          <span className="text-green-600 text-xl leading-none mt-0.5">&#10003;</span>
+          <div>
+            <p className="font-semibold text-gray-900 text-sm">Plan updated to {newPlanName}</p>
+            <p className="text-sm text-gray-500 mt-1">
+              Your subscription has been updated. Changes will be reflected on your next invoice.
+            </p>
+            <button onClick={reset} className="mt-3 text-sm font-semibold text-csl-dark hover:underline">
+              Change again
+            </button>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <h3 className="font-bold text-gray-900 mb-1">Change plan</h3>
+      <p className="text-sm text-gray-400 mb-5">Monthly subscribers only. Changes take effect immediately and are prorated.</p>
+
+      {planState !== "confirming" && (
+        <fieldset className="space-y-3 mb-5">
+          {(
+            [
+              { value: "standard",    label: "Standard",    desc: "£10/month", pence: 1000 },
+              { value: "accelerator", label: "Accelerator", desc: "£25/month", pence: 2500 },
+              { value: "custom",      label: "Custom",      desc: "£30+/month, in £5 increments", pence: null },
+            ] as const
+          ).map((opt) => {
+            const isCurrent = opt.pence !== null && opt.pence === currentAmountPence;
+            return (
+              <label
+                key={opt.value}
+                className={`flex items-center gap-3 p-3.5 rounded-lg border cursor-pointer transition-colors ${
+                  selected === opt.value
+                    ? "border-csl-dark bg-csl-light"
+                    : "border-gray-200 hover:border-gray-300"
+                } ${isCurrent ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                <input
+                  type="radio"
+                  name="plan"
+                  value={opt.value}
+                  checked={selected === opt.value}
+                  disabled={isCurrent}
+                  onChange={() => { setSelected(opt.value); setErrorMsg(""); setPlanState("idle"); }}
+                  className="w-4 h-4 accent-csl-dark shrink-0"
+                />
+                <span className="flex-1 min-w-0">
+                  <span className="text-sm font-semibold text-gray-900">{opt.label}</span>
+                  {isCurrent && (
+                    <span className="ml-2 text-[0.7rem] font-semibold bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full">Current</span>
+                  )}
+                  <span className="block text-xs text-gray-500 mt-0.5">{opt.desc}</span>
+                </span>
+              </label>
+            );
+          })}
+        </fieldset>
+      )}
+
+      {planState !== "confirming" && selected === "custom" && (
+        <div className="mb-5">
+          <label htmlFor="custom-amount" className="block text-[0.85rem] font-semibold text-gray-800 mb-1.5">
+            Monthly amount (£)
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500 font-semibold">£</span>
+            <input
+              id="custom-amount"
+              type="number"
+              min="30"
+              step="5"
+              value={customAmt}
+              onChange={(e) => { setCustomAmt(e.target.value); setErrorMsg(""); setPlanState("idle"); }}
+              placeholder="30"
+              className="w-32 px-3.5 py-2.5 border-[1.5px] border-gray-200 rounded-lg text-[0.92rem] focus:outline-none focus:border-csl-dark focus:ring-2 focus:ring-csl-dark/10"
+            />
+            <span className="text-sm text-gray-400">per month</span>
+          </div>
+        </div>
+      )}
+
+      {planState === "confirming" && (
+        <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+          <p className="font-semibold mb-1">Confirm plan change</p>
+          <p>
+            Your plan will change to <strong>{targetLabel}</strong> immediately.{" "}
+            {prorateNote}
+          </p>
+        </div>
+      )}
+
+      {(planState === "error") && errorMsg && (
+        <p className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+          {errorMsg}
+        </p>
+      )}
+
+      <div className="flex gap-3 flex-wrap">
+        {planState === "idle" || planState === "error" ? (
+          <button
+            onClick={handlePreview}
+            className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors"
+          >
+            Preview change
+          </button>
+        ) : planState === "confirming" || planState === "submitting" ? (
+          <>
+            <button
+              onClick={handleConfirm}
+              disabled={planState === "submitting"}
+              className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors disabled:opacity-60"
+            >
+              {planState === "submitting" ? "Updating..." : "Confirm change"}
+            </button>
+            <button
+              onClick={() => setPlanState("idle")}
+              disabled={planState === "submitting"}
+              className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </>
+        ) : null}
+      </div>
+    </Card>
+  );
+}
+
 // ── My Membership tab ─────────────────────────────────────────────────────────
 
 function MyMembershipTab({
@@ -762,11 +980,16 @@ function MyMembershipTab({
               {billingPortal.loading ? "Opening..." : "Manage subscription"}
             </button>
             <p className="text-xs text-gray-400 mt-2">
-              Update your card, change plan, or cancel — all via Stripe.
+              Update your card or cancel via Stripe.
             </p>
           </div>
         )}
       </Card>
+
+      {/* Change plan — monthly active members only */}
+      {!isLifetime && member.membership_tier === "monthly" && member.status === "active" && (
+        <ChangePlanCard currentAmountPence={member.amount_pence ?? 0} />
+      )}
 
       <Card>
         <h3 className="font-bold text-gray-900 mb-1">Payment History</h3>

@@ -357,10 +357,15 @@ export async function POST(req: NextRequest) {
         }
 
         const amountPence = sub.items.data[0]?.price?.unit_amount ?? 0;
+        const amountPounds = Math.round(amountPence / 100);
+        const webhookPlanName =
+          amountPence === 1000 ? "Monthly 10"
+          : amountPence === 2500 ? "Monthly 25"
+          : `Monthly ${amountPounds}`;
 
         const { data: updatedMember, error } = await db
           .from("members")
-          .update({ amount_pence: amountPence })
+          .update({ amount_pence: amountPence, plan_name: webhookPlanName })
           .eq("stripe_customer_id", cid)
           .eq("is_lifetime", false)
           .select("id, email")
