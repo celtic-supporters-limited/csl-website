@@ -88,7 +88,6 @@ export async function POST(req: NextRequest) {
 
   // ── 6. Create Checkout session for the annual plan ────────────────────────
   const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL ?? "";
-  const planName = `Annual ${amount}`;
   const unitAmount = amount * 100;
 
   let session;
