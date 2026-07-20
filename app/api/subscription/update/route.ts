@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
           product_data: { name: newPlanName },
         },
       }],
-      proration_behavior: "create_prorations",
+      proration_behavior: "none",
     });
   } catch (err) {
     console.error("[subscription/update] Stripe subscriptions.update error:", err);

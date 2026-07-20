@@ -726,9 +726,7 @@ function ChangePlanCard({ currentAmountPence }: { currentAmountPence: number }) 
 
   const targetPence = targetUnitAmount();
   const isUpgrade = targetPence > currentAmountPence;
-  const prorateNote = isUpgrade
-    ? "The difference will be charged on a prorated basis on your next invoice."
-    : "A prorated credit will be applied to your next invoice.";
+  void isUpgrade; // no proration — new amount applies from next renewal date
 
   const targetLabel =
     selected === "standard"    ? "£10/month (Standard)"
@@ -743,7 +741,7 @@ function ChangePlanCard({ currentAmountPence }: { currentAmountPence: number }) 
           <div>
             <p className="font-semibold text-gray-900 text-sm">Plan updated to {newPlanName}</p>
             <p className="text-sm text-gray-500 mt-1">
-              Your subscription has been updated. Changes will be reflected on your next invoice.
+              Your subscription has been updated. The new amount will apply from your next renewal date.
             </p>
             <button onClick={reset} className="mt-3 text-sm font-semibold text-csl-dark hover:underline">
               Change again
@@ -757,7 +755,7 @@ function ChangePlanCard({ currentAmountPence }: { currentAmountPence: number }) 
   return (
     <Card>
       <h3 className="font-bold text-gray-900 mb-1">Change plan</h3>
-      <p className="text-sm text-gray-400 mb-5">Monthly subscribers only. Changes take effect immediately and are prorated.</p>
+      <p className="text-sm text-gray-400 mb-5">Monthly subscribers only. Your new amount applies from your next renewal date.</p>
 
       {planState !== "confirming" && (
         <fieldset className="space-y-3 mb-5">
@@ -826,8 +824,7 @@ function ChangePlanCard({ currentAmountPence }: { currentAmountPence: number }) 
         <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
           <p className="font-semibold mb-1">Confirm plan change</p>
           <p>
-            Your plan will change to <strong>{targetLabel}</strong> immediately.{" "}
-            {prorateNote}
+            Your plan will change to <strong>{targetLabel}</strong>. The new amount will be charged from your next renewal date - no change to your current billing period.
           </p>
         </div>
       )}
