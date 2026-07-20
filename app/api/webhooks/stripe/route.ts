@@ -14,19 +14,10 @@ import { logMemberEvent } from "@/lib/member-events";
 // ── Derivation helpers ────────────────────────────────────────────────────────
 
 function deriveTier(session: Stripe.Checkout.Session): string {
-  if (session.mode === "payment") return "Lifetime";
+  if (session.mode === "payment") return "lifetime";
   const item = session.line_items?.data[0];
-  const amount = item?.price?.unit_amount ? item.price.unit_amount / 100 : 0;
   const interval = item?.price?.recurring?.interval;
-  if (interval === "month") {
-    if (amount === 10) return "Monthly 10";
-    if (amount === 25) return "Monthly 25";
-    return `PWYW Monthly ${Math.round(amount)}`;
-  }
-  if (interval === "year") {
-    return `PWYW Annual ${Math.round(amount)}`;
-  }
-  return "monthly";
+  return interval === "year" ? "annual" : "monthly";
 }
 
 function derivePlanName(session: Stripe.Checkout.Session): string {
@@ -194,7 +185,7 @@ export async function POST(req: NextRequest) {
               plan_name: planName,
               amount_pence: session.amount_total ?? 0,
               status: "active",
-              is_lifetime: tier === "Lifetime",
+              is_lifetime: tier === "lifetime",
               subscription_start_date: subStartDate,
             },
             { onConflict: "email" }
