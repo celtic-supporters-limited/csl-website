@@ -100,9 +100,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Could not retrieve your current subscription. Please try again." }, { status: 500 });
   }
 
-  const itemId = subscription.items.data[0]?.id;
-  if (!itemId) {
-    console.error("[subscription/update] No subscription item found on sub:", member.stripe_subscription_id);
+  const item = subscription.items.data[0];
+  const itemId = item?.id;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const productId = typeof (item?.price?.product) === "string" ? item.price.product : (item?.price?.product as any)?.id as string | undefined;
+
+  if (!itemId || !productId) {
+    console.error("[subscription/update] No subscription item/product found on sub:", member.stripe_subscription_id);
     return NextResponse.json({ error: "Could not read subscription details. Please contact support." }, { status: 500 });
   }
 
@@ -117,7 +121,7 @@ export async function POST(req: NextRequest) {
           currency: "gbp",
           unit_amount: newUnitAmount,
           recurring: { interval: "month" },
-          product_data: { name: newPlanName },
+          product: productId,
         },
       }],
       proration_behavior: "none",
