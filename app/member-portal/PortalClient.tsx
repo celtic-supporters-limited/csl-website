@@ -168,20 +168,6 @@ function Card({
   );
 }
 
-function DetailRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 gap-4">
-      <span className="text-sm text-gray-500 flex-shrink-0">{label}</span>
-      <span className="text-sm font-medium text-gray-900 text-right">{children}</span>
-    </div>
-  );
-}
 
 function StatusPill({ status }: { status: string | null }) {
   if (status === "active" || status === "trialing")
