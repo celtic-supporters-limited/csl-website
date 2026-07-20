@@ -98,8 +98,6 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 6. Stage the monthly switch at next renewal ────────────────────────────
-  // We use product_data (inline) rather than referencing the existing product,
-  // because checkout-created products may be archived in the Stripe catalog.
   // proration_behavior: "none" means the annual subscription runs its full period,
   // then renews as monthly at the chosen amount. No immediate charge or credit.
   let newPrice;
@@ -108,7 +106,7 @@ export async function POST(req: NextRequest) {
       currency: "gbp",
       unit_amount: unitAmount,
       recurring: { interval: "month" },
-      product_data: { name: "CSL Membership" },
+      product: process.env.STRIPE_PRODUCT_ID!,
     });
   } catch (err) {
     console.error("[switch-to-monthly] Stripe prices.create error:", err);

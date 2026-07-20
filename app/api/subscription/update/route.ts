@@ -110,15 +110,13 @@ export async function POST(req: NextRequest) {
 
   const newPlanName = planLabel(plan, amount);
 
-  // We use product_data (inline) rather than referencing the existing product,
-  // because checkout-created products may be archived in the Stripe catalog.
   let newPrice;
   try {
     newPrice = await stripe.prices.create({
       currency: "gbp",
       unit_amount: newUnitAmount,
       recurring: { interval: "month" },
-      product_data: { name: "CSL Membership" },
+      product: process.env.STRIPE_PRODUCT_ID!,
     });
   } catch (err) {
     console.error("[subscription/update] Stripe prices.create error:", err);
