@@ -71,7 +71,6 @@ const NAV_LINKS = [
   { href: "/member-portal?tab=membership", label: "My Membership",  icon: "&#128179;" },
   { href: "/member-portal?tab=documents",  label: "Documents",      icon: "&#128218;" },
   { href: "/member-portal?tab=enquiries",  label: "My Enquiries",   icon: "&#128269;" },
-  { href: "/resolution",                   label: "Sign Resolution", icon: "&#128393;" },
   { href: "/member-portal?tab=profile",    label: "Edit Profile",   icon: "&#9998;"   },
 ];
 

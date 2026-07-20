@@ -139,9 +139,15 @@ export default function ResolutionForm() {
         <h2 className="text-2xl font-extrabold text-csl-dark mb-3">
           Signature recorded
         </h2>
-        <p className="text-gray-700 max-w-[420px] mx-auto">
+        <p className="text-gray-700 max-w-[420px] mx-auto mb-6">
           Thank you{firstName ? `, ${firstName}` : ""}. Your signature has been recorded.
         </p>
+        <Link
+          href="/membership"
+          className="inline-flex items-center px-7 py-3 rounded-lg text-[0.92rem] font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200"
+        >
+          Support our work - Join CSL
+        </Link>
       </div>
     );
   }

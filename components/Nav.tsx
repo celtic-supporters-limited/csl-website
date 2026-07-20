@@ -10,6 +10,7 @@ import { Container } from "@/components/Container";
 const takeActionLinks = [
   { href: "/share-tracing", label: "Share Tracing" },
   { href: "/proxy", label: "Proxy Assignment" },
+  { href: "/resolution", label: "Sign Resolution" },
 ];
 
 const aboutLinks = [

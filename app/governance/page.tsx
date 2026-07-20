@@ -1,8 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
+import { getSupabase } from "@/lib/supabase";
 import GovernanceDashboard from "@/components/GovernanceDashboard";
 import type { Metadata } from "next";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Governance Dashboard | Celtic Supporters Limited",
@@ -21,10 +21,7 @@ export type GovernanceCriterion = {
 };
 
 async function getCriteria(): Promise<GovernanceCriterion[]> {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from("governance_criteria")
     .select("*")
