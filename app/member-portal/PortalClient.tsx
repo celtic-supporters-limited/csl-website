@@ -642,7 +642,7 @@ function DashboardTab({
 
 type ChangePlanState = "idle" | "confirming" | "submitting" | "success" | "error";
 type AnnualSwitchState = "idle" | "confirming" | "submitting" | "error";
-type AccordionPanel = "change" | "annual" | "manage" | null;
+type AccordionPanel = "change" | "annual" | "switchmonthly" | "manage" | null;
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
@@ -686,11 +686,19 @@ function MyMembershipTab({
   const [annualAmt, setAnnualAmt] = useState("");
   const [annualError, setAnnualError] = useState("");
 
+  // Switch to monthly (annual members only)
+  const [switchMonthlyState, setSwitchMonthlyState] = useState<ChangePlanState>("idle");
+  const [monthlySelected, setMonthlySelected] = useState<"standard" | "accelerator" | "custom">("standard");
+  const [monthlyCustomAmt, setMonthlyCustomAmt] = useState("");
+  const [monthlyPlanError, setMonthlyPlanError] = useState("");
+  const [newMonthlyPlanName, setNewMonthlyPlanName] = useState("");
+
   function togglePanel(p: AccordionPanel) {
     setOpenPanel((prev) => {
       if (prev === p) {
-        if (p === "change") { setPlanState("idle"); setPlanError(""); }
-        if (p === "annual") { setSwitchState("idle"); setAnnualError(""); }
+        if (p === "change")        { setPlanState("idle"); setPlanError(""); }
+        if (p === "annual")        { setSwitchState("idle"); setAnnualError(""); }
+        if (p === "switchmonthly") { setSwitchMonthlyState("idle"); setMonthlyPlanError(""); }
         return null;
       }
       return p;
@@ -794,6 +802,59 @@ function MyMembershipTab({
     }
   }
 
+  // ── Switch to monthly logic (annual members) ──────────────────────────────
+  function monthlyTargetUnitAmount(): number {
+    if (monthlySelected === "standard")    return 1000;
+    if (monthlySelected === "accelerator") return 2500;
+    const n = parseInt(monthlyCustomAmt, 10);
+    return isNaN(n) ? 0 : n * 100;
+  }
+
+  function validateSwitchToMonthly(): string | null {
+    if (monthlySelected === "custom") {
+      const n = parseInt(monthlyCustomAmt, 10);
+      if (!n || n < 30) return "Custom monthly amount must be at least £30.";
+      if (n % 5 !== 0)  return "Custom monthly amount must be in £5 increments.";
+    }
+    return null;
+  }
+
+  function handleSwitchMonthlyPreview() {
+    const err = validateSwitchToMonthly();
+    if (err) { setMonthlyPlanError(err); setSwitchMonthlyState("error"); return; }
+    setMonthlyPlanError("");
+    setSwitchMonthlyState("confirming");
+  }
+
+  async function handleSwitchMonthlyConfirm() {
+    setSwitchMonthlyState("submitting");
+    setMonthlyPlanError("");
+    const payload =
+      monthlySelected === "custom"
+        ? { plan: "custom_monthly", amount: parseInt(monthlyCustomAmt, 10) }
+        : { plan: monthlySelected };
+    try {
+      const res = await fetch("/api/subscription/switch-to-monthly", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string; planName?: string };
+      if (!res.ok) { setMonthlyPlanError(data.error ?? "Something went wrong. Please try again."); setSwitchMonthlyState("error"); return; }
+      setNewMonthlyPlanName(data.planName ?? "");
+      setSwitchMonthlyState("success");
+      router.refresh();
+    } catch {
+      setMonthlyPlanError("Network error. Please check your connection and try again.");
+      setSwitchMonthlyState("error");
+    }
+  }
+
+  const monthlyTargetLabel =
+    monthlySelected === "standard"    ? "£10/month (Standard)"
+    : monthlySelected === "accelerator" ? "£25/month (Accelerator)"
+    : monthlyCustomAmt ? `£${monthlyCustomAmt}/month` : "custom amount";
+
   // ── Guard ──────────────────────────────────────────────────────────────────
   if (!member) {
     return (
@@ -810,6 +871,7 @@ function MyMembershipTab({
 
   const isLifetime = member.membership_tier === "Lifetime";
   const isMonthlyActive = !isLifetime && member.membership_tier === "monthly" && member.status === "active";
+  const isAnnualActive  = !isLifetime && member.membership_tier === "annual"  && member.status === "active";
   const statusToShow = stripeSub?.status ?? member.status;
   const cardExpiry =
     stripeSub?.card_exp_month != null && stripeSub?.card_exp_year != null
@@ -862,7 +924,7 @@ function MyMembershipTab({
       </div>
 
       {/* ── Two-column body ─────────────────────────────────────────────────── */}
-      <div className={`grid gap-3 items-start ${isMonthlyActive ? "md:grid-cols-[3fr_2fr]" : ""}`}>
+      <div className={`grid gap-3 items-start ${isMonthlyActive || isAnnualActive ? "md:grid-cols-[3fr_2fr]" : ""}`}>
 
         {/* ── Subscription actions accordion (monthly active only) ─────────── */}
         {isMonthlyActive && (
@@ -1108,6 +1170,167 @@ function MyMembershipTab({
           </div>
         )}
 
+        {/* ── Annual subscriber accordion ─────────────────────────────────── */}
+        {isAnnualActive && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-100">
+              <span className="text-[0.65rem] font-semibold uppercase tracking-widest text-gray-400">Subscription</span>
+            </div>
+
+            {/* Row 1: Switch to monthly at renewal */}
+            <div className={`border-b border-gray-100 border-l-4 ${openPanel === "switchmonthly" ? "border-l-csl-dark" : "border-l-transparent"}`}>
+              <button
+                className="w-full flex items-center gap-3 px-3 py-3 text-left hover:bg-gray-50 transition-colors"
+                onClick={() => togglePanel("switchmonthly")}
+                aria-expanded={openPanel === "switchmonthly"}
+              >
+                <span className="w-8 h-8 rounded-lg bg-csl-light flex items-center justify-center flex-shrink-0 text-csl-dark" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-4 h-4">
+                    <rect x="3" y="5" width="14" height="12" rx="2"/>
+                    <path d="M7 3v4M13 3v4M3 9h14" strokeLinecap="round"/>
+                    <path d="M7 14h6" strokeLinecap="round"/>
+                  </svg>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">Switch to monthly at renewal</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Your annual plan runs to its end, then renews monthly</p>
+                </div>
+                <ChevronIcon open={openPanel === "switchmonthly"} />
+              </button>
+
+              {openPanel === "switchmonthly" && (
+                <div className="px-4 pb-4 border-t border-gray-100">
+                  {switchMonthlyState === "success" ? (
+                    <div className="flex items-start gap-2 pt-3">
+                      <span className="text-green-600 font-bold leading-none mt-0.5">&#10003;</span>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">Scheduled: {newMonthlyPlanName} from next renewal</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Your annual subscription continues until its end date, then renews at the new monthly rate.</p>
+                        <button
+                          onClick={() => { setSwitchMonthlyState("idle"); setMonthlyPlanError(""); setMonthlySelected("standard"); setMonthlyCustomAmt(""); }}
+                          className="mt-2 text-xs font-semibold text-csl-dark hover:underline"
+                        >
+                          Change again
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {switchMonthlyState !== "confirming" && (
+                        <fieldset className="space-y-2 mt-3">
+                          {(
+                            [
+                              { value: "standard",    label: "Standard",    desc: "£10/month" },
+                              { value: "accelerator", label: "Accelerator", desc: "£25/month" },
+                              { value: "custom",      label: "Custom",      desc: "£30+/month · £5 increments" },
+                            ] as const
+                          ).map((opt) => (
+                            <label
+                              key={opt.value}
+                              className={`flex items-center gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                                monthlySelected === opt.value ? "border-csl-dark bg-csl-light" : "border-gray-200 hover:border-gray-300"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="monthly-plan"
+                                value={opt.value}
+                                checked={monthlySelected === opt.value}
+                                onChange={() => { setMonthlySelected(opt.value); setMonthlyPlanError(""); setSwitchMonthlyState("idle"); }}
+                                className="w-3.5 h-3.5 accent-csl-dark shrink-0"
+                              />
+                              <span className="text-sm font-medium text-gray-900 flex-1">{opt.label}</span>
+                              <span className="text-xs text-gray-400">{opt.desc}</span>
+                            </label>
+                          ))}
+                        </fieldset>
+                      )}
+
+                      {switchMonthlyState !== "confirming" && monthlySelected === "custom" && (
+                        <div className="flex items-center gap-2 mt-2.5">
+                          <span className="text-sm font-semibold text-gray-500">£</span>
+                          <input
+                            type="number"
+                            min="30"
+                            step="5"
+                            value={monthlyCustomAmt}
+                            onChange={(e) => { setMonthlyCustomAmt(e.target.value); setMonthlyPlanError(""); setSwitchMonthlyState("idle"); }}
+                            placeholder="30"
+                            className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-csl-dark focus:ring-2 focus:ring-csl-dark/10"
+                          />
+                          <span className="text-xs text-gray-400">per month</span>
+                        </div>
+                      )}
+
+                      {switchMonthlyState === "confirming" && (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                          <p className="font-semibold mb-0.5">Confirm switch to monthly</p>
+                          <p>Your annual subscription runs to its end, then renews as <strong>{monthlyTargetLabel}</strong>. No change to your current billing period.</p>
+                        </div>
+                      )}
+
+                      {monthlyPlanError && (
+                        <p className="mt-2.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{monthlyPlanError}</p>
+                      )}
+
+                      <div className="flex gap-2 mt-3">
+                        {switchMonthlyState === "confirming" || switchMonthlyState === "submitting" ? (
+                          <>
+                            <button onClick={handleSwitchMonthlyConfirm} disabled={switchMonthlyState === "submitting"} className={btnPrimary}>
+                              {switchMonthlyState === "submitting" ? "Saving..." : "Confirm switch"}
+                            </button>
+                            <button onClick={() => { setSwitchMonthlyState("idle"); setMonthlyPlanError(""); }} disabled={switchMonthlyState === "submitting"} className={btnGhost}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button onClick={handleSwitchMonthlyPreview} className={btnPrimary}>
+                            Preview switch
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Row 2: Update card or cancel */}
+            <div className={`border-l-4 ${openPanel === "manage" ? "border-l-csl-dark" : "border-l-transparent"}`}>
+              <button
+                className="w-full flex items-center gap-3 px-3 py-3 text-left hover:bg-gray-50 transition-colors"
+                onClick={() => togglePanel("manage")}
+                aria-expanded={openPanel === "manage"}
+              >
+                <span className="w-8 h-8 rounded-lg bg-csl-light flex items-center justify-center flex-shrink-0 text-csl-dark" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-4 h-4">
+                    <rect x="2" y="5" width="16" height="12" rx="2"/>
+                    <path d="M2 9h16" strokeLinecap="round"/>
+                    <path d="M6 13h2" strokeLinecap="round"/>
+                  </svg>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">Update card or cancel</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Manage payment method or end your subscription</p>
+                </div>
+                <ChevronIcon open={openPanel === "manage"} />
+              </button>
+
+              {openPanel === "manage" && (
+                <div className="px-4 pb-4 border-t border-gray-100">
+                  {billingPortal.error && (
+                    <p className="mt-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{billingPortal.error}</p>
+                  )}
+                  <button onClick={billingPortal.open} disabled={billingPortal.loading} className={`${btnPrimary} mt-3`}>
+                    {billingPortal.loading ? "Opening..." : "Open Stripe portal →"}
+                  </button>
+                  <p className="text-xs text-gray-400 mt-1.5">Update your card or cancel your subscription via Stripe&apos;s secure portal.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ── Payment history ─────────────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-2.5 border-b border-gray-100">
@@ -1142,7 +1365,7 @@ function MyMembershipTab({
         </div>
 
         {/* ── Billing portal for non-monthly active members ───────────────── */}
-        {!isMonthlyActive && !isLifetime && (
+        {!isMonthlyActive && !isAnnualActive && !isLifetime && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-2.5 border-b border-gray-100">
               <span className="text-[0.65rem] font-semibold uppercase tracking-widest text-gray-400">Subscription</span>

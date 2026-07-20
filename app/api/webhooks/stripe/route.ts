@@ -369,16 +369,20 @@ export async function POST(req: NextRequest) {
           break;
         }
 
-        const amountPence = sub.items.data[0]?.price?.unit_amount ?? 0;
+        const subItem = sub.items.data[0];
+        const amountPence = subItem?.price?.unit_amount ?? 0;
         const amountPounds = Math.round(amountPence / 100);
+        const interval = subItem?.price?.recurring?.interval;
+        const newTier = interval === "year" ? "annual" : "monthly";
         const webhookPlanName =
-          amountPence === 1000 ? "Monthly 10"
+          interval === "year" ? `Annual ${amountPounds}`
+          : amountPence === 1000 ? "Monthly 10"
           : amountPence === 2500 ? "Monthly 25"
           : `Monthly ${amountPounds}`;
 
         const { data: updatedMember, error } = await db
           .from("members")
-          .update({ amount_pence: amountPence, plan_name: webhookPlanName })
+          .update({ amount_pence: amountPence, plan_name: webhookPlanName, membership_tier: newTier })
           .eq("stripe_customer_id", cid)
           .eq("is_lifetime", false)
           .select("id, email")
