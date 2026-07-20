@@ -257,6 +257,13 @@ export async function POST(req: NextRequest) {
           break;
         }
 
+        // Skip £0 trial invoices (e.g. annual-switch trial period start).
+        // amount_paid of 0 would overwrite the member's stored amount_pence.
+        if ((invoice.amount_paid ?? 0) === 0) {
+          console.log(`[stripe-webhook] invoice.paid: skipping £0 invoice ${invoice.id}`);
+          break;
+        }
+
         const { data: paidMember, error } = await db
           .from("members")
           .update({
