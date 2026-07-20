@@ -102,25 +102,23 @@ export async function POST(req: NextRequest) {
 
   const item = subscription.items.data[0];
   const itemId = item?.id;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const productId = typeof (item?.price?.product) === "string" ? item.price.product : (item?.price?.product as any)?.id as string | undefined;
 
-  if (!itemId || !productId) {
-    console.error("[subscription/update] No subscription item/product found on sub:", member.stripe_subscription_id);
+  if (!itemId) {
+    console.error("[subscription/update] No subscription item found on sub:", member.stripe_subscription_id);
     return NextResponse.json({ error: "Could not read subscription details. Please contact support." }, { status: 500 });
   }
 
   const newPlanName = planLabel(plan, amount);
 
-  // Create a Price first — the dahlia API rejects price_data[product] on subscriptions.update.
-  // Creating a Price object separately and referencing it by ID is the reliable path.
+  // We use product_data (inline) rather than referencing the existing product,
+  // because checkout-created products may be archived in the Stripe catalog.
   let newPrice;
   try {
     newPrice = await stripe.prices.create({
       currency: "gbp",
       unit_amount: newUnitAmount,
       recurring: { interval: "month" },
-      product: productId,
+      product_data: { name: "CSL Membership" },
     });
   } catch (err) {
     console.error("[subscription/update] Stripe prices.create error:", err);

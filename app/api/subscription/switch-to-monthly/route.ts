@@ -91,16 +91,15 @@ export async function POST(req: NextRequest) {
 
   const currentItem = currentSub.items.data[0];
   const itemId = currentItem?.id;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const productId = typeof currentItem?.price?.product === "string" ? currentItem.price.product : (currentItem?.price?.product as any)?.id as string | undefined;
 
-  if (!itemId || !productId) {
-    console.error("[switch-to-monthly] No item/product on subscription:", member.stripe_subscription_id);
+  if (!itemId) {
+    console.error("[switch-to-monthly] No subscription item on subscription:", member.stripe_subscription_id);
     return NextResponse.json({ error: "Could not read subscription details. Please contact support." }, { status: 500 });
   }
 
   // ── 6. Stage the monthly switch at next renewal ────────────────────────────
-  // Create a Price first — the dahlia API rejects price_data[product] on subscriptions.update.
+  // We use product_data (inline) rather than referencing the existing product,
+  // because checkout-created products may be archived in the Stripe catalog.
   // proration_behavior: "none" means the annual subscription runs its full period,
   // then renews as monthly at the chosen amount. No immediate charge or credit.
   let newPrice;
@@ -109,7 +108,7 @@ export async function POST(req: NextRequest) {
       currency: "gbp",
       unit_amount: unitAmount,
       recurring: { interval: "month" },
-      product: productId,
+      product_data: { name: "CSL Membership" },
     });
   } catch (err) {
     console.error("[switch-to-monthly] Stripe prices.create error:", err);
