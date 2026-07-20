@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
               is_lifetime: tier === "Lifetime",
               subscription_start_date: subStartDate,
             },
-            { onConflict: "stripe_customer_id" }
+            { onConflict: "email" }
           )
           .select("id")
           .maybeSingle();
