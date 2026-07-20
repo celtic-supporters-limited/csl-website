@@ -803,13 +803,6 @@ function MyMembershipTab({
   }
 
   // ── Switch to monthly logic (annual members) ──────────────────────────────
-  function monthlyTargetUnitAmount(): number {
-    if (monthlySelected === "standard")    return 1000;
-    if (monthlySelected === "accelerator") return 2500;
-    const n = parseInt(monthlyCustomAmt, 10);
-    return isNaN(n) ? 0 : n * 100;
-  }
-
   function validateSwitchToMonthly(): string | null {
     if (monthlySelected === "custom") {
       const n = parseInt(monthlyCustomAmt, 10);
