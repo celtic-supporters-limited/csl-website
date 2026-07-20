@@ -218,6 +218,19 @@ export async function POST(req: NextRequest) {
           isTest: isTestMode,
         }).catch((err) => console.error("[stripe-webhook] Event log error (checkout.completed):", err));
 
+        // If this checkout was a monthly→annual switch, cancel the old monthly
+        // subscription at period end now that the new annual is confirmed.
+        const prevSubId = session.metadata?.previous_subscription_id;
+        const newSubId = subscriptionId(session.subscription);
+        if (prevSubId && prevSubId !== newSubId) {
+          try {
+            await getStripe().subscriptions.update(prevSubId, { cancel_at_period_end: true });
+            console.log(`[stripe-webhook] Cancelled old monthly sub at period end: ${prevSubId}`);
+          } catch (err) {
+            console.error("[stripe-webhook] Failed to cancel previous subscription:", err);
+          }
+        }
+
         try {
           await sendWelcomeEmail({
             name: session.customer_details?.name ?? null,

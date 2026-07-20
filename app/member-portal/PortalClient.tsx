@@ -866,6 +866,152 @@ function ChangePlanCard({ currentAmountPence }: { currentAmountPence: number }) 
   );
 }
 
+// ── Switch to annual card ─────────────────────────────────────────────────────
+
+type AnnualSwitchState = "idle" | "confirming" | "submitting" | "error";
+
+function SwitchToAnnualCard({ currentAmountPence }: { currentAmountPence: number }) {
+  const [switchState, setSwitchState] = useState<AnnualSwitchState>("idle");
+  const [annualAmt, setAnnualAmt] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const currentMonthly = Math.round(currentAmountPence / 100);
+  const annualEquivalent = currentMonthly * 12;
+
+  function validateLocal(): string | null {
+    const n = parseInt(annualAmt, 10);
+    if (!n || n < 300) return "Annual amount must be at least £300.";
+    if (n % 10 !== 0)  return "Annual amount must be in £10 increments.";
+    return null;
+  }
+
+  function handlePreview() {
+    const err = validateLocal();
+    if (err) { setErrorMsg(err); setSwitchState("error"); return; }
+    setErrorMsg("");
+    setSwitchState("confirming");
+  }
+
+  async function handleConfirm() {
+    setSwitchState("submitting");
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/subscription/switch-to-annual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: parseInt(annualAmt, 10) }),
+      });
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        setErrorMsg(data.error ?? "Something went wrong. Please try again.");
+        setSwitchState("error");
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setErrorMsg("Network error. Please check your connection and try again.");
+      setSwitchState("error");
+    }
+  }
+
+  function reset() {
+    setSwitchState("idle");
+    setErrorMsg("");
+    setAnnualAmt("");
+  }
+
+  const parsedAmt = parseInt(annualAmt, 10);
+  const validAmt = !isNaN(parsedAmt) && parsedAmt >= 300 && parsedAmt % 10 === 0;
+  const saving = validAmt ? annualEquivalent - parsedAmt : null;
+
+  return (
+    <Card>
+      <h3 className="font-bold text-gray-900 mb-1">Switch to annual</h3>
+      <p className="text-sm text-gray-400 mb-5">
+        Pay annually and save. Your annual subscription starts when your current monthly period ends.
+      </p>
+
+      {switchState !== "confirming" && (
+        <div className="mb-5">
+          <label htmlFor="annual-amount" className="block text-[0.85rem] font-semibold text-gray-800 mb-1.5">
+            Annual amount (£)
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500 font-semibold">£</span>
+            <input
+              id="annual-amount"
+              type="number"
+              min="300"
+              step="10"
+              value={annualAmt}
+              onChange={(e) => { setAnnualAmt(e.target.value); setErrorMsg(""); setSwitchState("idle"); }}
+              placeholder="300"
+              className="w-32 px-3.5 py-2.5 border-[1.5px] border-gray-200 rounded-lg text-[0.92rem] focus:outline-none focus:border-csl-dark focus:ring-2 focus:ring-csl-dark/10"
+            />
+            <span className="text-sm text-gray-400">per year</span>
+          </div>
+          <p className="text-xs text-gray-400 mt-1.5">Minimum £300, in £10 increments</p>
+          {saving !== null && saving > 0 && (
+            <p className="text-xs text-green-700 font-semibold mt-1.5">
+              Saving £{saving} compared to your current monthly rate
+            </p>
+          )}
+          {saving !== null && saving <= 0 && (
+            <p className="text-xs text-amber-700 mt-1.5">
+              Equivalent to £{Math.round(parsedAmt / 12)} per month
+            </p>
+          )}
+        </div>
+      )}
+
+      {switchState === "confirming" && (
+        <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+          <p className="font-semibold mb-1">Confirm switch to annual</p>
+          <p>
+            You will be taken to Stripe to confirm a new <strong>£{annualAmt}/year</strong> subscription.
+            It will begin at the end of your current monthly period. Your monthly subscription will be cancelled automatically once your annual payment is confirmed.
+          </p>
+        </div>
+      )}
+
+      {switchState === "error" && errorMsg && (
+        <p className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+          {errorMsg}
+        </p>
+      )}
+
+      <div className="flex gap-3 flex-wrap">
+        {switchState !== "confirming" && switchState !== "submitting" ? (
+          <button
+            onClick={handlePreview}
+            disabled={!annualAmt}
+            className="px-5 py-2.5 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors disabled:opacity-40"
+          >
+            Preview switch
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={handleConfirm}
+              disabled={switchState !== "confirming"}
+              className="px-5 py-2.5 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors disabled:opacity-60"
+            >
+              {switchState === "submitting" ? "Redirecting..." : "Confirm and pay annually"}
+            </button>
+            <button
+              onClick={reset}
+              disabled={switchState !== "confirming"}
+              className="px-5 py-2.5 rounded-lg text-sm font-semibold border border-gray-300 text-gray-700 hover:border-gray-400 transition-colors disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 // ── My Membership tab ─────────────────────────────────────────────────────────
 
 function MyMembershipTab({
@@ -983,9 +1129,12 @@ function MyMembershipTab({
         )}
       </Card>
 
-      {/* Change plan — monthly active members only */}
+      {/* Change plan / switch to annual — monthly active members only */}
       {!isLifetime && member.membership_tier === "monthly" && member.status === "active" && (
-        <ChangePlanCard currentAmountPence={member.amount_pence ?? 0} />
+        <>
+          <ChangePlanCard currentAmountPence={member.amount_pence ?? 0} />
+          <SwitchToAnnualCard currentAmountPence={member.amount_pence ?? 0} />
+        </>
       )}
 
       <Card>
