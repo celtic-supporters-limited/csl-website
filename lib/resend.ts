@@ -102,8 +102,8 @@ export async function sendWelcomeEmail({
       <p>Hello ${displayName},</p>
       <p>Thank you for joining Celtic Supporters Limited. Your membership is now active.</p>
       <p><strong>Your plan:</strong> ${planName}</p>
-      <p>To access your member portal, set up a password for your account:</p>
-      <p><a href="${SITE_URL}/signup?email=${encodeURIComponent(email)}" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Set up your account</a></p>
+      <p>Access your member portal:</p>
+      <p><a href="${SITE_URL}/member-portal" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Go to your member portal</a></p>
       <p>Once your account is active you can manage your membership, view documents, and track your enquiries.</p>
       <p>Together we are building the shareholder voice Celtic FC needs.</p>
       <p>Celtic Supporters Limited</p>
