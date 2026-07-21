@@ -273,7 +273,7 @@ use the "Forgot password" flow to set one — `signUp()` will reject already-reg
 
 **Supabase Auth settings required:**
 - Email provider: enabled
-- Confirm email: **OFF** (members have already verified intent via Stripe payment)
+- Confirm email: **ON** — Supabase sends a confirmation link before the member can sign in. `SignupForm.tsx` handles the no-session case by redirecting to `/login?notice=confirm-email` with an amber banner instructing the member to check their inbox.
 - Site URL: set to production domain in Supabase Dashboard > Authentication > URL Configuration
 
 ## Key API Routes
