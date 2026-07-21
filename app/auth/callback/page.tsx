@@ -88,6 +88,15 @@ export default function AuthCallbackPage() {
         }
       }
 
+      // Link members.user_id = auth.users.id if not already set.
+      // Idempotent — the endpoint only updates rows where user_id IS NULL.
+      // Runs for signup confirmations and magic links; skipped for recovery (no member record needed).
+      if (finalRedirect !== "/auth/update-password") {
+        fetch("/api/auth/link-member", { method: "POST" }).catch((err) =>
+          console.error("[auth/callback] link-member error:", err)
+        );
+      }
+
       window.location.href = finalRedirect;
     }
 
