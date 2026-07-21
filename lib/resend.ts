@@ -92,7 +92,9 @@ export async function sendWelcomeEmail({
   const resend = getResend();
   if (!resend) return;
 
-  const displayName = name ?? "Member";
+  const displayName = name
+    ? name.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
+    : "Member";
 
   await resend.emails.send({
     from: "Celtic Supporters Limited <info@celticsupporters.net>",
