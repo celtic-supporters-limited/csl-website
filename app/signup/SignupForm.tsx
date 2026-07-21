@@ -35,7 +35,7 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
 
     setLoading(true);
 
-    const { data, error } = await createBrowserSupabase().auth.signUp({
+    const { error } = await createBrowserSupabase().auth.signUp({
       email: email.trim().toLowerCase(),
       password,
     });
