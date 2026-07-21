@@ -485,12 +485,14 @@ test.describe("Annual→monthly switch — real Stripe call", () => {
     await expect(page.locator("text=/scheduled.*monthly 10.*from next renewal/i")).toBeVisible({ timeout: 20_000 });
     await expect(page.locator("text=/annual subscription continues until its end date/i")).toBeVisible();
 
-    // Supabase membership_tier must NOT change yet — it stays "annual" until renewal
+    // Stripe fires customer.subscription.updated immediately on subscriptions.update,
+    // so the webhook patches membership_tier to "monthly" right away.
+    // The portal reads current_period_end from Stripe to show when the annual period ends.
     await page.waitForTimeout(2_000);
     const updated = await getMember();
-    expect(updated?.membership_tier).toBe("annual");
+    expect(updated?.membership_tier).toBe("monthly");
 
-    console.log(`PASS: Switch to Monthly 10 staged. Supabase still shows annual (correct — webhook fires at renewal).`);
+    console.log(`PASS: Switch to Monthly 10 staged. Supabase membership_tier is "monthly" (webhook fires immediately on update, not at renewal).`);
   });
 
   test("Change again link resets to plan selection after success", async ({ page }) => {
