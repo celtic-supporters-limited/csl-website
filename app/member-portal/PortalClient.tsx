@@ -168,20 +168,6 @@ function Card({
   );
 }
 
-function DetailRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 gap-4">
-      <span className="text-sm text-gray-500 flex-shrink-0">{label}</span>
-      <span className="text-sm font-medium text-gray-900 text-right">{children}</span>
-    </div>
-  );
-}
 
 function StatusPill({ status }: { status: string | null }) {
   if (status === "active" || status === "trialing")
@@ -651,7 +637,27 @@ function DashboardTab({
   );
 }
 
-// ── My Membership tab ─────────────────────────────────────────────────────────
+// ── My Membership tab — redesigned ───────────────────────────────────────────
+// Single-page layout: compact summary strip + accordion actions + payment history
+
+type ChangePlanState = "idle" | "confirming" | "submitting" | "success" | "error";
+type AnnualSwitchState = "idle" | "confirming" | "submitting" | "error";
+type AccordionPanel = "change" | "annual" | "switchmonthly" | "manage" | null;
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={`w-4 h-4 text-gray-400 transition-transform duration-150 flex-shrink-0 ${open ? "rotate-180" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 function MyMembershipTab({
   member,
@@ -662,17 +668,193 @@ function MyMembershipTab({
   stripeSub: StripeSubData | null;
   payments: PortalPayment[];
 }) {
+  const router = useRouter();
   const billingPortal = useBillingPortal();
 
+  // Accordion
+  const [openPanel, setOpenPanel] = useState<AccordionPanel>(null);
+
+  // Change monthly amount
+  const [planState, setPlanState] = useState<ChangePlanState>("idle");
+  const [selected, setSelected] = useState<"standard" | "accelerator" | "custom">("standard");
+  const [customAmt, setCustomAmt] = useState("");
+  const [planError, setPlanError] = useState("");
+  const [newPlanName, setNewPlanName] = useState("");
+
+  // Switch to annual
+  const [switchState, setSwitchState] = useState<AnnualSwitchState>("idle");
+  const [annualAmt, setAnnualAmt] = useState("");
+  const [annualError, setAnnualError] = useState("");
+
+  // Switch to monthly (annual members only)
+  const [switchMonthlyState, setSwitchMonthlyState] = useState<ChangePlanState>("idle");
+  const [monthlySelected, setMonthlySelected] = useState<"standard" | "accelerator" | "custom">("standard");
+  const [monthlyCustomAmt, setMonthlyCustomAmt] = useState("");
+  const [monthlyPlanError, setMonthlyPlanError] = useState("");
+  const [newMonthlyPlanName, setNewMonthlyPlanName] = useState("");
+
+  function togglePanel(p: AccordionPanel) {
+    setOpenPanel((prev) => {
+      if (prev === p) {
+        if (p === "change")        { setPlanState("idle"); setPlanError(""); }
+        if (p === "annual")        { setSwitchState("idle"); setAnnualError(""); }
+        if (p === "switchmonthly") { setSwitchMonthlyState("idle"); setMonthlyPlanError(""); }
+        return null;
+      }
+      return p;
+    });
+  }
+
+  // ── Change plan logic ──────────────────────────────────────────────────────
+  const currentAmountPence = member?.amount_pence ?? 0;
+
+  function targetUnitAmount(): number {
+    if (selected === "standard")    return 1000;
+    if (selected === "accelerator") return 2500;
+    const n = parseInt(customAmt, 10);
+    return isNaN(n) ? 0 : n * 100;
+  }
+
+  function validatePlan(): string | null {
+    const ua = targetUnitAmount();
+    if (ua === currentAmountPence) return "You are already on this plan.";
+    if (selected === "custom") {
+      const n = parseInt(customAmt, 10);
+      if (!n || n < 30) return "Custom monthly amount must be at least £30.";
+      if (n % 5 !== 0)  return "Custom monthly amount must be in £5 increments.";
+    }
+    return null;
+  }
+
+  function handlePlanPreview() {
+    const err = validatePlan();
+    if (err) { setPlanError(err); setPlanState("error"); return; }
+    setPlanError("");
+    setPlanState("confirming");
+  }
+
+  async function handlePlanConfirm() {
+    setPlanState("submitting");
+    setPlanError("");
+    const payload =
+      selected === "custom"
+        ? { plan: "custom_monthly", amount: parseInt(customAmt, 10) }
+        : { plan: selected };
+    try {
+      const res = await fetch("/api/subscription/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string; newPlanName?: string };
+      if (!res.ok) { setPlanError(data.error ?? "Something went wrong. Please try again."); setPlanState("error"); return; }
+      setNewPlanName(data.newPlanName ?? "");
+      setPlanState("success");
+      router.refresh();
+    } catch {
+      setPlanError("Network error. Please check your connection and try again.");
+      setPlanState("error");
+    }
+  }
+
+  const targetLabel =
+    selected === "standard"    ? "£10/month (Standard)"
+    : selected === "accelerator" ? "£25/month (Accelerator)"
+    : customAmt ? `£${customAmt}/month` : "custom amount";
+
+  // ── Annual switch logic ────────────────────────────────────────────────────
+  const currentMonthly = Math.round(currentAmountPence / 100);
+  const annualEquivalent = currentMonthly * 12;
+  const parsedAnnualAmt = parseInt(annualAmt, 10);
+  const annualSaving = !isNaN(parsedAnnualAmt) && parsedAnnualAmt >= 300 && parsedAnnualAmt % 10 === 0
+    ? annualEquivalent - parsedAnnualAmt
+    : null;
+
+  function validateAnnual(): string | null {
+    const n = parseInt(annualAmt, 10);
+    if (!n || n < 300) return "Annual amount must be at least £300.";
+    if (n % 10 !== 0)  return "Annual amount must be in £10 increments.";
+    return null;
+  }
+
+  function handleAnnualPreview() {
+    const err = validateAnnual();
+    if (err) { setAnnualError(err); setSwitchState("error"); return; }
+    setAnnualError("");
+    setSwitchState("confirming");
+  }
+
+  async function handleAnnualConfirm() {
+    setSwitchState("submitting");
+    setAnnualError("");
+    try {
+      const res = await fetch("/api/subscription/switch-to-annual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: parseInt(annualAmt, 10) }),
+      });
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok || !data.url) { setAnnualError(data.error ?? "Something went wrong. Please try again."); setSwitchState("error"); return; }
+      window.location.href = data.url;
+    } catch {
+      setAnnualError("Network error. Please check your connection and try again.");
+      setSwitchState("error");
+    }
+  }
+
+  // ── Switch to monthly logic (annual members) ──────────────────────────────
+  function validateSwitchToMonthly(): string | null {
+    if (monthlySelected === "custom") {
+      const n = parseInt(monthlyCustomAmt, 10);
+      if (!n || n < 30) return "Custom monthly amount must be at least £30.";
+      if (n % 5 !== 0)  return "Custom monthly amount must be in £5 increments.";
+    }
+    return null;
+  }
+
+  function handleSwitchMonthlyPreview() {
+    const err = validateSwitchToMonthly();
+    if (err) { setMonthlyPlanError(err); setSwitchMonthlyState("error"); return; }
+    setMonthlyPlanError("");
+    setSwitchMonthlyState("confirming");
+  }
+
+  async function handleSwitchMonthlyConfirm() {
+    setSwitchMonthlyState("submitting");
+    setMonthlyPlanError("");
+    const payload =
+      monthlySelected === "custom"
+        ? { plan: "custom_monthly", amount: parseInt(monthlyCustomAmt, 10) }
+        : { plan: monthlySelected };
+    try {
+      const res = await fetch("/api/subscription/switch-to-monthly", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string; planName?: string };
+      if (!res.ok) { setMonthlyPlanError(data.error ?? "Something went wrong. Please try again."); setSwitchMonthlyState("error"); return; }
+      setNewMonthlyPlanName(data.planName ?? "");
+      setSwitchMonthlyState("success");
+      router.refresh();
+    } catch {
+      setMonthlyPlanError("Network error. Please check your connection and try again.");
+      setSwitchMonthlyState("error");
+    }
+  }
+
+  const monthlyTargetLabel =
+    monthlySelected === "standard"    ? "£10/month (Standard)"
+    : monthlySelected === "accelerator" ? "£25/month (Accelerator)"
+    : monthlyCustomAmt ? `£${monthlyCustomAmt}/month` : "custom amount";
+
+  // ── Guard ──────────────────────────────────────────────────────────────────
   if (!member) {
     return (
       <Card>
         <div className="text-center py-8">
           <p className="text-gray-500 text-sm">No membership record found.</p>
-          <Link
-            href="/membership"
-            className="mt-4 inline-block bg-csl-dark text-white font-semibold px-6 py-2.5 rounded-lg text-sm hover:bg-csl-mid transition-colors"
-          >
+          <Link href="/membership" className="mt-4 inline-block bg-csl-dark text-white font-semibold px-6 py-2.5 rounded-lg text-sm hover:bg-csl-mid transition-colors">
             Join CSL
           </Link>
         </div>
@@ -681,139 +863,518 @@ function MyMembershipTab({
   }
 
   const isLifetime = member.membership_tier === "Lifetime";
+  const isMonthlyActive = !isLifetime && member.membership_tier === "monthly" && member.status === "active";
+  const isAnnualActive  = !isLifetime && member.membership_tier === "annual"  && member.status === "active";
   const statusToShow = stripeSub?.status ?? member.status;
-
   const cardExpiry =
     stripeSub?.card_exp_month != null && stripeSub?.card_exp_year != null
-      ? `${String(stripeSub.card_exp_month).padStart(2, "0")}/${String(
-          stripeSub.card_exp_year
-        ).slice(-2)}`
+      ? `${String(stripeSub.card_exp_month).padStart(2, "0")}/${String(stripeSub.card_exp_year).slice(-2)}`
       : null;
 
+  // Shared button classes
+  const btnPrimary = "inline-flex items-center px-4 py-2 rounded-lg text-xs font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors disabled:opacity-60";
+  const btnGhost   = "inline-flex items-center px-4 py-2 rounded-lg text-xs font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50";
+
   return (
-    <div className="space-y-5">
-      <Card>
-        <h3 className="font-bold text-gray-900 mb-4">My Membership</h3>
+    <div className="space-y-3">
 
-        <DetailRow label="Plan">{planDisplay(member)}</DetailRow>
-        <DetailRow label="Status">
-          <StatusPill status={statusToShow} />
-        </DetailRow>
-        <DetailRow label="Member since">{formatDate(member.created_at)}</DetailRow>
-
-        {!isLifetime && stripeSub && (
-          <>
-            <DetailRow label="Next payment">
-              {formatPence(stripeSub.next_amount_pence)} on{" "}
-              {formatDate(stripeSub.current_period_end)}
-            </DetailRow>
-            {stripeSub.cancel_at_period_end && (
-              <DetailRow label="Cancellation">
-                <span className="text-amber-600 font-semibold">
-                  Cancels {formatDate(stripeSub.current_period_end)}
-                </span>
-              </DetailRow>
+      {/* ── Summary strip ───────────────────────────────────────────────────── */}
+      <div className="bg-white border border-gray-200 border-l-[3px] border-l-csl-dark rounded-r-xl px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <StatusPill status={statusToShow} />
+            <span className="text-sm font-semibold text-gray-900">{planDisplay(member)}</span>
+            <span className="text-xs text-gray-400">Member since {formatDate(member.created_at)}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500">
+            {!isLifetime && stripeSub && (
+              <span>
+                Next{" "}
+                <span className="font-semibold text-gray-800">{formatPence(stripeSub.next_amount_pence)}</span>
+                {" on "}
+                <span className="font-semibold text-gray-800">{formatDate(stripeSub.current_period_end)}</span>
+              </span>
             )}
-          </>
-        )}
-
-        {!isLifetime && !stripeSub && (
-          <DetailRow label="Payment details">
-            <span className="text-gray-400 font-normal">
-              Will appear after your next renewal.
-            </span>
-          </DetailRow>
-        )}
-
-        {isLifetime && (
-          <DetailRow label="Renewal">No renewal required</DetailRow>
-        )}
-
-        {!isLifetime && stripeSub && (
-          <DetailRow label="Card on file">
-            {stripeSub.card_brand && stripeSub.card_last4 ? (
-              <span className="inline-flex items-center gap-2">
-                <span className="text-[0.65rem] font-bold uppercase bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-gray-600">
+            {!isLifetime && stripeSub?.card_brand && stripeSub.card_last4 && (
+              <span className="flex items-center gap-1.5">
+                <span className="text-[0.6rem] font-bold uppercase bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-gray-500">
                   {stripeSub.card_brand.slice(0, 4)}
                 </span>
-                &bull;&bull;&bull;&bull;&nbsp;{stripeSub.card_last4}
-                {cardExpiry && (
-                  <span className="text-gray-400 text-xs">&nbsp;· {cardExpiry}</span>
-                )}
+                <span>&#8226;&#8226;&#8226;&#8226;&nbsp;{stripeSub.card_last4}</span>
+                {cardExpiry && <span className="text-gray-400">· {cardExpiry}</span>}
               </span>
-            ) : (
-              <span className="text-gray-400 font-normal">No card on file</span>
             )}
-          </DetailRow>
-        )}
+            {isLifetime && <span className="text-gray-400">No renewal required</span>}
+          </div>
+        </div>
 
-        {!isLifetime && (
-          <div className="pt-4 mt-2 border-t border-gray-100">
-            {billingPortal.error && (
-              <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
-                {billingPortal.error}
-              </p>
-            )}
-            <button
-              onClick={billingPortal.open}
-              disabled={billingPortal.loading}
-              className="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors disabled:opacity-60"
-            >
-              {billingPortal.loading ? "Opening..." : "Manage subscription"}
-            </button>
-            <p className="text-xs text-gray-400 mt-2">
-              Update your card, change plan, or cancel — all via Stripe.
-            </p>
+        {/* Cancellation warning inline */}
+        {!isLifetime && stripeSub?.cancel_at_period_end && (
+          <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+            Your subscription will cancel on {formatDate(stripeSub.current_period_end)}.
+          </p>
+        )}
+      </div>
+
+      {/* ── Two-column body ─────────────────────────────────────────────────── */}
+      <div className={`grid gap-3 items-start ${isMonthlyActive || isAnnualActive ? "md:grid-cols-[3fr_2fr]" : ""}`}>
+
+        {/* ── Subscription actions accordion (monthly active only) ─────────── */}
+        {isMonthlyActive && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-100">
+              <span className="text-[0.65rem] font-semibold uppercase tracking-widest text-gray-400">Subscription</span>
+            </div>
+
+            {/* Row 1: Change monthly amount */}
+            <div className={`border-b border-gray-100 border-l-4 ${openPanel === "change" ? "border-l-csl-dark" : "border-l-transparent"}`}>
+              <button
+                className="w-full flex items-center gap-3 px-3 py-3 text-left hover:bg-gray-50 transition-colors"
+                onClick={() => togglePanel("change")}
+                aria-expanded={openPanel === "change"}
+              >
+                <span className="w-8 h-8 rounded-lg bg-csl-light flex items-center justify-center flex-shrink-0 text-csl-dark" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-4 h-4">
+                    <path d="M5 7h10M5 7l3-3M5 7l3 3M15 13H5m10 0l-3-3m3 3l-3 3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">Change monthly amount</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Standard, Accelerator, or a custom amount</p>
+                </div>
+                <ChevronIcon open={openPanel === "change"} />
+              </button>
+
+              {openPanel === "change" && (
+                <div className="px-4 pb-4 border-t border-gray-100">
+                  {planState === "success" ? (
+                    <div className="flex items-start gap-2 pt-3">
+                      <span className="text-green-600 font-bold leading-none mt-0.5">&#10003;</span>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">Plan updated to {newPlanName}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">New amount applies from your next renewal date.</p>
+                        <button
+                          onClick={() => { setPlanState("idle"); setPlanError(""); setSelected("standard"); setCustomAmt(""); }}
+                          className="mt-2 text-xs font-semibold text-csl-dark hover:underline"
+                        >
+                          Change again
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {planState !== "confirming" && (
+                        <fieldset className="space-y-2 mt-3">
+                          {(
+                            [
+                              { value: "standard",    label: "Standard",    desc: "£10/month", pence: 1000 },
+                              { value: "accelerator", label: "Accelerator", desc: "£25/month", pence: 2500 },
+                              { value: "custom",      label: "Custom",      desc: "£30+/month · £5 increments", pence: null },
+                            ] as const
+                          ).map((opt) => {
+                            const isCurrent = opt.pence !== null && opt.pence === currentAmountPence;
+                            return (
+                              <label
+                                key={opt.value}
+                                className={`flex items-center gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                                  selected === opt.value ? "border-csl-dark bg-csl-light" : "border-gray-200 hover:border-gray-300"
+                                } ${isCurrent ? "opacity-50 cursor-not-allowed" : ""}`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="plan"
+                                  value={opt.value}
+                                  checked={selected === opt.value}
+                                  disabled={isCurrent}
+                                  onChange={() => { setSelected(opt.value); setPlanError(""); setPlanState("idle"); }}
+                                  className="w-3.5 h-3.5 accent-csl-dark shrink-0"
+                                />
+                                <span className="text-sm font-medium text-gray-900 flex-1">{opt.label}</span>
+                                {isCurrent && (
+                                  <span className="text-[0.65rem] font-semibold bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">Current</span>
+                                )}
+                                <span className="text-xs text-gray-400">{opt.desc}</span>
+                              </label>
+                            );
+                          })}
+                        </fieldset>
+                      )}
+
+                      {planState !== "confirming" && selected === "custom" && (
+                        <div className="flex items-center gap-2 mt-2.5">
+                          <span className="text-sm font-semibold text-gray-500">£</span>
+                          <input
+                            type="number"
+                            min="30"
+                            step="5"
+                            value={customAmt}
+                            onChange={(e) => { setCustomAmt(e.target.value); setPlanError(""); setPlanState("idle"); }}
+                            placeholder="30"
+                            className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-csl-dark focus:ring-2 focus:ring-csl-dark/10"
+                          />
+                          <span className="text-xs text-gray-400">per month</span>
+                        </div>
+                      )}
+
+                      {planState === "confirming" && (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                          <p className="font-semibold mb-0.5">Confirm plan change</p>
+                          <p>Your plan will change to <strong>{targetLabel}</strong>. New amount applies from your next renewal - no change to your current billing period.</p>
+                        </div>
+                      )}
+
+                      {planError && (
+                        <p className="mt-2.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{planError}</p>
+                      )}
+
+                      <div className="flex gap-2 mt-3">
+                        {planState === "confirming" || planState === "submitting" ? (
+                          <>
+                            <button onClick={handlePlanConfirm} disabled={planState === "submitting"} className={btnPrimary}>
+                              {planState === "submitting" ? "Updating..." : "Confirm change"}
+                            </button>
+                            <button onClick={() => { setPlanState("idle"); setPlanError(""); }} disabled={planState === "submitting"} className={btnGhost}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button onClick={handlePlanPreview} className={btnPrimary}>
+                            Preview change
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Row 2: Switch to annual */}
+            <div className={`border-b border-gray-100 border-l-4 ${openPanel === "annual" ? "border-l-csl-dark" : "border-l-transparent"}`}>
+              <button
+                className="w-full flex items-center gap-3 px-3 py-3 text-left hover:bg-gray-50 transition-colors"
+                onClick={() => togglePanel("annual")}
+                aria-expanded={openPanel === "annual"}
+              >
+                <span className="w-8 h-8 rounded-lg bg-csl-light flex items-center justify-center flex-shrink-0 text-csl-dark" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-4 h-4">
+                    <rect x="3" y="5" width="14" height="12" rx="2"/>
+                    <path d="M7 3v4M13 3v4M3 9h14" strokeLinecap="round"/>
+                  </svg>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">Switch to annual billing</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Pay yearly from your next renewal · min £300</p>
+                </div>
+                <ChevronIcon open={openPanel === "annual"} />
+              </button>
+
+              {openPanel === "annual" && (
+                <div className="px-4 pb-4 border-t border-gray-100">
+                  {switchState !== "confirming" && (
+                    <>
+                      <div className="flex items-center gap-2 mt-3">
+                        <span className="text-sm font-semibold text-gray-500">£</span>
+                        <input
+                          type="number"
+                          min="300"
+                          step="10"
+                          value={annualAmt}
+                          onChange={(e) => { setAnnualAmt(e.target.value); setAnnualError(""); setSwitchState("idle"); }}
+                          placeholder="300"
+                          className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-csl-dark focus:ring-2 focus:ring-csl-dark/10"
+                        />
+                        <span className="text-xs text-gray-400">per year</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">Minimum £300 · in £10 increments</p>
+                      {annualSaving !== null && annualSaving > 0 && (
+                        <p className="text-xs text-green-700 font-semibold mt-1">Saving £{annualSaving} vs your current monthly rate</p>
+                      )}
+                      {annualSaving !== null && annualSaving <= 0 && (
+                        <p className="text-xs text-amber-700 mt-1">Equivalent to £{Math.round(parsedAnnualAmt / 12)} per month</p>
+                      )}
+                    </>
+                  )}
+
+                  {switchState === "confirming" && (
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                      <p className="font-semibold mb-0.5">Confirm switch to annual</p>
+                      <p>You will be taken to Stripe to pay <strong>£{annualAmt}/year</strong>. Your annual subscription starts at the end of your current monthly period. Your monthly subscription cancels automatically once confirmed.</p>
+                    </div>
+                  )}
+
+                  {annualError && (
+                    <p className="mt-2.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{annualError}</p>
+                  )}
+
+                  <div className="flex gap-2 mt-3">
+                    {switchState === "confirming" || switchState === "submitting" ? (
+                      <>
+                        <button onClick={handleAnnualConfirm} disabled={switchState !== "confirming"} className={btnPrimary}>
+                          {switchState === "submitting" ? "Redirecting..." : "Confirm and pay annually"}
+                        </button>
+                        <button onClick={() => { setSwitchState("idle"); setAnnualError(""); }} disabled={switchState !== "confirming"} className={btnGhost}>
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={handleAnnualPreview} disabled={!annualAmt} className={btnPrimary}>
+                        Preview switch
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Row 3: Update card or cancel */}
+            <div className={`border-l-4 ${openPanel === "manage" ? "border-l-csl-dark" : "border-l-transparent"}`}>
+              <button
+                className="w-full flex items-center gap-3 px-3 py-3 text-left hover:bg-gray-50 transition-colors"
+                onClick={() => togglePanel("manage")}
+                aria-expanded={openPanel === "manage"}
+              >
+                <span className="w-8 h-8 rounded-lg bg-csl-light flex items-center justify-center flex-shrink-0 text-csl-dark" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-4 h-4">
+                    <rect x="2" y="5" width="16" height="12" rx="2"/>
+                    <path d="M2 9h16" strokeLinecap="round"/>
+                    <path d="M6 13h2" strokeLinecap="round"/>
+                  </svg>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">Update card or cancel</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Manage payment method or end your subscription</p>
+                </div>
+                <ChevronIcon open={openPanel === "manage"} />
+              </button>
+
+              {openPanel === "manage" && (
+                <div className="px-4 pb-4 border-t border-gray-100">
+                  {billingPortal.error && (
+                    <p className="mt-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{billingPortal.error}</p>
+                  )}
+                  <button onClick={billingPortal.open} disabled={billingPortal.loading} className={`${btnPrimary} mt-3`}>
+                    {billingPortal.loading ? "Opening..." : "Open Stripe portal →"}
+                  </button>
+                  <p className="text-xs text-gray-400 mt-1.5">Update your card or cancel your subscription via Stripe&apos;s secure portal.</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
-      </Card>
 
-      <Card>
-        <h3 className="font-bold text-gray-900 mb-1">Payment History</h3>
-        <p className="text-sm text-gray-400 mb-5">
-          All charges recorded against your membership.
-        </p>
+        {/* ── Annual subscriber accordion ─────────────────────────────────── */}
+        {isAnnualActive && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-100">
+              <span className="text-[0.65rem] font-semibold uppercase tracking-widest text-gray-400">Subscription</span>
+            </div>
 
-        {payments.length === 0 ? (
-          <div className="text-center py-10">
-            <div className="text-3xl mb-3">&#128196;</div>
-            <p className="text-gray-500 text-sm">No payments recorded yet.</p>
+            {/* Row 1: Switch to monthly at renewal */}
+            <div className={`border-b border-gray-100 border-l-4 ${openPanel === "switchmonthly" ? "border-l-csl-dark" : "border-l-transparent"}`}>
+              <button
+                className="w-full flex items-center gap-3 px-3 py-3 text-left hover:bg-gray-50 transition-colors"
+                onClick={() => togglePanel("switchmonthly")}
+                aria-expanded={openPanel === "switchmonthly"}
+              >
+                <span className="w-8 h-8 rounded-lg bg-csl-light flex items-center justify-center flex-shrink-0 text-csl-dark" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-4 h-4">
+                    <rect x="3" y="5" width="14" height="12" rx="2"/>
+                    <path d="M7 3v4M13 3v4M3 9h14" strokeLinecap="round"/>
+                    <path d="M7 14h6" strokeLinecap="round"/>
+                  </svg>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">Switch to monthly at renewal</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Your annual plan runs to its end, then renews monthly</p>
+                </div>
+                <ChevronIcon open={openPanel === "switchmonthly"} />
+              </button>
+
+              {openPanel === "switchmonthly" && (
+                <div className="px-4 pb-4 border-t border-gray-100">
+                  {switchMonthlyState === "success" ? (
+                    <div className="flex items-start gap-2 pt-3">
+                      <span className="text-green-600 font-bold leading-none mt-0.5">&#10003;</span>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">Scheduled: {newMonthlyPlanName} from next renewal</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Your annual subscription continues until its end date, then renews at the new monthly rate.</p>
+                        <button
+                          onClick={() => { setSwitchMonthlyState("idle"); setMonthlyPlanError(""); setMonthlySelected("standard"); setMonthlyCustomAmt(""); }}
+                          className="mt-2 text-xs font-semibold text-csl-dark hover:underline"
+                        >
+                          Change again
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {switchMonthlyState !== "confirming" && (
+                        <fieldset className="space-y-2 mt-3">
+                          {(
+                            [
+                              { value: "standard",    label: "Standard",    desc: "£10/month" },
+                              { value: "accelerator", label: "Accelerator", desc: "£25/month" },
+                              { value: "custom",      label: "Custom",      desc: "£30+/month · £5 increments" },
+                            ] as const
+                          ).map((opt) => (
+                            <label
+                              key={opt.value}
+                              className={`flex items-center gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                                monthlySelected === opt.value ? "border-csl-dark bg-csl-light" : "border-gray-200 hover:border-gray-300"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="monthly-plan"
+                                value={opt.value}
+                                checked={monthlySelected === opt.value}
+                                onChange={() => { setMonthlySelected(opt.value); setMonthlyPlanError(""); setSwitchMonthlyState("idle"); }}
+                                className="w-3.5 h-3.5 accent-csl-dark shrink-0"
+                              />
+                              <span className="text-sm font-medium text-gray-900 flex-1">{opt.label}</span>
+                              <span className="text-xs text-gray-400">{opt.desc}</span>
+                            </label>
+                          ))}
+                        </fieldset>
+                      )}
+
+                      {switchMonthlyState !== "confirming" && monthlySelected === "custom" && (
+                        <div className="flex items-center gap-2 mt-2.5">
+                          <span className="text-sm font-semibold text-gray-500">£</span>
+                          <input
+                            type="number"
+                            min="30"
+                            step="5"
+                            value={monthlyCustomAmt}
+                            onChange={(e) => { setMonthlyCustomAmt(e.target.value); setMonthlyPlanError(""); setSwitchMonthlyState("idle"); }}
+                            placeholder="30"
+                            className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-csl-dark focus:ring-2 focus:ring-csl-dark/10"
+                          />
+                          <span className="text-xs text-gray-400">per month</span>
+                        </div>
+                      )}
+
+                      {switchMonthlyState === "confirming" && (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                          <p className="font-semibold mb-0.5">Confirm switch to monthly</p>
+                          <p>Your annual subscription runs to its end, then renews as <strong>{monthlyTargetLabel}</strong>. No change to your current billing period.</p>
+                        </div>
+                      )}
+
+                      {monthlyPlanError && (
+                        <p className="mt-2.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{monthlyPlanError}</p>
+                      )}
+
+                      <div className="flex gap-2 mt-3">
+                        {switchMonthlyState === "confirming" || switchMonthlyState === "submitting" ? (
+                          <>
+                            <button onClick={handleSwitchMonthlyConfirm} disabled={switchMonthlyState === "submitting"} className={btnPrimary}>
+                              {switchMonthlyState === "submitting" ? "Saving..." : "Confirm switch"}
+                            </button>
+                            <button onClick={() => { setSwitchMonthlyState("idle"); setMonthlyPlanError(""); }} disabled={switchMonthlyState === "submitting"} className={btnGhost}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button onClick={handleSwitchMonthlyPreview} className={btnPrimary}>
+                            Preview switch
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Row 2: Update card or cancel */}
+            <div className={`border-l-4 ${openPanel === "manage" ? "border-l-csl-dark" : "border-l-transparent"}`}>
+              <button
+                className="w-full flex items-center gap-3 px-3 py-3 text-left hover:bg-gray-50 transition-colors"
+                onClick={() => togglePanel("manage")}
+                aria-expanded={openPanel === "manage"}
+              >
+                <span className="w-8 h-8 rounded-lg bg-csl-light flex items-center justify-center flex-shrink-0 text-csl-dark" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-4 h-4">
+                    <rect x="2" y="5" width="16" height="12" rx="2"/>
+                    <path d="M2 9h16" strokeLinecap="round"/>
+                    <path d="M6 13h2" strokeLinecap="round"/>
+                  </svg>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">Update card or cancel</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Manage payment method or end your subscription</p>
+                </div>
+                <ChevronIcon open={openPanel === "manage"} />
+              </button>
+
+              {openPanel === "manage" && (
+                <div className="px-4 pb-4 border-t border-gray-100">
+                  {billingPortal.error && (
+                    <p className="mt-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{billingPortal.error}</p>
+                  )}
+                  <button onClick={billingPortal.open} disabled={billingPortal.loading} className={`${btnPrimary} mt-3`}>
+                    {billingPortal.loading ? "Opening..." : "Open Stripe portal →"}
+                  </button>
+                  <p className="text-xs text-gray-400 mt-1.5">Update your card or cancel your subscription via Stripe&apos;s secure portal.</p>
+                </div>
+              )}
+            </div>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Plan
-                  </th>
-                  <th className="text-right py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Amount
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {payments.map((p) => (
-                  <tr key={p.id} className="border-b border-gray-100 last:border-0">
-                    <td className="py-3 pr-4 text-gray-700 whitespace-nowrap">
-                      {formatDate(p.paid_at)}
-                    </td>
-                    <td className="py-3 pr-4 text-gray-700">
-                      {p.plan_name ?? "-"}
-                    </td>
-                    <td className="py-3 text-gray-900 font-semibold text-right whitespace-nowrap">
-                      {formatPence(p.amount_pence)}
-                    </td>
+        )}
+
+        {/* ── Payment history ─────────────────────────────────────────────── */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-gray-100">
+            <span className="text-[0.65rem] font-semibold uppercase tracking-widest text-gray-400">Payments</span>
+          </div>
+          {payments.length === 0 ? (
+            <div className="text-center py-8 px-4">
+              <p className="text-gray-400 text-sm">No payments recorded yet.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full" style={{ fontVariantNumeric: "tabular-nums" }}>
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left py-2 px-4 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Date</th>
+                    <th className="text-left py-2 px-2 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider">Plan</th>
+                    <th className="text-right py-2 px-4 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider">Amount</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {payments.map((p) => (
+                    <tr key={p.id} className="border-b border-gray-100 last:border-0">
+                      <td className="py-2.5 px-4 text-xs text-gray-600 whitespace-nowrap">{formatDate(p.paid_at)}</td>
+                      <td className="py-2.5 px-2 text-xs text-gray-500">{p.plan_name ?? "-"}</td>
+                      <td className="py-2.5 px-4 text-xs font-semibold text-gray-900 text-right whitespace-nowrap">{formatPence(p.amount_pence)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ── Billing portal for non-monthly active members ───────────────── */}
+        {!isMonthlyActive && !isAnnualActive && !isLifetime && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-100">
+              <span className="text-[0.65rem] font-semibold uppercase tracking-widest text-gray-400">Subscription</span>
+            </div>
+            <div className="p-4">
+              {billingPortal.error && (
+                <p className="mb-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{billingPortal.error}</p>
+              )}
+              <button onClick={billingPortal.open} disabled={billingPortal.loading} className={btnPrimary}>
+                {billingPortal.loading ? "Opening..." : "Manage subscription"}
+              </button>
+              <p className="text-xs text-gray-400 mt-1.5">Update your card or cancel via Stripe.</p>
+            </div>
           </div>
         )}
-      </Card>
+      </div>
     </div>
   );
 }

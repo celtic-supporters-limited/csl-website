@@ -14,19 +14,10 @@ import { logMemberEvent } from "@/lib/member-events";
 // ── Derivation helpers ────────────────────────────────────────────────────────
 
 function deriveTier(session: Stripe.Checkout.Session): string {
-  if (session.mode === "payment") return "Lifetime";
+  if (session.mode === "payment") return "lifetime";
   const item = session.line_items?.data[0];
-  const amount = item?.price?.unit_amount ? item.price.unit_amount / 100 : 0;
   const interval = item?.price?.recurring?.interval;
-  if (interval === "month") {
-    if (amount === 10) return "Monthly 10";
-    if (amount === 25) return "Monthly 25";
-    return `PWYW Monthly ${Math.round(amount)}`;
-  }
-  if (interval === "year") {
-    return `PWYW Annual ${Math.round(amount)}`;
-  }
-  return "monthly";
+  return interval === "year" ? "annual" : "monthly";
 }
 
 function derivePlanName(session: Stripe.Checkout.Session): string {
@@ -194,10 +185,10 @@ export async function POST(req: NextRequest) {
               plan_name: planName,
               amount_pence: session.amount_total ?? 0,
               status: "active",
-              is_lifetime: tier === "Lifetime",
+              is_lifetime: tier === "lifetime",
               subscription_start_date: subStartDate,
             },
-            { onConflict: "stripe_customer_id" }
+            { onConflict: "email" }
           )
           .select("id")
           .maybeSingle();
@@ -217,6 +208,19 @@ export async function POST(req: NextRequest) {
           eventEmail: email,
           isTest: isTestMode,
         }).catch((err) => console.error("[stripe-webhook] Event log error (checkout.completed):", err));
+
+        // If this checkout was a monthly→annual switch, cancel the old monthly
+        // subscription at period end now that the new annual is confirmed.
+        const prevSubId = session.metadata?.previous_subscription_id;
+        const newSubId = subscriptionId(session.subscription);
+        if (prevSubId && prevSubId !== newSubId) {
+          try {
+            await getStripe().subscriptions.update(prevSubId, { cancel_at_period_end: true });
+            console.log(`[stripe-webhook] Cancelled old monthly sub at period end: ${prevSubId}`);
+          } catch (err) {
+            console.error("[stripe-webhook] Failed to cancel previous subscription:", err);
+          }
+        }
 
         try {
           await sendWelcomeEmail({
@@ -241,6 +245,13 @@ export async function POST(req: NextRequest) {
             "[stripe-webhook] invoice.paid: no customer ID on invoice",
             invoice.id
           );
+          break;
+        }
+
+        // Skip £0 trial invoices (e.g. annual-switch trial period start).
+        // amount_paid of 0 would overwrite the member's stored amount_pence.
+        if ((invoice.amount_paid ?? 0) === 0) {
+          console.log(`[stripe-webhook] invoice.paid: skipping £0 invoice ${invoice.id}`);
           break;
         }
 
@@ -356,11 +367,20 @@ export async function POST(req: NextRequest) {
           break;
         }
 
-        const amountPence = sub.items.data[0]?.price?.unit_amount ?? 0;
+        const subItem = sub.items.data[0];
+        const amountPence = subItem?.price?.unit_amount ?? 0;
+        const amountPounds = Math.round(amountPence / 100);
+        const interval = subItem?.price?.recurring?.interval;
+        const newTier = interval === "year" ? "annual" : "monthly";
+        const webhookPlanName =
+          interval === "year" ? `Annual ${amountPounds}`
+          : amountPence === 1000 ? "Monthly 10"
+          : amountPence === 2500 ? "Monthly 25"
+          : `Monthly ${amountPounds}`;
 
         const { data: updatedMember, error } = await db
           .from("members")
-          .update({ amount_pence: amountPence })
+          .update({ amount_pence: amountPence, plan_name: webhookPlanName, membership_tier: newTier })
           .eq("stripe_customer_id", cid)
           .eq("is_lifetime", false)
           .select("id, email")

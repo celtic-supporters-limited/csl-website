@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 export default function LoginPage({
   searchParams,
 }: {
-  searchParams: { redirectTo?: string; error?: string; reason?: string };
+  searchParams: { redirectTo?: string; error?: string; reason?: string; notice?: string };
 }) {
   return (
     <main className="min-h-[calc(100vh-160px)] flex items-center justify-center bg-csl-light py-16 px-4">
@@ -23,6 +23,12 @@ export default function LoginPage({
             Sign in to your CSL member account.
           </p>
         </div>
+
+        {searchParams.notice === "confirm-email" && (
+          <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+            Check your inbox - we sent you a confirmation link. Click it to verify your email address, then sign in here.
+          </div>
+        )}
 
         {searchParams.error === "auth_failed" && (
           <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">

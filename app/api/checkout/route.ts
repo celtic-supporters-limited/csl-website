@@ -153,6 +153,8 @@ export async function POST(req: NextRequest) {
     const stripe = getStripe();
     let session: Awaited<ReturnType<typeof stripe.checkout.sessions.create>>;
 
+    const productId = process.env.STRIPE_PRODUCT_ID!;
+
     if (plan === "standard") {
       session = await stripe.checkout.sessions.create({
         mode: "subscription",
@@ -163,7 +165,7 @@ export async function POST(req: NextRequest) {
               currency: "gbp",
               unit_amount: 1000,
               recurring: { interval: "month" },
-              product_data: { name: "Monthly 10" },
+              product: productId,
             },
           },
         ],
@@ -181,7 +183,7 @@ export async function POST(req: NextRequest) {
               currency: "gbp",
               unit_amount: 2500,
               recurring: { interval: "month" },
-              product_data: { name: "Monthly 25" },
+              product: productId,
             },
           },
         ],
@@ -199,7 +201,7 @@ export async function POST(req: NextRequest) {
               currency: "gbp",
               unit_amount: amount! * 100,
               recurring: { interval: "month" },
-              product_data: { name: "Custom Monthly" },
+              product: productId,
             },
           },
         ],
@@ -217,7 +219,7 @@ export async function POST(req: NextRequest) {
               currency: "gbp",
               unit_amount: amount! * 100,
               recurring: { interval: "year" },
-              product_data: { name: `£${amount} Annually` },
+              product: productId,
             },
           },
         ],
@@ -238,7 +240,7 @@ export async function POST(req: NextRequest) {
             price_data: {
               currency: "gbp",
               unit_amount: 500000,
-              product_data: { name: "Lifetime £5000" },
+              product: productId,
             },
           },
         ],
