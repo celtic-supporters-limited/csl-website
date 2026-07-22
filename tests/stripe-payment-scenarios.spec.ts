@@ -311,6 +311,7 @@ test.describe("pm_card_chargeCustomerFail — attaches OK, charge fails", () => 
           payment_method: pm.id,
           off_session:    true,
           confirm:        true,
+          return_url:     "https://example.com",
         });
       } catch (err) {
         chargeError = err as Stripe.StripeError;
