@@ -35,23 +35,28 @@ export default function SignupForm({ email: initialEmail }: { email?: string }) 
 
     setLoading(true);
 
-    const { data, error } = await createBrowserSupabase().auth.signUp({
+    const { error } = await createBrowserSupabase().auth.signUp({
       email: email.trim().toLowerCase(),
       password,
     });
 
     if (error) {
       setLoading(false);
-      setErrorMsg(error.message);
+      setErrorMsg(
+        error.message.toLowerCase().includes("already registered") ||
+          error.message.toLowerCase().includes("already exists")
+          ? "An account with this email already exists. Use the login page or reset your password."
+          : error.message
+      );
       return;
     }
 
-    // If Supabase requires email confirmation, signUp() succeeds but returns
-    // no session. Redirect to /login with a message so the member knows to
-    // confirm their email before signing in.
-    if (!data.session) {
-      window.location.href = "/login?notice=confirm-email";
-      return;
+    // Link members.user_id = auth.users.id before saving the profile.
+    // Must complete first so the profile PATCH finds the correct row.
+    try {
+      await fetch("/api/auth/link-member", { method: "POST" });
+    } catch {
+      // Non-fatal — portal email fallback covers this case.
     }
 
     // Save name to the members row created by the Stripe webhook.
