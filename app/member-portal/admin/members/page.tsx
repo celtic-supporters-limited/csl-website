@@ -3,11 +3,12 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import PortalShell from "@/components/PortalShell";
-import MemberTimeline from "@/components/MemberTimeline";
-import type { TimelineEntry } from "@/components/MemberTimeline";
+import MemberSearchSection from "@/components/MemberSearchSection";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Member Events | CSL Admin",
+  title: "Member Support | CSL Admin",
 };
 
 // ── Filter types ──────────────────────────────────────────────────────────────
@@ -55,21 +56,6 @@ function eventAction(type: string): string | null {
   return null;
 }
 
-function eventLabel(type: string): string {
-  const labels: Record<string, string> = {
-    "checkout.completed":       "Joined CSL",
-    "invoice.paid":             "Invoice paid",
-    "payment.failed":           "Payment failed",
-    "subscription.updated":     "Subscription amount updated",
-    "subscription.cancelled":   "Membership cancelled",
-    "email_change.initiated":   "Email change requested",
-    "email_change.confirmed":   "Email change confirmed",
-    "password_reset.requested": "Password reset requested",
-    "profile.updated":          "Profile updated",
-  };
-  return labels[type] ?? type;
-}
-
 function eventDetail(type: string, detail: Record<string, unknown> | null): string {
   if (!detail) return "";
   switch (type) {
@@ -98,16 +84,6 @@ function eventDetail(type: string, detail: Record<string, unknown> | null): stri
   }
 }
 
-function authLabel(action: string): string {
-  const labels: Record<string, string> = {
-    login:             "Logged in",
-    logout:            "Logged out",
-    user_updated:      "Auth profile updated",
-    password_recovery: "Password recovery initiated",
-  };
-  return labels[action] ?? action;
-}
-
 function formatDatetime(iso: string): string {
   return new Date(iso).toLocaleString("en-GB", {
     day: "2-digit",
@@ -123,13 +99,12 @@ type SortBy  = "created_at" | "event_email" | "event_type";
 type SortDir = "asc" | "desc";
 
 function filterUrl(
-  state: { q: string; type: TypeFilter; period: PeriodFilter; test: boolean; sortBy: SortBy; sortDir: SortDir },
+  state: { type: TypeFilter; period: PeriodFilter; test: boolean; sortBy: SortBy; sortDir: SortDir },
   override: Partial<typeof state>,
   testModeDefault: boolean
 ): string {
   const m = { ...state, ...override };
   const p = new URLSearchParams();
-  if (m.q)                           p.set("q", m.q);
   if (m.type !== "all")              p.set("type", m.type);
   if (m.period !== "30d")            p.set("period", m.period);
   if (m.test && !testModeDefault)    p.set("test", "1");
@@ -141,7 +116,7 @@ function filterUrl(
 }
 
 function sortUrl(
-  state: { q: string; type: TypeFilter; period: PeriodFilter; test: boolean; sortBy: SortBy; sortDir: SortDir },
+  state: { type: TypeFilter; period: PeriodFilter; test: boolean; sortBy: SortBy; sortDir: SortDir },
   col: SortBy,
   testModeDefault: boolean
 ): string {
@@ -155,7 +130,7 @@ function sortUrl(
 export default async function AdminMembersPage({
   searchParams,
 }: {
-  searchParams: { q?: string; type?: string; period?: string; test?: string; sortBy?: string; sortDir?: string };
+  searchParams: { type?: string; period?: string; test?: string; sortBy?: string; sortDir?: string };
 }) {
   const authClient = createServerSupabase();
   const {
@@ -173,13 +148,10 @@ export default async function AdminMembersPage({
 
   if (!adminMember?.is_admin) redirect("/member-portal");
 
-  // ── Parse filter params ───────────────────────────────────────────────────
+  // ── Parse filter params (non-PII only) ───────────────────────────────────
 
-  // In test mode (sk_test_* key) default to showing test events, since all
-  // events will be tagged is_test=true and the log would otherwise appear empty.
-  const isTestMode  = process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ?? false;
-  const q          = searchParams.q?.trim() ?? "";
-  const typeFilter = (searchParams.type  ?? "all")  as TypeFilter;
+  const isTestMode = process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ?? false;
+  const typeFilter = (searchParams.type   ?? "all")  as TypeFilter;
   const period     = (searchParams.period ?? "30d") as PeriodFilter;
   const showTest   = searchParams.test === "1" ? true
     : searchParams.test === "0" ? false
@@ -187,7 +159,7 @@ export default async function AdminMembersPage({
   const sortBy  = (["created_at", "event_email", "event_type"].includes(searchParams.sortBy ?? "")
     ? searchParams.sortBy : "created_at") as SortBy;
   const sortDir = (searchParams.sortDir === "asc" ? "asc" : "desc") as SortDir;
-  const filterState = { q, type: typeFilter, period, test: showTest, sortBy, sortDir };
+  const filterState = { type: typeFilter, period, test: showTest, sortBy, sortDir };
 
   // ── Date bounds ───────────────────────────────────────────────────────────
 
@@ -201,7 +173,7 @@ export default async function AdminMembersPage({
     : period === "30d" ? new Date(now - 30 * 86400000).toISOString()
     : null;
 
-  // ── Stats — respect showTest so cards match the visible table ───────────
+  // ── Stats ─────────────────────────────────────────────────────────────────
 
   let todayQ = db.from("member_events")
     .select("id", { count: "exact", head: true })
@@ -217,9 +189,7 @@ export default async function AdminMembersPage({
 
   const [todayEventsRes, failuresRes, weekJoinsRes] = await Promise.all([
     todayQ,
-    db.from("members")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "payment_failed"),
+    db.from("members").select("id", { count: "exact", head: true }).eq("status", "payment_failed"),
     weekQ,
   ]);
 
@@ -227,108 +197,7 @@ export default async function AdminMembersPage({
   const failureCount = failuresRes.count    ?? 0;
   const weekJoins    = weekJoinsRes.count   ?? 0;
 
-  // ── Member search ─────────────────────────────────────────────────────────
-
-  type MemberRow = {
-    id: string;
-    user_id: string | null;
-    email: string;
-    name: string | null;
-    first_name: string | null;
-    last_name: string | null;
-    plan_name: string | null;
-    membership_tier: string | null;
-    status: string | null;
-    amount_pence: number | null;
-    created_at: string;
-  };
-
-  let results: MemberRow[] = [];
-
-  if (q) {
-    const lowerQ   = q.toLowerCase();
-    const escapedQ = lowerQ.replace(/[%_\\]/g, "\\$&");
-
-    let query = db
-      .from("members")
-      .select("id, user_id, email, name, first_name, last_name, plan_name, membership_tier, status, amount_pence, created_at")
-      .limit(10);
-
-    if (lowerQ.includes("@")) {
-      query = query.eq("email", lowerQ);
-    } else {
-      query = query.or(
-        `name.ilike.%${escapedQ}%,first_name.ilike.%${escapedQ}%,last_name.ilike.%${escapedQ}%`
-      );
-    }
-
-    const { data } = await query;
-    results = (data ?? []) as MemberRow[];
-  }
-
-  // ── Timeline (single result) ──────────────────────────────────────────────
-
-  const target  = results.length === 1 ? results[0] : null;
-  const entries: TimelineEntry[] = [];
-
-  if (target) {
-    const [eventsResult, casesResult] = await Promise.all([
-      db.from("member_events")
-        .select("id, event_type, detail, event_email, created_at, is_test")
-        .eq("member_id", target.id)
-        .order("created_at", { ascending: false })
-        .limit(100),
-      db.from("shareholder_cases")
-        .select("id, case_type, status, created_at")
-        .eq("email", target.email)
-        .order("created_at", { ascending: false })
-        .limit(50),
-    ]);
-
-    type AuthEvent = { id: string; action: string; ip_address: string | null; created_at: string };
-    let authEvents: AuthEvent[] = [];
-    if (target.user_id) {
-      const { data: authData } = await db.rpc("get_member_auth_events", {
-        p_user_id: target.user_id,
-      });
-      authEvents = (authData ?? []) as AuthEvent[];
-    }
-
-    for (const ev of eventsResult.data ?? []) {
-      entries.push({
-        id: ev.id,
-        timestamp: ev.created_at,
-        type: ev.event_type,
-        label: eventLabel(ev.event_type),
-        detail: eventDetail(ev.event_type, (ev.detail ?? null) as Record<string, unknown> | null),
-        isTest: ev.is_test ?? false,
-      });
-    }
-
-    for (const c of casesResult.data ?? []) {
-      entries.push({
-        id: c.id,
-        timestamp: c.created_at,
-        type: c.case_type === "Share Tracing" ? "share_tracing.submitted" : "proxy.submitted",
-        label: c.case_type === "Share Tracing" ? "Share tracing enquiry" : "Proxy assignment request",
-        detail: c.status ?? "",
-      });
-    }
-
-    for (const a of authEvents) {
-      entries.push({
-        id: a.id,
-        timestamp: a.created_at,
-        type: `auth.${a.action}`,
-        label: authLabel(a.action),
-        detail: a.ip_address ? `IP: ${a.ip_address}` : "",
-      });
-    }
-
-    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }
-
-  // ── All-events log (default view, no search) ──────────────────────────────
+  // ── All-events log ────────────────────────────────────────────────────────
 
   type EventRow = {
     id: string;
@@ -339,53 +208,34 @@ export default async function AdminMembersPage({
     created_at: string;
   };
 
-  let events: EventRow[] = [];
+  let evQ = db
+    .from("member_events")
+    .select("id, event_type, detail, event_email, is_test, created_at")
+    .order(sortBy, { ascending: sortDir === "asc" })
+    .limit(2000);
 
-  if (!q) {
-    let evQ = db
-      .from("member_events")
-      .select("id, event_type, detail, event_email, is_test, created_at")
-      .order(sortBy, { ascending: sortDir === "asc" })
-      .limit(2000);
+  if (!showTest)   evQ = evQ.eq("is_test", false);
+  if (periodStart) evQ = evQ.gte("created_at", periodStart);
 
-    if (!showTest)   evQ = evQ.eq("is_test", false);
-    if (periodStart) evQ = evQ.gte("created_at", periodStart);
+  if      (typeFilter === "join")      evQ = evQ.in("event_type", ["checkout.completed", "subscription.migrated"]);
+  else if (typeFilter === "payment")   evQ = evQ.in("event_type", ["invoice.paid", "payment.failed"]);
+  else if (typeFilter === "failure")   evQ = evQ.eq("event_type", "payment.failed");
+  else if (typeFilter === "cancelled") evQ = evQ.eq("event_type", "subscription.cancelled");
+  else if (typeFilter === "auth")      evQ = evQ.in("event_type", ["password_reset.requested", "email_change.initiated", "email_change.confirmed", "auth.account_created"]);
+  else if (typeFilter === "profile")   evQ = evQ.eq("event_type", "profile.updated");
 
-    if      (typeFilter === "join")      evQ = evQ.in("event_type", ["checkout.completed", "subscription.migrated"]);
-    else if (typeFilter === "payment")   evQ = evQ.in("event_type", ["invoice.paid", "payment.failed"]);
-    else if (typeFilter === "failure")   evQ = evQ.eq("event_type", "payment.failed");
-    else if (typeFilter === "cancelled") evQ = evQ.eq("event_type", "subscription.cancelled");
-    else if (typeFilter === "auth")      evQ = evQ.in("event_type", ["password_reset.requested", "email_change.initiated", "email_change.confirmed", "auth.account_created"]);
-    else if (typeFilter === "profile")   evQ = evQ.eq("event_type", "profile.updated");
-
-    const { data } = await evQ;
-    events = (data ?? []) as EventRow[];
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  function memberDisplayName(m: MemberRow): string {
-    if (m.first_name && m.last_name) return `${m.first_name} ${m.last_name}`;
-    return m.name ?? m.email;
-  }
+  const { data: eventsData } = await evQ;
+  const events = (eventsData ?? []) as EventRow[];
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const pillBase = "px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors";
-  const pillActive = "bg-csl-dark text-white border-csl-dark";
+  const pillBase    = "px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors";
+  const pillActive  = "bg-csl-dark text-white border-csl-dark";
   const pillInactive = "bg-white text-gray-600 border-gray-300 hover:bg-gray-50";
 
   return (
     <PortalShell user={{ email: user.email, id: user.id }} member={adminMember}>
       <div className="max-w-5xl">
-
-        {/* Header */}
-        <div className="mb-5">
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Member Events</h1>
-          <p className="text-gray-500 text-sm">
-            Live event log. Search by email or name to see a member&apos;s full timeline.
-          </p>
-        </div>
 
         {/* Stats strip */}
         <div className="grid grid-cols-3 gap-3 mb-6">
@@ -407,203 +257,126 @@ export default async function AdminMembersPage({
           </div>
         </div>
 
-        {/* Search form */}
-        <form className="flex gap-2 mb-5" method="GET">
-          {!showTest ? null : <input type="hidden" name="test" value="1" />}
-          {sortBy !== "created_at" && <input type="hidden" name="sortBy" value={sortBy} />}
-          {sortDir !== "desc"      && <input type="hidden" name="sortDir" value={sortDir} />}
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Search email or name for full member timeline..."
-            autoComplete="off"
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-csl-dark"
-          />
-          <button
-            type="submit"
-            className="bg-csl-dark text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-csl-mid transition-colors"
-          >
-            Search
-          </button>
-          {q && (
-            <Link
-              href={filterUrl(filterState, { q: "" }, isTestMode)}
-              className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
-            >
-              Clear
-            </Link>
-          )}
-        </form>
+        {/* Member search — POST only, no PII in URL */}
+        <MemberSearchSection defaultShowTest={isTestMode} />
 
-        {/* ── Member timeline view (when q is set) ── */}
-        {q && (
-          <div>
-            {results.length === 0 && (
-              <p className="text-sm text-gray-500 mb-6">No member found for &ldquo;{q}&rdquo;.</p>
-            )}
-
-            {results.length > 1 && (
-              <div className="mb-6">
-                <p className="text-sm text-gray-600 mb-2">
-                  {results.length} members matched - select one to view their timeline:
-                </p>
-                <ul className="divide-y border border-gray-200 rounded-lg overflow-hidden">
-                  {results.map((m) => (
-                    <li key={m.id}>
-                      <Link
-                        href={`?q=${encodeURIComponent(m.email)}`}
-                        className="flex flex-wrap items-center justify-between gap-x-6 px-4 py-3 hover:bg-gray-50 text-sm"
-                      >
-                        <span className="font-medium text-gray-900">{memberDisplayName(m)}</span>
-                        <span className="text-gray-500">{m.email}</span>
-                        <span className="text-gray-400 text-xs">{m.plan_name ?? m.membership_tier ?? "-"}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {target && (
-              <MemberTimeline
-                member={{
-                  name:     memberDisplayName(target),
-                  email:    target.email,
-                  plan:     target.plan_name ?? target.membership_tier ?? "-",
-                  status:   target.status ?? "-",
-                  joinedAt: target.created_at,
-                }}
-                entries={entries}
-                defaultShowTest={isTestMode}
-              />
-            )}
-          </div>
-        )}
-
-        {/* ── All-events log view (default) ── */}
-        {!q && (
-          <div>
-            {/* Type filter pills */}
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {TYPE_OPTIONS.map((opt) => (
-                <Link
-                  key={opt.value}
-                  href={filterUrl(filterState, { type: opt.value }, isTestMode)}
-                  className={`${pillBase} ${typeFilter === opt.value ? pillActive : pillInactive}`}
-                >
-                  {opt.label}
-                </Link>
-              ))}
-            </div>
-
-            {/* Period filter pills */}
-            <div className="flex flex-wrap items-center gap-1.5 mb-5">
-              {PERIOD_OPTIONS.map((opt) => (
-                <Link
-                  key={opt.value}
-                  href={filterUrl(filterState, { period: opt.value }, isTestMode)}
-                  className={`${pillBase} ${period === opt.value ? pillActive : pillInactive}`}
-                >
-                  {opt.label}
-                </Link>
-              ))}
+        {/* All-events log */}
+        <div>
+          {/* Type filter pills */}
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {TYPE_OPTIONS.map((opt) => (
               <Link
-                href={filterUrl(filterState, { test: !showTest }, isTestMode)}
-                className={`ml-2 ${pillBase} ${showTest ? pillActive : pillInactive}`}
+                key={opt.value}
+                href={filterUrl(filterState, { type: opt.value }, isTestMode)}
+                className={`${pillBase} ${typeFilter === opt.value ? pillActive : pillInactive}`}
               >
-                {showTest ? "Hide test events" : "Show test events"}
+                {opt.label}
               </Link>
-            </div>
+            ))}
+          </div>
 
-            {/* Events table */}
-            {events.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 px-6 py-12 text-center">
-                <p className="text-gray-500 text-sm">No events match the current filters.</p>
+          {/* Period filter pills */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-5">
+            {PERIOD_OPTIONS.map((opt) => (
+              <Link
+                key={opt.value}
+                href={filterUrl(filterState, { period: opt.value }, isTestMode)}
+                className={`${pillBase} ${period === opt.value ? pillActive : pillInactive}`}
+              >
+                {opt.label}
+              </Link>
+            ))}
+            <Link
+              href={filterUrl(filterState, { test: !showTest }, isTestMode)}
+              className={`ml-2 ${pillBase} ${showTest ? pillActive : pillInactive}`}
+            >
+              {showTest ? "Hide test events" : "Show test events"}
+            </Link>
+          </div>
+
+          {/* Events table */}
+          {events.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 px-6 py-12 text-center">
+              <p className="text-gray-500 text-sm">No events match the current filters.</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  {events.length} event{events.length !== 1 ? "s" : ""}
+                  {period !== "all" && (
+                    <span className="font-normal normal-case ml-1 text-gray-400">
+                      - {PERIOD_OPTIONS.find((p) => p.value === period)?.label.toLowerCase()}
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-gray-400">Search by email above to view a member&apos;s full timeline</p>
               </div>
-            ) : (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    {events.length} event{events.length !== 1 ? "s" : ""}
-                    {period !== "all" && (
-                      <span className="font-normal normal-case ml-1 text-gray-400">
-                        - {PERIOD_OPTIONS.find((p) => p.value === period)?.label.toLowerCase()}
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-xs text-gray-400">Click a member email to view their full timeline</p>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50">
-                        {(["created_at", "event_email", "event_type"] as SortBy[]).map((col) => {
-                          const labels: Record<SortBy, string> = { created_at: "When", event_email: "Member", event_type: "Event" };
-                          const isActive = sortBy === col;
-                          const chevron = isActive ? (sortDir === "desc" ? " ↓" : " ↑") : " ↕";
-                          return (
-                            <th key={col} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                              <Link href={sortUrl(filterState, col, isTestMode)} className={`hover:text-gray-800 transition-colors ${isActive ? "text-csl-dark" : ""}`}>
-                                {labels[col]}<span className="opacity-50">{chevron}</span>
-                              </Link>
-                            </th>
-                          );
-                        })}
-                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Detail</th>
-                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {events.map((ev) => {
-                        const badge  = eventBadge(ev.event_type);
-                        const action = eventAction(ev.event_type);
-                        const detail = eventDetail(ev.event_type, ev.detail);
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      {(["created_at", "event_email", "event_type"] as SortBy[]).map((col) => {
+                        const labels: Record<SortBy, string> = { created_at: "When", event_email: "Member", event_type: "Event" };
+                        const isActive = sortBy === col;
+                        const chevron = isActive ? (sortDir === "desc" ? " ↓" : " ↑") : " ↕";
                         return (
-                          <tr
-                            key={ev.id}
-                            className={`hover:bg-gray-50 ${ev.is_test ? "opacity-60" : ""}`}
-                          >
-                            <td className="px-4 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">
-                              {formatDatetime(ev.created_at)}
-                              {ev.is_test && (
-                                <span className="ml-1.5 text-[0.6rem] bg-amber-100 text-amber-700 px-1 py-0.5 rounded">
-                                  TEST
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <Link
-                                href={`?q=${encodeURIComponent(ev.event_email ?? "")}`}
-                                className="text-csl-dark hover:underline font-medium text-sm"
-                              >
-                                {ev.event_email ?? "-"}
-                              </Link>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full border ${badge.cls}`}>
-                                {badge.label}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-600">
-                              {detail || <span className="text-gray-300">-</span>}
-                            </td>
-                            <td className="px-4 py-3">
-                              {action && (
-                                <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 whitespace-nowrap">
-                                  {action}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
+                          <th key={col} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                            <Link href={sortUrl(filterState, col, isTestMode)} className={`hover:text-gray-800 transition-colors ${isActive ? "text-csl-dark" : ""}`}>
+                              {labels[col]}<span className="opacity-50">{chevron}</span>
+                            </Link>
+                          </th>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Detail</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {events.map((ev) => {
+                      const badge  = eventBadge(ev.event_type);
+                      const action = eventAction(ev.event_type);
+                      const detail = eventDetail(ev.event_type, ev.detail);
+                      return (
+                        <tr
+                          key={ev.id}
+                          className={`hover:bg-gray-50 ${ev.is_test ? "opacity-60" : ""}`}
+                        >
+                          <td className="px-4 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">
+                            {formatDatetime(ev.created_at)}
+                            {ev.is_test && (
+                              <span className="ml-1.5 text-[0.6rem] bg-amber-100 text-amber-700 px-1 py-0.5 rounded">
+                                TEST
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 font-medium">
+                            {ev.event_email ?? "-"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full border ${badge.cls}`}>
+                              {badge.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {detail || <span className="text-gray-300">-</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {action && (
+                              <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 whitespace-nowrap">
+                                {action}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
       </div>
     </PortalShell>

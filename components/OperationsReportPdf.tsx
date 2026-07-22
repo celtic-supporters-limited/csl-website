@@ -62,6 +62,10 @@ export type OperationsReportData = {
     backupStatus: TrafficLight;
     recentRuns: BackupRow[];
   };
+  gates: {
+    portalOpen: boolean;
+    membershipOpen: boolean;
+  };
 };
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -227,6 +231,22 @@ export function OperationsReportPdf(d: OperationsReportData) {
 
           {/* Service status */}
           <Text style={s.secHead}>Service status</Text>
+
+          <View style={s.cardRow}>
+            {[
+              { label: "Member portal", value: d.gates.portalOpen ? "Open" : "Closed", open: d.gates.portalOpen, desc: "Authenticated member access to /member-portal" },
+              { label: "New membership sign-ups", value: d.gates.membershipOpen ? "Open" : "Closed", open: d.gates.membershipOpen, desc: "Public access to join via /membership checkout" },
+            ].map((g) => (
+              <View key={g.label} style={[s.execCard, { alignItems: "flex-start" }]}>
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                  <View style={[s.pillDot, { backgroundColor: g.open ? "#16A34A" : "#D97706", marginRight: 5 }]} />
+                  <Text style={[s.execVal, { fontSize: 10, marginBottom: 0, color: g.open ? GREEN : AMBER }]}>{g.value}</Text>
+                </View>
+                <Text style={[s.execLabel, { textTransform: "none", letterSpacing: 0, marginBottom: 3 }]}>{g.label}</Text>
+                <Text style={s.notesText}>{g.desc}</Text>
+              </View>
+            ))}
+          </View>
 
           <View style={s.cols}>
             <View style={s.col}>

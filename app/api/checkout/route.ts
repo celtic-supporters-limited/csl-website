@@ -20,7 +20,12 @@ const WINDOW_MS = 10 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   // ── 0. Membership gate ─────────────────────────────────────────────────────
-  if (process.env.MEMBERSHIP_OPEN !== "true") {
+  const { data: membershipConfig } = await getSupabase()
+    .from("site_config")
+    .select("value")
+    .eq("key", "membership_open")
+    .maybeSingle();
+  if (membershipConfig?.value !== "true") {
     return NextResponse.json(
       { error: "Membership sign-up is not currently open." },
       { status: 403 }
@@ -87,8 +92,13 @@ export async function POST(req: NextRequest) {
         }),
       }
     );
-    const verifyData = await verifyRes.json() as { success: boolean };
+    const verifyData = await verifyRes.json() as { success: boolean; "error-codes"?: string[] };
     if (!verifyData.success) {
+      console.error("[checkout] Turnstile verification failed", {
+        ip,
+        email,
+        errorCodes: verifyData["error-codes"],
+      });
       return NextResponse.json(
         { error: "Bot detection check failed. Please try again." },
         { status: 400 }

@@ -166,11 +166,11 @@ export default function PortalShell({ user, member, children }: Props) {
                   {member?.is_admin && (
                     <>
                       {[
-                        { href: "/member-portal/admin/members",       label: "Member Events" },
+                        { href: "/member-portal/admin/members",       label: "Member Support" },
                         { href: "/member-portal/admin/cases",         label: "Cases"         },
                         { href: "/member-portal/admin/reporting",     label: "Reporting"     },
-                        { href: "/member-portal/admin/operations",    label: "Operations"    },
-                        { href: "/member-portal/admin/resolution",    label: "Resolution"    },
+                        { href: "/member-portal/admin/operations",    label: "Operational Status"       },
+                        { href: "/member-portal/admin/resolution",    label: "AGM Resolution Progress"  },
                         { href: "/member-portal/admin/documents/new", label: "Add Document"  },
                       ].map((item) => (
                         <Link
@@ -224,11 +224,11 @@ export default function PortalShell({ user, member, children }: Props) {
                     </p>
                     <ul className="space-y-0.5">
                       {[
-                        { href: "/member-portal/admin/members",       icon: "&#128203;", label: "Member Events" },
+                        { href: "/member-portal/admin/members",       icon: "&#128203;", label: "Member Support" },
                         { href: "/member-portal/admin/cases",         icon: "&#128269;", label: "Cases"          },
                         { href: "/member-portal/admin/reporting",     icon: "&#128202;", label: "Reporting"      },
-                        { href: "/member-portal/admin/operations",    icon: "&#9881;",   label: "Operations"     },
-                        { href: "/member-portal/admin/resolution",    icon: "&#128393;", label: "Resolution"     },
+                        { href: "/member-portal/admin/operations",    icon: "&#9881;",   label: "Operational Status"      },
+                        { href: "/member-portal/admin/resolution",    icon: "&#128393;", label: "AGM Resolution Progress" },
                         { href: "/member-portal/admin/documents/new", icon: "&#128196;", label: "Add Document"   },
                       ].map((item) => (
                         <li key={item.href}>
