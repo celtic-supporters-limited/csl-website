@@ -460,15 +460,38 @@ export default async function AdminMembersPage({
     <PortalShell user={{ email: user.email, id: user.id }} member={adminMember}>
       <div className="max-w-5xl">
 
-        {/* Header */}
+        {/* Header — adapts when a single member is loaded */}
         <div className="mb-5">
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Member Events</h1>
-          <p className="text-gray-500 text-sm">
-            Live event log. Search by email or name to see a member&apos;s full timeline.
-          </p>
+          {target ? (
+            <>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Member Support</p>
+              <h1 className="text-2xl font-bold text-gray-900 leading-tight">{memberDisplayName(target)}</h1>
+              <p className="text-sm text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span>{target.email}</span>
+                <span className="text-gray-300">·</span>
+                <span>{target.plan_name ?? target.membership_tier ?? "-"}</span>
+                <span className="text-gray-300">·</span>
+                <span className={
+                  target.status === "active"         ? "text-green-700 font-medium" :
+                  target.status === "payment_failed" ? "text-red-600 font-medium"   :
+                  "text-gray-500"
+                }>
+                  {target.status === "payment_failed" ? "Payment failed" : (target.status ?? "-")}
+                </span>
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-gray-900 mb-1">Member Support</h1>
+              <p className="text-gray-500 text-sm">
+                Live event log. Search by email or name to see a member&apos;s full timeline.
+              </p>
+            </>
+          )}
         </div>
 
-        {/* Stats strip */}
+        {/* Stats strip — hidden when viewing a single member */}
+        {!target && (
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 text-center">
             <p className="text-2xl font-black text-csl-dark tabular-nums">{todayCount}</p>
@@ -487,6 +510,7 @@ export default async function AdminMembersPage({
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-0.5">Joins this week</p>
           </div>
         </div>
+        )}
 
         {/* Search form */}
         <form className="flex gap-2 mb-5" method="GET">
