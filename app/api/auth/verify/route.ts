@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
   });
 
   if (error) {
+    console.error("[auth/verify] OTP verification failed (GET):", error.message, { type });
     // Redirect back to the confirm page showing an expired-link error.
     return NextResponse.redirect(
       new URL(`/auth/confirm?token_hash=${encodeURIComponent(token_hash)}&type=${type}&error=expired`, url.origin)
@@ -96,6 +97,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (error || !data?.session) {
+    console.error("[auth/verify] OTP verification failed (POST):", error?.message ?? "no session", { type });
     return NextResponse.json(
       { ok: false, message: error?.message ?? "Token invalid or expired." },
       { status: 400 }

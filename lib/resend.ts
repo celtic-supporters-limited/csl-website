@@ -56,12 +56,17 @@ export async function sendShareTracingNotification(
   const resend = getResend();
   if (!resend) return;
 
-  await resend.emails.send({
-    from: "CSL Website <info@celticsupporters.net>",
-    to: "info@celticsupporters.net",
-    subject: `New Share Tracing Enquiry - ${params.name}`,
-    html: intakeHtml(params),
-  });
+  try {
+    await resend.emails.send({
+      from: "CSL Website <info@celticsupporters.net>",
+      to: "info@celticsupporters.net",
+      subject: `New Share Tracing Enquiry - ${params.name}`,
+      html: intakeHtml(params),
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "share_tracing", to: "info@celticsupporters.net", err });
+    throw err;
+  }
   logEmailSend("share_tracing");
 }
 
@@ -71,12 +76,17 @@ export async function sendProxyNotification(
   const resend = getResend();
   if (!resend) return;
 
-  await resend.emails.send({
-    from: "CSL Website <info@celticsupporters.net>",
-    to: "info@celticsupporters.net",
-    subject: `New Proxy Assignment Request - ${params.name}`,
-    html: intakeHtml(params),
-  });
+  try {
+    await resend.emails.send({
+      from: "CSL Website <info@celticsupporters.net>",
+      to: "info@celticsupporters.net",
+      subject: `New Proxy Assignment Request - ${params.name}`,
+      html: intakeHtml(params),
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "proxy", to: "info@celticsupporters.net", err });
+    throw err;
+  }
   logEmailSend("proxy");
 }
 
@@ -96,21 +106,26 @@ export async function sendWelcomeEmail({
     ? name.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
     : "Member";
 
-  await resend.emails.send({
-    from: "Celtic Supporters Limited <info@celticsupporters.net>",
-    to: email,
-    subject: "Welcome to Celtic Supporters Limited",
-    html: `
-      <p>Hello ${displayName},</p>
-      <p>Thank you for joining Celtic Supporters Limited. Your membership is now active.</p>
-      <p><strong>Your plan:</strong> ${planName}</p>
-      <p>Access your member portal:</p>
-      <p><a href="${SITE_URL}/member-portal" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Go to your member portal</a></p>
-      <p>Once your account is active you can manage your membership, view documents, and track your enquiries.</p>
-      <p>Together we are building the shareholder voice Celtic FC needs.</p>
-      <p>Celtic Supporters Limited</p>
-    `,
-  });
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to: email,
+      subject: "Welcome to Celtic Supporters Limited",
+      html: `
+        <p>Hello ${displayName},</p>
+        <p>Thank you for joining Celtic Supporters Limited. Your membership is now active.</p>
+        <p><strong>Your plan:</strong> ${planName}</p>
+        <p>Access your member portal:</p>
+        <p><a href="${SITE_URL}/member-portal" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Go to your member portal</a></p>
+        <p>Once your account is active you can manage your membership, view documents, and track your enquiries.</p>
+        <p>Together we are building the shareholder voice Celtic FC needs.</p>
+        <p>Celtic Supporters Limited</p>
+      `,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "welcome", to: email, err });
+    throw err;
+  }
   logEmailSend("welcome");
 }
 
@@ -124,18 +139,23 @@ export async function sendPasswordResetEmail({
   const resend = getResend();
   if (!resend) return;
 
-  await resend.emails.send({
-    from: "Celtic Supporters Limited <info@celticsupporters.net>",
-    to,
-    subject: "Reset your CSL password",
-    html: `
-      <p>Hello,</p>
-      <p>We received a request to reset the password for your Celtic Supporters Limited account.</p>
-      <p><a href="${resetLink}" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Reset my password</a></p>
-      <p style="color:#666;font-size:0.9em">This link expires in 24 hours. If you did not request a password reset, you can ignore this email — your account is safe.</p>
-      <p>Celtic Supporters Limited</p>
-    `,
-  });
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: "Reset your CSL password",
+      html: `
+        <p>Hello,</p>
+        <p>We received a request to reset the password for your Celtic Supporters Limited account.</p>
+        <p><a href="${resetLink}" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Reset my password</a></p>
+        <p style="color:#666;font-size:0.9em">This link expires in 24 hours. If you did not request a password reset, you can ignore this email - your account is safe.</p>
+        <p>Celtic Supporters Limited</p>
+      `,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "password_reset", to, err });
+    throw err;
+  }
   logEmailSend("password_reset");
 }
 
@@ -149,18 +169,23 @@ export async function sendMagicLinkEmail({
   const resend = getResend();
   if (!resend) return;
 
-  await resend.emails.send({
-    from: "Celtic Supporters Limited <info@celticsupporters.net>",
-    to,
-    subject: "Your CSL sign-in link",
-    html: `
-      <p>Hello,</p>
-      <p>Here is your one-click sign-in link for Celtic Supporters Limited. This link is valid for 24 hours.</p>
-      <p><a href="${magicLink}" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Sign in to CSL</a></p>
-      <p style="color:#666;font-size:0.9em">If you did not request this link, you can ignore this email — your account is safe.</p>
-      <p>Celtic Supporters Limited</p>
-    `,
-  });
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: "Your CSL sign-in link",
+      html: `
+        <p>Hello,</p>
+        <p>Here is your one-click sign-in link for Celtic Supporters Limited. This link is valid for 24 hours.</p>
+        <p><a href="${magicLink}" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Sign in to CSL</a></p>
+        <p style="color:#666;font-size:0.9em">If you did not request this link, you can ignore this email - your account is safe.</p>
+        <p>Celtic Supporters Limited</p>
+      `,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "magic_link", to, err });
+    throw err;
+  }
   logEmailSend("magic_link");
 }
 
@@ -180,19 +205,24 @@ export async function sendPaymentFailedEmail({
   const attemptNote =
     attemptCount > 1 ? ` (attempt ${attemptCount})` : "";
 
-  await resend.emails.send({
-    from: "Celtic Supporters Limited <info@celticsupporters.net>",
-    to,
-    subject: "Action required: your CSL membership payment failed",
-    html: `
-      <p>${greeting}</p>
-      <p>We were unable to collect your Celtic Supporters Limited membership payment${attemptNote}. This may be because your card has expired or your bank declined the charge.</p>
-      <p>To keep your membership active, please update your payment details as soon as possible:</p>
-      <p><a href="${SITE_URL}/member-portal?tab=subscription">Update your payment details</a></p>
-      <p>If you have any questions, contact us at <a href="mailto:info@celticsupporters.net">info@celticsupporters.net</a>.</p>
-      <p>Celtic Supporters Limited</p>
-    `,
-  });
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: "Action required: your CSL membership payment failed",
+      html: `
+        <p>${greeting}</p>
+        <p>We were unable to collect your Celtic Supporters Limited membership payment${attemptNote}. This may be because your card has expired or your bank declined the charge.</p>
+        <p>To keep your membership active, please update your payment details as soon as possible:</p>
+        <p><a href="${SITE_URL}/member-portal?tab=subscription">Update your payment details</a></p>
+        <p>If you have any questions, contact us at <a href="mailto:info@celticsupporters.net">info@celticsupporters.net</a>.</p>
+        <p>Celtic Supporters Limited</p>
+      `,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "payment_failed", to, err });
+    throw err;
+  }
   logEmailSend("payment_failed");
 }
 
@@ -208,19 +238,24 @@ export async function sendPaymentFailedVolunteerAlert({
   const resend = getResend();
   if (!resend) return;
 
-  await resend.emails.send({
-    from: "CSL Website <info@celticsupporters.net>",
-    to: "membership@celticsupporters.net",
-    subject: `Payment failure: ${memberEmail} (attempt ${attemptCount})`,
-    html: `
-      <p>A membership payment has failed.</p>
-      <p><strong>Member:</strong> ${memberEmail}</p>
-      <p><strong>Plan:</strong> ${planName ?? "Unknown"}</p>
-      <p><strong>Attempt:</strong> ${attemptCount}</p>
-      <p>Stripe will retry automatically. The member has been notified by email and directed to update their card.</p>
-      <p><a href="${SITE_URL}/member-portal/admin/members?q=${encodeURIComponent(memberEmail)}">View member timeline</a></p>
-    `,
-  });
+  try {
+    await resend.emails.send({
+      from: "CSL Website <info@celticsupporters.net>",
+      to: "membership@celticsupporters.net",
+      subject: `Payment failure: ${memberEmail} (attempt ${attemptCount})`,
+      html: `
+        <p>A membership payment has failed.</p>
+        <p><strong>Member:</strong> ${memberEmail}</p>
+        <p><strong>Plan:</strong> ${planName ?? "Unknown"}</p>
+        <p><strong>Attempt:</strong> ${attemptCount}</p>
+        <p>Stripe will retry automatically. The member has been notified by email and directed to update their card.</p>
+        <p><a href="${SITE_URL}/member-portal/admin/members?q=${encodeURIComponent(memberEmail)}">View member timeline</a></p>
+      `,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "payment_failed_alert", to: "membership@celticsupporters.net", err });
+    throw err;
+  }
   logEmailSend("payment_failed_alert");
 }
 
@@ -246,17 +281,22 @@ export async function sendCardExpiryWarningEmail({
     : "Your card on file";
   const expiry = `${String(expMonth).padStart(2, "0")}/${expYear}`;
 
-  await resend.emails.send({
-    from: "Celtic Supporters Limited <info@celticsupporters.net>",
-    to,
-    subject: "Your CSL membership card expires soon",
-    html: `
-      <p>${greeting}</p>
-      <p>${cardDesc} expires ${expiry}. To avoid any interruption to your Celtic Supporters Limited membership, please update your payment details before then.</p>
-      <p><a href="${SITE_URL}/member-portal?tab=subscription">Update your payment details</a></p>
-      <p>If you have any questions, contact us at <a href="mailto:info@celticsupporters.net">info@celticsupporters.net</a>.</p>
-      <p>Celtic Supporters Limited</p>
-    `,
-  });
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: "Your CSL membership card expires soon",
+      html: `
+        <p>${greeting}</p>
+        <p>${cardDesc} expires ${expiry}. To avoid any interruption to your Celtic Supporters Limited membership, please update your payment details before then.</p>
+        <p><a href="${SITE_URL}/member-portal?tab=subscription">Update your payment details</a></p>
+        <p>If you have any questions, contact us at <a href="mailto:info@celticsupporters.net">info@celticsupporters.net</a>.</p>
+        <p>Celtic Supporters Limited</p>
+      `,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "card_expiry", to, err });
+    throw err;
+  }
   logEmailSend("card_expiry");
 }
