@@ -5,6 +5,7 @@ import { getStripe } from "@/lib/stripe";
 import PortalShell from "@/components/PortalShell";
 import BackupButton from "@/components/BackupButton";
 import OperationsExportButton from "@/components/OperationsExportButton";
+import PortalGateToggle from "@/components/PortalGateToggle";
 
 export const metadata: Metadata = { title: "Operations | CSL Admin" };
 export const dynamic = "force-dynamic";
@@ -187,6 +188,7 @@ export default async function OperationsPage() {
     dbSizeResult,
     backupResult,
     stripeResult,
+    portalConfigResult,
   ] = await Promise.all([
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", todayStart.toISOString()),
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", monthStart.toISOString()),
@@ -203,6 +205,7 @@ export default async function OperationsPage() {
         return { ok: false, latencyMs: 0, mode: "unknown" } as const;
       }
     })(),
+    db.from("site_config").select("value").eq("key", "portal_open").maybeSingle(),
   ]);
 
   const todayCount    = emailsToday       ?? 0;
@@ -210,6 +213,8 @@ export default async function OperationsPage() {
   const bounceCount   = bouncesThisMonth  ?? 0;
   const bounceRatePct = monthCount > 0 ? (bounceCount / monthCount) * 100 : 0;
   const dbSizeMb      = typeof dbSizeResult.data === "number" ? Math.round(dbSizeResult.data / 1024 / 1024) : 0;
+
+  const portalOpenValue = (portalConfigResult.data as { value: string | null } | null)?.value ?? null;
 
   const backupRows = (backupResult.data ?? []) as {
     ran_at: string; status: string; total_rows: number | null;
@@ -386,6 +391,19 @@ export default async function OperationsPage() {
             </div>
           </ServiceCard>
 
+        </div>
+
+        {/* Member Portal Gate */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-start justify-between pb-3 border-b border-gray-100">
+            <div>
+              <h2 className="font-semibold text-gray-900 text-sm">Member portal gate</h2>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Controls access to /member-portal for authenticated members. Admins are always allowed through.
+              </p>
+            </div>
+          </div>
+          <PortalGateToggle currentValue={portalOpenValue} />
         </div>
 
         {/* Database Backup - full width */}
