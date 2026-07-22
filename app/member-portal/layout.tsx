@@ -58,13 +58,14 @@ export default async function MemberPortalLayout({
 
   if (!member?.is_admin) {
     console.error(
-      "[portal-gate] redirecting to /portal-coming-soon —",
+      "[portal-gate] signing out and redirecting to /portal-coming-soon —",
       error   ? `query error: ${error.message}` :
       !member ? "no member row found" :
                 "is_admin = false",
       "| user_id:", user.id,
       "| email:", user.email
     );
+    await authClient.auth.signOut();
     redirect("/portal-coming-soon");
   }
 
