@@ -7,7 +7,6 @@ import BackupButton from "@/components/BackupButton";
 import OperationsExportButton from "@/components/OperationsExportButton";
 import PortalGateToggle from "@/components/PortalGateToggle";
 import MembershipGateToggle from "@/components/MembershipGateToggle";
-import MemberQueryPanel from "@/components/MemberQueryPanel";
 
 export const metadata: Metadata = { title: "Operations | CSL Admin" };
 export const dynamic = "force-dynamic";
@@ -513,8 +512,6 @@ export default async function OperationsPage() {
           </p>
         </div>
 
-        {/* Member query */}
-        <MemberQueryPanel />
 
       </div>
     </PortalShell>

@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
+import { getStripe } from "@/lib/stripe";
 import PortalShell from "@/components/PortalShell";
 import MemberTimeline from "@/components/MemberTimeline";
-import type { TimelineEntry } from "@/components/MemberTimeline";
+import type { TimelineEntry, LiveStripe } from "@/components/MemberTimeline";
 
 export const metadata: Metadata = {
   title: "Member Events | CSL Admin",
@@ -241,6 +242,11 @@ export default async function AdminMembersPage({
     status: string | null;
     amount_pence: number | null;
     created_at: string;
+    stripe_customer_id: string | null;
+    stripe_subscription_id: string | null;
+    is_lifetime: boolean;
+    payment_failed_at: string | null;
+    pending_email: string | null;
   };
 
   let results: MemberRow[] = [];
@@ -251,7 +257,7 @@ export default async function AdminMembersPage({
 
     let query = db
       .from("members")
-      .select("id, user_id, email, name, first_name, last_name, plan_name, membership_tier, status, amount_pence, created_at")
+      .select("id, user_id, email, name, first_name, last_name, plan_name, membership_tier, status, amount_pence, created_at, stripe_customer_id, stripe_subscription_id, is_lifetime, payment_failed_at, pending_email")
       .limit(10);
 
     if (lowerQ.includes("@")) {
@@ -270,6 +276,7 @@ export default async function AdminMembersPage({
 
   const target  = results.length === 1 ? results[0] : null;
   const entries: TimelineEntry[] = [];
+  let liveStripe: LiveStripe | null = null;
 
   if (target) {
     const [eventsResult, casesResult] = await Promise.all([
@@ -326,6 +333,80 @@ export default async function AdminMembersPage({
     }
 
     entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    // ── Live Stripe data ────────────────────────────────────────────────────
+    if (target.stripe_customer_id) {
+      try {
+        const stripe = getStripe();
+        const stripeCustomerUrl    = `https://dashboard.stripe.com/customers/${target.stripe_customer_id}`;
+        const stripeSubscriptionUrl = target.stripe_subscription_id
+          ? `https://dashboard.stripe.com/subscriptions/${target.stripe_subscription_id}` : null;
+
+        const [customerResult, chargesResult] = await Promise.allSettled([
+          stripe.customers.retrieve(target.stripe_customer_id, {
+            expand: ["subscriptions.data.default_payment_method"],
+          }),
+          stripe.charges.list({ customer: target.stripe_customer_id, limit: 5 }),
+        ]);
+
+        let subscriptionStatus: string | null = null;
+        let nextPaymentDate: string | null = null;
+        let nextPaymentAmount: number | null = null;
+        let cardBrand: string | null = null;
+        let cardLast4: string | null = null;
+        let cardExpiry: string | null = null;
+
+        if (customerResult.status === "fulfilled") {
+          const cust = customerResult.value;
+          if (!("deleted" in cust) || !cust.deleted) {
+            const sub = (cust as { subscriptions?: { data: unknown[] } }).subscriptions?.data?.[0] as Record<string, unknown> | undefined;
+            if (sub) {
+              const pm = sub.default_payment_method as Record<string, unknown> | null;
+              const card = pm?.card as Record<string, unknown> | null;
+              subscriptionStatus = sub.status as string ?? null;
+              nextPaymentDate = sub.current_period_end
+                ? new Date((sub.current_period_end as number) * 1000).toISOString() : null;
+              nextPaymentAmount = sub.items
+                ? ((sub.items as { data: { price: { unit_amount: number } }[] }).data[0]?.price?.unit_amount ?? null)
+                : null;
+              cardBrand  = card?.brand  as string | null ?? null;
+              cardLast4  = card?.last4  as string | null ?? null;
+              cardExpiry = card ? `${String(card.exp_month as number).padStart(2, "0")}/${card.exp_year}` : null;
+            }
+          }
+        } else {
+          console.error("[admin/members] Stripe customer fetch failed:", customerResult.reason, { email: target.email });
+        }
+
+        const recentCharges: LiveStripe["recentCharges"] = chargesResult.status === "fulfilled"
+          ? chargesResult.value.data.map((c) => ({
+              date:        new Date(c.created * 1000).toISOString(),
+              amount:      c.amount,
+              currency:    c.currency,
+              status:      c.status,
+              description: c.description ?? target.plan_name ?? "",
+            }))
+          : [];
+
+        if (chargesResult.status === "rejected") {
+          console.error("[admin/members] Stripe charges fetch failed:", chargesResult.reason, { email: target.email });
+        }
+
+        liveStripe = {
+          subscriptionStatus,
+          nextPaymentDate,
+          nextPaymentAmount,
+          cardBrand,
+          cardLast4,
+          cardExpiry,
+          stripeCustomerUrl,
+          stripeSubscriptionUrl,
+          recentCharges,
+        };
+      } catch (err) {
+        console.error("[admin/members] Stripe fetch error:", err, { email: target.email });
+      }
+    }
   }
 
   // ── All-events log (default view, no search) ──────────────────────────────
@@ -467,14 +548,18 @@ export default async function AdminMembersPage({
             {target && (
               <MemberTimeline
                 member={{
-                  name:     memberDisplayName(target),
-                  email:    target.email,
-                  plan:     target.plan_name ?? target.membership_tier ?? "-",
-                  status:   target.status ?? "-",
-                  joinedAt: target.created_at,
+                  name:           memberDisplayName(target),
+                  email:          target.email,
+                  plan:           target.plan_name ?? target.membership_tier ?? "-",
+                  status:         target.status ?? "-",
+                  joinedAt:       target.created_at,
+                  isLifetime:     target.is_lifetime,
+                  paymentFailedAt: target.payment_failed_at,
+                  pendingEmail:   target.pending_email,
                 }}
                 entries={entries}
                 defaultShowTest={isTestMode}
+                liveStripe={liveStripe}
               />
             )}
           </div>

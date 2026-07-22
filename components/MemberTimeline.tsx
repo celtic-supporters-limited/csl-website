@@ -11,18 +11,40 @@ export type TimelineEntry = {
   isTest?: boolean;
 };
 
+export type LiveStripe = {
+  subscriptionStatus: string | null;
+  nextPaymentDate: string | null;
+  nextPaymentAmount: number | null;
+  cardBrand: string | null;
+  cardLast4: string | null;
+  cardExpiry: string | null;
+  stripeCustomerUrl: string | null;
+  stripeSubscriptionUrl: string | null;
+  recentCharges: {
+    date: string;
+    amount: number;
+    currency: string;
+    status: string;
+    description: string;
+  }[];
+};
+
 type MemberSummary = {
   name: string;
   email: string;
   plan: string;
   status: string;
   joinedAt: string;
+  isLifetime?: boolean;
+  paymentFailedAt?: string | null;
+  pendingEmail?: string | null;
 };
 
 type Props = {
   member: MemberSummary;
   entries: TimelineEntry[];
   defaultShowTest?: boolean;
+  liveStripe?: LiveStripe | null;
 };
 
 function formatDate(iso: string): string {
@@ -66,7 +88,30 @@ function toCsv(entries: TimelineEntry[]): string {
   return ["Timestamp,Type,Label,Detail", ...rows].join("\n");
 }
 
-export default function MemberTimeline({ member, entries, defaultShowTest }: Props) {
+function formatGbp(pence: number) {
+  return `£${(pence / 100).toFixed(2)}`;
+}
+
+function StatusPill({ status }: { status: string }) {
+  const cfg =
+    status === "active"         ? { cls: "bg-green-100 text-green-800 border-green-200", label: "Active" } :
+    status === "payment_failed" ? { cls: "bg-red-100 text-red-800 border-red-200",       label: "Payment failed" } :
+    status === "cancelled"      ? { cls: "bg-gray-100 text-gray-600 border-gray-200",    label: "Cancelled" } :
+                                  { cls: "bg-gray-100 text-gray-600 border-gray-200",    label: status };
+  return (
+    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function borderColor(status: string) {
+  if (status === "active")         return "border-l-green-500";
+  if (status === "payment_failed") return "border-l-red-500";
+  return "border-l-gray-300";
+}
+
+export default function MemberTimeline({ member, entries, defaultShowTest, liveStripe }: Props) {
   const [copied, setCopied] = useState(false);
   const [showTest, setShowTest] = useState(defaultShowTest ?? false);
 
@@ -90,41 +135,109 @@ export default function MemberTimeline({ member, entries, defaultShowTest }: Pro
     URL.revokeObjectURL(url);
   }
 
+  const stripe = liveStripe ?? null;
+
   return (
     <div>
-      {/* Member summary */}
-      <div className="bg-csl-light border border-green-200 rounded-md p-4 mb-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      {/* Member card */}
+      <div className={`bg-white border border-gray-200 border-l-4 ${borderColor(member.status)} rounded-lg mb-4 overflow-hidden`}>
+        <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex flex-wrap items-start justify-between gap-2">
           <div>
-            <p className="font-semibold text-gray-900">{member.name}</p>
-            <p className="text-sm text-gray-500">{member.email}</p>
+            <p className="font-semibold text-gray-900 text-base leading-tight">{member.name}</p>
+            <p className="text-sm text-gray-500 mt-0.5">{member.email}</p>
           </div>
-          <div className="text-sm space-y-0.5 text-right">
-            <p>
-              <span className="text-gray-500">Plan: </span>
-              <span className="font-medium text-gray-800">{member.plan}</span>
-            </p>
-            <p>
-              <span className="text-gray-500">Status: </span>
-              <span
-                className={
-                  member.status === "active"
-                    ? "font-medium text-green-700"
-                    : "font-medium text-red-600"
-                }
-              >
-                {member.status}
-              </span>
-            </p>
-            <p>
-              <span className="text-gray-500">Joined: </span>
-              {formatDate(member.joinedAt)}
-            </p>
+          <StatusPill status={member.status} />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
+          {/* Left: membership */}
+          <div className="px-4 py-3 space-y-1.5 text-xs">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Membership</p>
+            <div className="flex justify-between gap-2">
+              <span className="text-gray-500">Plan</span>
+              <span className="font-medium text-gray-900 text-right">{member.plan}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-gray-500">Joined</span>
+              <span className="font-medium text-gray-900 text-right">{formatDate(member.joinedAt)}</span>
+            </div>
+            {member.isLifetime && (
+              <div className="flex justify-between gap-2">
+                <span className="text-gray-500">Lifetime member</span>
+                <span className="font-medium text-gray-900">Yes</span>
+              </div>
+            )}
+            {member.paymentFailedAt && (
+              <div className="flex justify-between gap-2">
+                <span className="text-red-500">Payment failed at</span>
+                <span className="font-medium text-red-700 text-right">{formatDate(member.paymentFailedAt)}</span>
+              </div>
+            )}
+            {member.pendingEmail && (
+              <div className="flex justify-between gap-2">
+                <span className="text-amber-600">Pending email change</span>
+                <span className="font-medium text-amber-800 text-right break-all">{member.pendingEmail}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Right: live Stripe billing */}
+          <div className="px-4 py-3 space-y-1.5 text-xs">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Live billing</p>
+            {!stripe ? (
+              <p className="text-gray-400 italic">No Stripe customer record</p>
+            ) : (
+              <>
+                {stripe.subscriptionStatus && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-gray-500">Subscription</span>
+                    <span className="font-medium text-gray-900 capitalize">{stripe.subscriptionStatus}</span>
+                  </div>
+                )}
+                {stripe.nextPaymentDate && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-gray-500">Next payment</span>
+                    <span className="font-medium text-gray-900 text-right">
+                      {formatDate(stripe.nextPaymentDate)}
+                      {stripe.nextPaymentAmount != null && ` (${formatGbp(stripe.nextPaymentAmount)})`}
+                    </span>
+                  </div>
+                )}
+                {stripe.cardBrand && stripe.cardLast4 && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-gray-500">Card</span>
+                    <span className="font-medium text-gray-900 capitalize text-right">
+                      {stripe.cardBrand} ending {stripe.cardLast4}
+                      {stripe.cardExpiry && `, exp ${stripe.cardExpiry}`}
+                    </span>
+                  </div>
+                )}
+                {!stripe.subscriptionStatus && !stripe.cardLast4 && (
+                  <p className="text-gray-400 italic">No active subscription</p>
+                )}
+                {stripe.recentCharges.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Recent charges</p>
+                    <div className="space-y-1">
+                      {stripe.recentCharges.map((c, i) => (
+                        <div key={i} className="flex items-center justify-between gap-2">
+                          <span className="text-gray-400">{new Date(c.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                          <span className="text-gray-600 flex-1 truncate text-center">{c.description || "-"}</span>
+                          <span className={`font-semibold shrink-0 ${c.status === "succeeded" ? "text-green-700" : "text-red-600"}`}>
+                            {formatGbp(c.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Export actions + test toggle */}
+      {/* Action bar */}
       <div className="flex flex-wrap items-center gap-2 mb-5">
         <button
           onClick={handleCopy}
@@ -138,8 +251,28 @@ export default function MemberTimeline({ member, entries, defaultShowTest }: Pro
         >
           Export CSV
         </button>
+        {stripe?.stripeCustomerUrl && (
+          <a
+            href={stripe.stripeCustomerUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm px-3 py-1.5 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-csl-dark"
+          >
+            Stripe customer
+          </a>
+        )}
+        {stripe?.stripeSubscriptionUrl && (
+          <a
+            href={stripe.stripeSubscriptionUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm px-3 py-1.5 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-csl-dark"
+          >
+            Stripe subscription
+          </a>
+        )}
         {hasTestEvents && (
-          <label className="ml-2 flex items-center gap-1.5 text-sm text-gray-500 cursor-pointer select-none">
+          <label className="ml-auto flex items-center gap-1.5 text-sm text-gray-500 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={showTest}
