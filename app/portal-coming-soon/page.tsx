@@ -29,10 +29,10 @@ export default function PortalComingSoonPage() {
             <p className="mt-6 text-xs text-gray-400">
               If you have a question in the meantime, contact us at{" "}
               <a
-                href="mailto:membership@celticsupporters.net"
+                href="mailto:info@celticsupporters.net"
                 className="text-csl-dark hover:underline"
               >
-                membership@celticsupporters.net
+                info@celticsupporters.net
               </a>
             </p>
           </div>

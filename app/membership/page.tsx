@@ -91,10 +91,10 @@ export default function MembershipPage() {
                 We are preparing to open public membership. To register your interest
                 or discuss joining, email{" "}
                 <a
-                  href="mailto:membership@celticsupporters.net"
+                  href="mailto:info@celticsupporters.net"
                   className="text-csl-dark font-medium underline underline-offset-2 hover:text-csl-mid"
                 >
-                  membership@celticsupporters.net
+                  info@celticsupporters.net
                 </a>
                 .
               </p>

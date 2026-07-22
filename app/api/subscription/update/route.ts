@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Lifetime members cannot change their plan." }, { status: 400 });
   }
   if (member.membership_tier !== "monthly") {
-    return NextResponse.json({ error: "Only monthly subscribers can use this feature. Annual plan changes require contacting membership@celticsupporters.net." }, { status: 400 });
+    return NextResponse.json({ error: "Only monthly subscribers can use this feature. Annual plan changes require contacting info@celticsupporters.net." }, { status: 400 });
   }
   if (member.status !== "active") {
     return NextResponse.json({ error: "Your membership must be active to change plan." }, { status: 400 });
