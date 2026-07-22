@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import { getStripe } from "@/lib/stripe";
 import PortalClient from "./PortalClient";
+
+export const dynamic = "force-dynamic";
 import type {
   Member,
   PortalCase,

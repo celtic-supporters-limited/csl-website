@@ -4,6 +4,8 @@ import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import PortalShell from "@/components/PortalShell";
 import AdminDocumentForm from "@/components/AdminDocumentForm";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Add Document | CSL Member Portal",
 };

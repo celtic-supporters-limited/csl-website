@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import PortalShell from "@/components/PortalShell";
+
+export const dynamic = "force-dynamic";
 import UploadForm from "./UploadForm";
 
 export const metadata: Metadata = { title: "Upload WordPress Export | CSL Admin" };

@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import { getStripe } from "@/lib/stripe";
+
+export const dynamic = "force-dynamic";
 import PortalShell from "@/components/PortalShell";
 import MemberTimeline from "@/components/MemberTimeline";
 import type { TimelineEntry, LiveStripe } from "@/components/MemberTimeline";
