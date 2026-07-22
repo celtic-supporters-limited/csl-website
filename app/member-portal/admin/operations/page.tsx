@@ -7,6 +7,7 @@ import BackupButton from "@/components/BackupButton";
 import OperationsExportButton from "@/components/OperationsExportButton";
 import PortalGateToggle from "@/components/PortalGateToggle";
 import MembershipGateToggle from "@/components/MembershipGateToggle";
+import MemberQueryPanel from "@/components/MemberQueryPanel";
 
 export const metadata: Metadata = { title: "Operations | CSL Admin" };
 export const dynamic = "force-dynamic";
@@ -511,6 +512,9 @@ export default async function OperationsPage() {
             Workaround until Supabase Pro PITR. Run a manual backup before any bulk data operation.
           </p>
         </div>
+
+        {/* Member query */}
+        <MemberQueryPanel />
 
       </div>
     </PortalShell>
