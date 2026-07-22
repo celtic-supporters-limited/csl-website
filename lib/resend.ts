@@ -189,7 +189,7 @@ export async function sendPaymentFailedEmail({
       <p>We were unable to collect your Celtic Supporters Limited membership payment${attemptNote}. This may be because your card has expired or your bank declined the charge.</p>
       <p>To keep your membership active, please update your payment details as soon as possible:</p>
       <p><a href="${SITE_URL}/member-portal?tab=subscription">Update your payment details</a></p>
-      <p>If you have any questions, contact us at <a href="mailto:membership@celticsupporters.net">membership@celticsupporters.net</a>.</p>
+      <p>If you have any questions, contact us at <a href="mailto:info@celticsupporters.net">info@celticsupporters.net</a>.</p>
       <p>Celtic Supporters Limited</p>
     `,
   });
@@ -254,7 +254,7 @@ export async function sendCardExpiryWarningEmail({
       <p>${greeting}</p>
       <p>${cardDesc} expires ${expiry}. To avoid any interruption to your Celtic Supporters Limited membership, please update your payment details before then.</p>
       <p><a href="${SITE_URL}/member-portal?tab=subscription">Update your payment details</a></p>
-      <p>If you have any questions, contact us at <a href="mailto:membership@celticsupporters.net">membership@celticsupporters.net</a>.</p>
+      <p>If you have any questions, contact us at <a href="mailto:info@celticsupporters.net">info@celticsupporters.net</a>.</p>
       <p>Celtic Supporters Limited</p>
     `,
   });
