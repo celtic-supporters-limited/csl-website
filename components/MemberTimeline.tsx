@@ -215,6 +215,22 @@ export default function MemberTimeline({ member, entries, defaultShowTest, liveS
                 {!stripe.subscriptionStatus && !stripe.cardLast4 && (
                   <p className="text-gray-400 italic">No active subscription</p>
                 )}
+                {(stripe.stripeCustomerUrl || stripe.stripeSubscriptionUrl) && (
+                  <div className="flex gap-3 pt-0.5">
+                    {stripe.stripeCustomerUrl && (
+                      <a href={stripe.stripeCustomerUrl} target="_blank" rel="noreferrer"
+                        className="text-csl-dark underline underline-offset-2">
+                        Customer
+                      </a>
+                    )}
+                    {stripe.stripeSubscriptionUrl && (
+                      <a href={stripe.stripeSubscriptionUrl} target="_blank" rel="noreferrer"
+                        className="text-csl-dark underline underline-offset-2">
+                        Subscription
+                      </a>
+                    )}
+                  </div>
+                )}
                 {stripe.recentCharges.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-gray-100">
                     <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Recent charges</p>
@@ -251,26 +267,6 @@ export default function MemberTimeline({ member, entries, defaultShowTest, liveS
         >
           Export CSV
         </button>
-        {stripe?.stripeCustomerUrl && (
-          <a
-            href={stripe.stripeCustomerUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm px-3 py-1.5 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-csl-dark"
-          >
-            Stripe customer
-          </a>
-        )}
-        {stripe?.stripeSubscriptionUrl && (
-          <a
-            href={stripe.stripeSubscriptionUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm px-3 py-1.5 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-csl-dark"
-          >
-            Stripe subscription
-          </a>
-        )}
         {hasTestEvents && (
           <label className="ml-auto flex items-center gap-1.5 text-sm text-gray-500 cursor-pointer select-none">
             <input
