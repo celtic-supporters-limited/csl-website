@@ -300,3 +300,139 @@ export async function sendCardExpiryWarningEmail({
   }
   logEmailSend("card_expiry");
 }
+
+// ── Monitoring digest ─────────────────────────────────────────────────────────
+
+export type DigestTrafficLight = "green" | "amber" | "red";
+
+export type DigestData = {
+  dateRange: string;
+  overall: DigestTrafficLight;
+  email: {
+    sent24h: number;
+    sentMonth: number;
+    bounces24h: number;
+    bounceRate: number;
+    todayStatus: DigestTrafficLight;
+    monthStatus: DigestTrafficLight;
+    bounceStatus: DigestTrafficLight;
+  };
+  members: {
+    newJoins24h: number;
+    paymentFailures24h: number;
+    cancellations24h: number;
+  };
+  backup: {
+    lastStatus: string;
+    lastRanAt: string | null;
+    ageHours: number | null;
+    backupStatus: DigestTrafficLight;
+  };
+  stripe: {
+    ok: boolean;
+    latencyMs: number;
+    mode: "test" | "live" | "unknown";
+    stripeStatus: DigestTrafficLight;
+  };
+  supabase: {
+    dbSizeMb: number;
+    dbStatus: DigestTrafficLight;
+  };
+  attentionItems: string[];
+};
+
+export async function sendMonitoringDigest(data: DigestData): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const statusLabel =
+    data.overall === "red"   ? "ACTION REQUIRED" :
+    data.overall === "amber" ? "AMBER"           : "ALL CLEAR";
+
+  const statusColour =
+    data.overall === "red"   ? "#B91C1C" :
+    data.overall === "amber" ? "#B45309" : "#166534";
+
+  const attentionHtml = data.attentionItems.length > 0
+    ? `<p style="color:${statusColour};font-weight:600;margin-top:16px">Attention required:</p>
+       <ul style="margin:4px 0 16px;padding-left:20px;color:#374151">
+         ${data.attentionItems.map((i) => `<li style="margin-bottom:4px">${i}</li>`).join("")}
+       </ul>`
+    : `<p style="color:#166534;margin-top:16px">No action required.</p>`;
+
+  const row = (label: string, value: string) =>
+    `<tr><td style="padding:4px 8px 4px 0;color:#6B7280;font-size:13px">${label}</td><td style="padding:4px 0;font-size:13px;font-weight:600;color:#111827">${value}</td></tr>`;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+      <div style="background:#1B4D2E;padding:20px 24px;border-radius:8px 8px 0 0">
+        <p style="color:#C8A951;font-weight:700;font-size:16px;margin:0">Celtic Supporters Limited</p>
+        <p style="color:#fff;font-size:22px;font-weight:700;margin:4px 0 0">Daily Operations Digest</p>
+      </div>
+      <div style="background:#F9FAFB;padding:16px 24px;border:1px solid #E5E7EB;border-top:none">
+        <p style="color:#6B7280;font-size:12px;margin:0">${data.dateRange}</p>
+        <p style="font-size:18px;font-weight:700;color:${statusColour};margin:8px 0 0">Overall: ${statusLabel}</p>
+      </div>
+      <div style="background:#fff;padding:20px 24px;border:1px solid #E5E7EB;border-top:none">
+
+        <p style="font-weight:700;color:#111827;margin:0 0 8px;border-bottom:1px solid #F3F4F6;padding-bottom:6px">Email</p>
+        <table style="width:100%;border-collapse:collapse">
+          ${row("Sent (24h)", `${data.email.sent24h} / 100 per day`)}
+          ${row("Sent (this month)", `${data.email.sentMonth} / 3,000 per month`)}
+          ${row("Bounces (24h)", String(data.email.bounces24h))}
+          ${row("Bounce rate", `${data.email.bounceRate.toFixed(1)}%`)}
+        </table>
+
+        <p style="font-weight:700;color:#111827;margin:16px 0 8px;border-bottom:1px solid #F3F4F6;padding-bottom:6px">Members</p>
+        <table style="width:100%;border-collapse:collapse">
+          ${row("New joins (24h)", String(data.members.newJoins24h))}
+          ${row("Payment failures (24h)", String(data.members.paymentFailures24h))}
+          ${row("Cancellations (24h)", String(data.members.cancellations24h))}
+        </table>
+
+        <p style="font-weight:700;color:#111827;margin:16px 0 8px;border-bottom:1px solid #F3F4F6;padding-bottom:6px">Backup</p>
+        <table style="width:100%;border-collapse:collapse">
+          ${row("Last success", data.backup.lastRanAt
+            ? `${new Date(data.backup.lastRanAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC (${data.backup.ageHours != null ? Math.round(data.backup.ageHours) + "h ago" : "unknown"})`
+            : "None recorded")}
+          ${row("Status", data.backup.lastStatus)}
+        </table>
+
+        <p style="font-weight:700;color:#111827;margin:16px 0 8px;border-bottom:1px solid #F3F4F6;padding-bottom:6px">Stripe</p>
+        <table style="width:100%;border-collapse:collapse">
+          ${row("Connectivity", data.stripe.ok ? `Connected (${data.stripe.latencyMs} ms)` : "Unreachable")}
+          ${row("Key mode", data.stripe.mode)}
+        </table>
+
+        <p style="font-weight:700;color:#111827;margin:16px 0 8px;border-bottom:1px solid #F3F4F6;padding-bottom:6px">Supabase</p>
+        <table style="width:100%;border-collapse:collapse">
+          ${row("Database size", `${data.supabase.dbSizeMb} MB / 500 MB`)}
+        </table>
+
+        ${attentionHtml}
+
+        <p style="margin-top:20px;border-top:1px solid #F3F4F6;padding-top:16px">
+          <a href="${SITE_URL}/member-portal/admin/operations"
+             style="display:inline-block;background:#1B4D2E;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;font-size:13px">
+            View Operations Dashboard
+          </a>
+        </p>
+      </div>
+    </div>
+  `;
+
+  const subject = `CSL Operations Digest - ${data.dateRange.split(" - ")[0]} - ${statusLabel}`;
+
+  try {
+    await resend.emails.send({
+      from: "CSL Website <info@celticsupporters.net>",
+      to: "info@celticsupporters.net",
+      subject,
+      html,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "monitoring_digest", to: "info@celticsupporters.net", err });
+    throw err;
+  }
+  logEmailSend("monitoring_digest");
+}
