@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import MemberTimeline from "@/components/MemberTimeline";
 import type { TimelineEntry, LiveStripe } from "@/components/MemberTimeline";
 
