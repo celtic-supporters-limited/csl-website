@@ -32,6 +32,8 @@ export default function PortalGateToggle({
         return;
       }
       router.refresh();
+      setLoading(false);
+      setConfirming(false);
     } catch {
       setError("Network error. Try again.");
       setLoading(false);
