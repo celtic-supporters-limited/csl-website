@@ -36,13 +36,35 @@ export default async function MemberPortalLayout({
     redirect("/login?redirectTo=/member-portal");
   }
 
-  const { data: member } = await db
+  // Primary lookup by user_id
+  let { data: member, error } = await db
     .from("members")
     .select("is_admin")
     .eq("user_id", user.id)
     .maybeSingle();
 
+  // Fallback: user_id may be NULL for rows created before the backfill migration
+  if (!member && !error && user.email) {
+    ({ data: member, error } = await db
+      .from("members")
+      .select("is_admin")
+      .eq("email", user.email)
+      .maybeSingle());
+  }
+
+  if (error) {
+    console.error("[portal-gate] members query error:", error.message, "| user_id:", user.id);
+  }
+
   if (!member?.is_admin) {
+    console.error(
+      "[portal-gate] redirecting to /portal-coming-soon —",
+      error   ? `query error: ${error.message}` :
+      !member ? "no member row found" :
+                "is_admin = false",
+      "| user_id:", user.id,
+      "| email:", user.email
+    );
     redirect("/portal-coming-soon");
   }
 
