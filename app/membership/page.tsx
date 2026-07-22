@@ -27,9 +27,14 @@ const FAQ = [
   },
 ];
 
-const membershipOpen = process.env.MEMBERSHIP_OPEN === "true";
-
-export default function MembershipPage() {
+export default async function MembershipPage() {
+  const { createServerSupabase } = await import("@/lib/supabase");
+  const { data: membershipConfig } = await createServerSupabase()
+    .from("site_config")
+    .select("value")
+    .eq("key", "membership_open")
+    .maybeSingle();
+  const membershipOpen = membershipConfig?.value === "true";
   return (
     <>
       {/* HERO */}

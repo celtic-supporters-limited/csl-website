@@ -6,6 +6,7 @@ import PortalShell from "@/components/PortalShell";
 import BackupButton from "@/components/BackupButton";
 import OperationsExportButton from "@/components/OperationsExportButton";
 import PortalGateToggle from "@/components/PortalGateToggle";
+import MembershipGateToggle from "@/components/MembershipGateToggle";
 
 export const metadata: Metadata = { title: "Operations | CSL Admin" };
 export const dynamic = "force-dynamic";
@@ -189,6 +190,7 @@ export default async function OperationsPage() {
     backupResult,
     stripeResult,
     portalConfigResult,
+    membershipConfigResult,
   ] = await Promise.all([
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", todayStart.toISOString()),
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", monthStart.toISOString()),
@@ -206,6 +208,7 @@ export default async function OperationsPage() {
       }
     })(),
     db.from("site_config").select("value").eq("key", "portal_open").maybeSingle(),
+    db.from("site_config").select("value").eq("key", "membership_open").maybeSingle(),
   ]);
 
   const todayCount    = emailsToday       ?? 0;
@@ -214,7 +217,8 @@ export default async function OperationsPage() {
   const bounceRatePct = monthCount > 0 ? (bounceCount / monthCount) * 100 : 0;
   const dbSizeMb      = typeof dbSizeResult.data === "number" ? Math.round(dbSizeResult.data / 1024 / 1024) : 0;
 
-  const portalOpenValue = (portalConfigResult.data as { value: string | null } | null)?.value ?? null;
+  const portalOpenValue      = (portalConfigResult.data      as { value: string | null } | null)?.value ?? null;
+  const membershipOpenValue  = (membershipConfigResult.data  as { value: string | null } | null)?.value ?? null;
 
   const backupRows = (backupResult.data ?? []) as {
     ran_at: string; status: string; total_rows: number | null;
@@ -393,17 +397,27 @@ export default async function OperationsPage() {
 
         </div>
 
-        {/* Member Portal Gate */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-          <div className="flex items-start justify-between pb-3 border-b border-gray-100">
-            <div>
+        {/* Feature gates — side by side */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <div className="pb-3 border-b border-gray-100">
               <h2 className="font-semibold text-gray-900 text-sm">Member portal gate</h2>
               <p className="text-[11px] text-gray-400 mt-0.5">
                 Controls access to /member-portal for authenticated members. Admins are always allowed through.
               </p>
             </div>
+            <PortalGateToggle currentValue={portalOpenValue} />
           </div>
-          <PortalGateToggle currentValue={portalOpenValue} />
+
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <div className="pb-3 border-b border-gray-100">
+              <h2 className="font-semibold text-gray-900 text-sm">New membership sign-ups</h2>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Controls whether the public can join CSL via /membership. Closing this blocks checkout and hides the plans page.
+              </p>
+            </div>
+            <MembershipGateToggle currentValue={membershipOpenValue} />
+          </div>
         </div>
 
         {/* Database Backup - full width */}

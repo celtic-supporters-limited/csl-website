@@ -20,7 +20,12 @@ const WINDOW_MS = 10 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   // ── 0. Membership gate ─────────────────────────────────────────────────────
-  if (process.env.MEMBERSHIP_OPEN !== "true") {
+  const { data: membershipConfig } = await getSupabase()
+    .from("site_config")
+    .select("value")
+    .eq("key", "membership_open")
+    .maybeSingle();
+  if (membershipConfig?.value !== "true") {
     return NextResponse.json(
       { error: "Membership sign-up is not currently open." },
       { status: 403 }
