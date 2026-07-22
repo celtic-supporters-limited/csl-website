@@ -47,8 +47,10 @@ async function assertNav(page: Page, context: string) {
   }
 
   for (const stale of STALE) {
-    const count = await page.locator("nav, aside, [class*='sidebar'], [class*='shell']").filter({ hasText: stale }).count();
-    expect(count, `${context}: stale label "${stale}" should not appear in nav`).toBe(0);
+    // Use exact link text to avoid false positives where a stale label is a
+    // substring of the new label (e.g. "Resolution" inside "AGM Resolution Progress").
+    const count = await page.getByRole("link", { name: stale, exact: true }).count();
+    expect(count, `${context}: stale label "${stale}" should not appear as an exact nav link`).toBe(0);
   }
 }
 
