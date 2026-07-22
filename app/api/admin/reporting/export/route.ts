@@ -13,11 +13,14 @@ export async function GET(req: NextRequest) {
 
   const { getSupabase } = await import("@/lib/supabase");
   const db = getSupabase();
-  const { data: adminCheck } = await db
+  let { data: adminCheck } = await db
     .from("members")
     .select("is_admin")
     .eq("user_id", user.id)
     .maybeSingle();
+  if (!adminCheck && user.email) {
+    ({ data: adminCheck } = await db.from("members").select("is_admin").eq("email", user.email).maybeSingle());
+  }
   if (!adminCheck?.is_admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const format = req.nextUrl.searchParams.get("format") ?? "pdf";

@@ -17,11 +17,20 @@ export async function PATCH(
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
   }
 
-  const { data: member } = await getSupabase()
+  const db = getSupabase();
+  let { data: member } = await db
     .from("members")
     .select("is_admin")
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (!member && user.email) {
+    ({ data: member } = await db
+      .from("members")
+      .select("is_admin")
+      .eq("email", user.email)
+      .maybeSingle());
+  }
 
   if (!member?.is_admin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

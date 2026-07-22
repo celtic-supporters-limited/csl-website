@@ -15,11 +15,19 @@ export async function PATCH(request: NextRequest) {
 
   const db = getSupabase();
 
-  const { data: member } = await db
+  let { data: member } = await db
     .from("members")
     .select("is_admin")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  if (!member && user.email) {
+    ({ data: member } = await db
+      .from("members")
+      .select("is_admin")
+      .eq("email", user.email)
+      .maybeSingle());
+  }
 
   if (!member?.is_admin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
