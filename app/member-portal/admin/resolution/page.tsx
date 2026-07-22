@@ -4,7 +4,7 @@ import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import PortalShell from "@/components/PortalShell";
 import ResolutionAdminClient from "./ResolutionAdminClient";
 
-export const metadata: Metadata = { title: "Resolution Signatures | CSL Admin" };
+export const metadata: Metadata = { title: "AGM Resolution Progress | CSL Admin" };
 export const dynamic = "force-dynamic";
 
 export default async function ResolutionAdminPage() {

@@ -8,7 +8,7 @@ import OperationsExportButton from "@/components/OperationsExportButton";
 import PortalGateToggle from "@/components/PortalGateToggle";
 import MembershipGateToggle from "@/components/MembershipGateToggle";
 
-export const metadata: Metadata = { title: "Operations | CSL Admin" };
+export const metadata: Metadata = { title: "Operational Status | CSL Admin" };
 export const dynamic = "force-dynamic";
 
 // ── Types ─────────────────────────────────────────────────────────────────────

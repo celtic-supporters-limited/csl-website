@@ -8,7 +8,7 @@ import MemberTimeline from "@/components/MemberTimeline";
 import type { TimelineEntry, LiveStripe } from "@/components/MemberTimeline";
 
 export const metadata: Metadata = {
-  title: "Member Events | CSL Admin",
+  title: "Member Support | CSL Admin",
 };
 
 // ── Filter types ──────────────────────────────────────────────────────────────
