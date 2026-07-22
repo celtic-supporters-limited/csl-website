@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Search, Vote, Shield } from "lucide-react";
 import { Container } from "@/components/Container";
 import { getSupabase } from "@/lib/supabase";
 import type { MembershipSnapshot } from "@/lib/membership-metrics";
@@ -181,33 +182,33 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               {
-                icon: "🔍",
+                icon: Search,
                 title: "Share Tracing",
                 body: "Thousands of Celtic shares are untraceable: certificates lost, estates unsettled, addresses changed. We help shareholders find their holding and decide what to do with it.",
                 link: "/share-tracing",
                 cta: "Start Tracing",
               },
               {
-                icon: "🗳️",
+                icon: Vote,
                 title: "Proxy Assignment",
                 body: "If you hold Celtic shares but cannot attend the AGM, assigning your proxy vote to CSL amplifies our collective voice on governance matters that affect every fan and shareholder.",
                 link: "/proxy",
                 cta: "Assign Your Proxy",
               },
               {
-                icon: "☘",
+                icon: Shield,
                 title: "CSL Membership",
                 body: "Join supporters funding CSL's work. Monthly, annual, or lifetime membership. Your subscription directly funds share acquisition and our governance campaign.",
                 link: "/membership",
                 cta: "Join from £10/month",
               },
-            ].map(({ icon, title, body, link, cta }) => (
+            ].map(({ icon: Icon, title, body, link, cta }) => (
               <div
                 key={title}
                 className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all duration-200"
               >
-                <div className="w-[52px] h-[52px] bg-csl-light rounded-xl flex items-center justify-center text-2xl mb-5">
-                  {icon}
+                <div className="w-[52px] h-[52px] bg-csl-light rounded-xl flex items-center justify-center mb-5">
+                  <Icon className="text-csl-dark" size={26} strokeWidth={1.75} />
                 </div>
                 <h3 className="text-[1.1rem] font-bold mb-2.5">{title}</h3>
                 <p className="text-[0.92rem] text-csl-muted leading-[1.65]">{body}</p>
