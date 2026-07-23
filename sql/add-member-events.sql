@@ -15,10 +15,12 @@ create table if not exists member_events (
 --   checkout.completed      member joined or upgraded via Stripe Checkout
 --   invoice.paid            subscription renewal confirmed
 --   payment.failed          invoice payment failed
+--   subscription.updated    plan/amount changed (amount_pence in detail)
 --   subscription.cancelled  membership cancelled (subscription.deleted webhook)
 --   email_change.initiated  member requested email change (old_email -> new_email in detail)
 --   email_change.confirmed  confirmation link clicked; email swap completed
 --   password_reset.requested  reset email dispatched
+--   password.changed        member successfully set a new password
 --   profile.updated         member changed profile fields (changed_fields in detail)
 
 -- Primary lookup: all events for a member (join key survives email changes)
