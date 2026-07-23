@@ -166,7 +166,7 @@ export default function ResolutionAdminClient({
           </span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-          <div className="bg-csl-dark h-3 rounded-full" style={{ width: `${progressPct}%` }} />
+          <div className="bg-csl-dark h-3 rounded-full" style={{ width: `${progressPct}%`, minWidth: "4px" }} />
         </div>
         <p className="text-[0.75rem] text-gray-400 mt-1.5">{progressPct}% of target</p>
       </div>
