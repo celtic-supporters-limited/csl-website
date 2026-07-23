@@ -11,7 +11,6 @@ const btnPrimary =
   "w-full bg-csl-dark text-white font-semibold rounded-lg py-3 text-[0.95rem] hover:bg-csl-mid transition-colors disabled:opacity-60";
 const cardCls = "bg-white rounded-xl border border-gray-200 shadow-sm p-8";
 const linkCls = "text-sm text-csl-dark hover:underline";
-const dimLinkCls = "text-sm text-gray-400 hover:text-gray-600 hover:underline";
 
 function ErrorBanner({ msg }: { msg: string }) {
   return (
@@ -286,7 +285,7 @@ export default function LoginForm({ redirectTo, reason }: { redirectTo?: string;
         {loading ? "Signing in..." : "Sign in"}
       </button>
 
-      <div className="mt-5 flex flex-col items-center gap-2.5">
+      <div className="mt-6 pt-5 border-t border-gray-200 flex flex-col items-center gap-2.5">
         <button
           type="button"
           onClick={() => switchTo("forgot")}
@@ -297,7 +296,7 @@ export default function LoginForm({ redirectTo, reason }: { redirectTo?: string;
         <button
           type="button"
           onClick={() => switchTo("magic")}
-          className={dimLinkCls}
+          className={linkCls}
         >
           Send me a login link instead
         </button>

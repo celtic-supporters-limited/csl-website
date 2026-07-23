@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, getSubscriptionPeriodEnd } from "@/lib/stripe";
 import type { TimelineEntry, LiveStripe } from "@/components/MemberTimeline";
 
 // ── Auth event helper types ───────────────────────────────────────────────────
@@ -218,8 +218,8 @@ export async function POST(req: NextRequest) {
             const pm   = sub.default_payment_method as Record<string, unknown> | null;
             const card = pm?.card as Record<string, unknown> | null;
             subscriptionStatus = sub.status as string ?? null;
-            nextPaymentDate    = sub.current_period_end
-              ? new Date((sub.current_period_end as number) * 1000).toISOString() : null;
+            const periodEnd    = getSubscriptionPeriodEnd(sub);
+            nextPaymentDate    = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
             nextPaymentAmount  = sub.items
               ? ((sub.items as { data: { price: { unit_amount: number } }[] }).data[0]?.price?.unit_amount ?? null)
               : null;

@@ -92,6 +92,20 @@ function formatGbp(pence: number) {
   return `£${(pence / 100).toFixed(2)}`;
 }
 
+function chargeStatusMeta(status: string): {
+  amountCls: string;
+  badge: { label: string; cls: string } | null;
+} {
+  if (status === "succeeded") return { amountCls: "text-green-700", badge: null };
+  if (status === "failed") {
+    return { amountCls: "text-red-600", badge: { label: "Failed", cls: "bg-red-50 text-red-700 border-red-200" } };
+  }
+  if (status === "pending") {
+    return { amountCls: "text-amber-600", badge: { label: "Pending", cls: "bg-amber-50 text-amber-700 border-amber-200" } };
+  }
+  return { amountCls: "text-gray-600", badge: { label: status, cls: "bg-gray-100 text-gray-600 border-gray-200" } };
+}
+
 function StatusPill({ status }: { status: string }) {
   const cfg =
     status === "active"         ? { cls: "bg-green-100 text-green-800 border-green-200", label: "Active" } :
@@ -105,10 +119,18 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-function borderColor(status: string) {
-  if (status === "active")         return "border-l-green-500";
-  if (status === "payment_failed") return "border-l-red-500";
-  return "border-l-gray-300";
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return (parts[0][0] + (parts[parts.length - 1][0] ?? "")).toUpperCase();
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} className="w-2.5 h-2.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 17L17 7M9 7h8v8" />
+    </svg>
+  );
 }
 
 export default function MemberTimeline({ member, entries, defaultShowTest, liveStripe }: Props) {
@@ -140,73 +162,96 @@ export default function MemberTimeline({ member, entries, defaultShowTest, liveS
   return (
     <div>
       {/* Member card */}
-      <div className={`bg-white border border-gray-200 border-l-4 ${borderColor(member.status)} rounded-lg mb-4 overflow-hidden`}>
-        <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="font-semibold text-gray-900 text-base leading-tight">{member.name}</p>
-            <p className="text-sm text-gray-500 mt-0.5">{member.email}</p>
+      <div className="bg-white border border-gray-200 rounded-lg shadow-sm mb-4 overflow-hidden">
+        <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-lg bg-csl-dark text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
+              {initials(member.name)}
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-gray-900 text-[15px] leading-tight truncate">{member.name}</p>
+              <p className="text-[12.5px] text-gray-500 mt-0.5 truncate">{member.email}</p>
+            </div>
           </div>
           <StatusPill status={member.status} />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
+        <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-100 border-t border-gray-100">
           {/* Left: membership */}
-          <div className="px-4 py-3 space-y-1.5 text-xs">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Membership</p>
-            <div className="flex justify-between gap-2">
+          <div className="px-5 py-4 text-[13px]">
+            <p className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide mb-2.5">Membership</p>
+            <div className="flex justify-between items-baseline gap-2 py-[3px]">
               <span className="text-gray-500">Plan</span>
-              <span className="font-medium text-gray-900 text-right">{member.plan}</span>
+              <span className="font-semibold text-gray-900 text-right">{member.plan}</span>
             </div>
-            <div className="flex justify-between gap-2">
+            <div className="flex justify-between items-baseline gap-2 py-[3px]">
               <span className="text-gray-500">Joined</span>
-              <span className="font-medium text-gray-900 text-right">{formatDate(member.joinedAt)}</span>
+              <span className="font-semibold text-gray-900 text-right">{formatDate(member.joinedAt)}</span>
             </div>
             {member.isLifetime && (
-              <div className="flex justify-between gap-2">
+              <div className="flex justify-between items-baseline gap-2 py-[3px]">
                 <span className="text-gray-500">Lifetime member</span>
-                <span className="font-medium text-gray-900">Yes</span>
+                <span className="font-semibold text-gray-900">Yes</span>
               </div>
             )}
             {member.paymentFailedAt && (
-              <div className="flex justify-between gap-2">
+              <div className="flex justify-between items-baseline gap-2 py-[3px]">
                 <span className="text-red-500">Payment failed at</span>
-                <span className="font-medium text-red-700 text-right">{formatDate(member.paymentFailedAt)}</span>
+                <span className="font-semibold text-red-700 text-right">{formatDate(member.paymentFailedAt)}</span>
               </div>
             )}
             {member.pendingEmail && (
-              <div className="flex justify-between gap-2">
+              <div className="flex justify-between items-baseline gap-2 py-[3px]">
                 <span className="text-amber-600">Pending email change</span>
-                <span className="font-medium text-amber-800 text-right break-all">{member.pendingEmail}</span>
+                <span className="font-semibold text-amber-800 text-right break-all">{member.pendingEmail}</span>
               </div>
             )}
           </div>
 
           {/* Right: live Stripe billing */}
-          <div className="px-4 py-3 space-y-1.5 text-xs">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Live billing</p>
+          <div className="px-5 py-4 text-[13px]">
+            <div className="flex items-center justify-between gap-2 mb-2.5">
+              <p className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide">Live billing</p>
+              {stripe && (stripe.stripeCustomerUrl || stripe.stripeSubscriptionUrl) && (
+                <div className="flex gap-1.5">
+                  {stripe.stripeCustomerUrl && (
+                    <a href={stripe.stripeCustomerUrl} target="_blank" rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-500 bg-gray-100 hover:bg-csl-light hover:text-csl-dark px-2 py-[3px] rounded-md transition-colors">
+                      Customer <ExternalLinkIcon />
+                    </a>
+                  )}
+                  {stripe.stripeSubscriptionUrl && (
+                    <a href={stripe.stripeSubscriptionUrl} target="_blank" rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-500 bg-gray-100 hover:bg-csl-light hover:text-csl-dark px-2 py-[3px] rounded-md transition-colors">
+                      Subscription <ExternalLinkIcon />
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
             {!stripe ? (
               <p className="text-gray-400 italic">No Stripe customer record</p>
             ) : (
               <>
                 {stripe.subscriptionStatus && (
-                  <div className="flex justify-between gap-2">
+                  <div className="flex justify-between items-baseline gap-2 py-[3px]">
                     <span className="text-gray-500">Subscription</span>
-                    <span className="font-medium text-gray-900 capitalize">{stripe.subscriptionStatus}</span>
+                    <span className="font-semibold text-gray-900 capitalize">{stripe.subscriptionStatus}</span>
                   </div>
                 )}
                 {stripe.nextPaymentDate && (
-                  <div className="flex justify-between gap-2">
+                  <div className="flex justify-between items-baseline gap-2 py-[3px]">
                     <span className="text-gray-500">Next payment</span>
-                    <span className="font-medium text-gray-900 text-right">
+                    <span className="font-semibold text-gray-900 text-right">
                       {formatDate(stripe.nextPaymentDate)}
                       {stripe.nextPaymentAmount != null && ` (${formatGbp(stripe.nextPaymentAmount)})`}
                     </span>
                   </div>
                 )}
                 {stripe.cardBrand && stripe.cardLast4 && (
-                  <div className="flex justify-between gap-2">
+                  <div className="flex justify-between items-baseline gap-2 py-[3px]">
                     <span className="text-gray-500">Card</span>
-                    <span className="font-medium text-gray-900 capitalize text-right">
+                    <span className="font-semibold text-gray-900 capitalize text-right">
                       {stripe.cardBrand} ending {stripe.cardLast4}
                       {stripe.cardExpiry && `, exp ${stripe.cardExpiry}`}
                     </span>
@@ -215,35 +260,27 @@ export default function MemberTimeline({ member, entries, defaultShowTest, liveS
                 {!stripe.subscriptionStatus && !stripe.cardLast4 && (
                   <p className="text-gray-400 italic">No active subscription</p>
                 )}
-                {(stripe.stripeCustomerUrl || stripe.stripeSubscriptionUrl) && (
-                  <div className="flex gap-3 pt-0.5">
-                    {stripe.stripeCustomerUrl && (
-                      <a href={stripe.stripeCustomerUrl} target="_blank" rel="noreferrer"
-                        className="text-csl-dark underline underline-offset-2">
-                        Customer
-                      </a>
-                    )}
-                    {stripe.stripeSubscriptionUrl && (
-                      <a href={stripe.stripeSubscriptionUrl} target="_blank" rel="noreferrer"
-                        className="text-csl-dark underline underline-offset-2">
-                        Subscription
-                      </a>
-                    )}
-                  </div>
-                )}
                 {stripe.recentCharges.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-gray-100">
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Recent charges</p>
+                  <div className="mt-3 bg-gray-50 rounded-md p-2.5">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Recent charges</p>
                     <div className="space-y-1">
-                      {stripe.recentCharges.map((c, i) => (
-                        <div key={i} className="flex items-center justify-between gap-2">
-                          <span className="text-gray-400">{new Date(c.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
-                          <span className="text-gray-600 flex-1 truncate text-center">{c.description || "-"}</span>
-                          <span className={`font-semibold shrink-0 ${c.status === "succeeded" ? "text-green-700" : "text-red-600"}`}>
-                            {formatGbp(c.amount)}
-                          </span>
-                        </div>
-                      ))}
+                      {stripe.recentCharges.map((c, i) => {
+                        const meta = chargeStatusMeta(c.status);
+                        return (
+                          <div key={i} className="flex items-baseline justify-between gap-2">
+                            <span className="text-gray-400 flex-shrink-0">{new Date(c.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                            <span className="text-gray-600 flex-1 truncate px-2">{c.description || "-"}</span>
+                            <span className="flex items-center gap-1.5 shrink-0">
+                              {meta.badge && (
+                                <span className={`text-[10px] font-semibold px-1.5 py-[1px] rounded border whitespace-nowrap ${meta.badge.cls}`}>
+                                  {meta.badge.label}
+                                </span>
+                              )}
+                              <span className={`font-bold ${meta.amountCls}`}>{formatGbp(c.amount)}</span>
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

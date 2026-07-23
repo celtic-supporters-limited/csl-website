@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, getSubscriptionPeriodEnd } from "@/lib/stripe";
 import PortalClient from "./PortalClient";
 
 export const dynamic = "force-dynamic";
@@ -186,13 +186,8 @@ export default async function MemberPortalPage({
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const s = sub as any;
                 const card = s.default_payment_method?.card ?? null;
-                // In the dahlia API the period dates moved from the subscription
-                // root to the item's `period` object. Try both locations.
                 const item = s.items?.data?.[0];
-                // In the dahlia API current_period_end moved from the
-                // subscription root to the item level.
-                const periodEnd: number | null =
-                  item?.current_period_end ?? s.current_period_end ?? null;
+                const periodEnd = getSubscriptionPeriodEnd(s);
                 if (!periodEnd) {
                   console.warn(
                     "[member-portal] current_period_end not found.",

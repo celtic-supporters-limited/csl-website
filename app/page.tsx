@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Search, Vote, Shield } from "lucide-react";
 import { Container } from "@/components/Container";
 import { getSupabase } from "@/lib/supabase";
 import type { MembershipSnapshot } from "@/lib/membership-metrics";
@@ -53,31 +54,50 @@ export default async function HomePage() {
         <div className="absolute -top-[60px] -right-[60px] w-[500px] h-[500px] bg-white/[0.04] rounded-full" />
         <div className="absolute -bottom-[100px] left-[20%] w-[300px] h-[300px] bg-white/[0.03] rounded-full" />
         <Container className="relative z-10">
-          <div className="max-w-[680px]">
-            <div className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 px-3.5 py-1.5 rounded-full text-[0.82rem] font-medium text-white/85 mb-5">
-              Governance-Led Change at Celtic FC
+          <div className="flex flex-col lg:flex-row lg:items-start gap-12">
+            <div className="max-w-[680px]">
+              <div className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 px-3.5 py-1.5 rounded-full text-[0.82rem] font-medium text-white/85 mb-5">
+                Governance-Led Change at Celtic FC
+              </div>
+              <h1 className="text-[clamp(2rem,4vw,3.4rem)] font-extrabold leading-[1.12] tracking-tight mb-5">
+                Own Your Club.<br />Shape Its Future.
+              </h1>
+              <p className="text-[1.1rem] text-white/80 mb-9 max-w-[540px] leading-[1.75]">
+                Celtic Supporters Limited is a company formed by Celtic fans to build a
+                real shareholding in Celtic FC, coordinate proxy votes, and push for the
+                governance reform the club needs.
+              </p>
+              <div className="flex flex-wrap gap-3.5">
+                <Link
+                  href="/membership"
+                  className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold bg-csl-gold text-gray-900 hover:brightness-105 transition-all duration-200 shadow-sm"
+                >
+                  Join from &pound;10/month
+                </Link>
+                <Link
+                  href="/share-tracing"
+                  className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors duration-200"
+                >
+                  Trace Your Shares
+                </Link>
+              </div>
             </div>
-            <h1 className="text-[clamp(2rem,4vw,3.4rem)] font-extrabold leading-[1.12] tracking-tight mb-5">
-              Own Your Club.<br />Shape Its Future.
-            </h1>
-            <p className="text-[1.1rem] text-white/80 mb-9 max-w-[540px] leading-[1.75]">
-              Celtic Supporters Limited is a company formed by Celtic fans to build a
-              real shareholding in Celtic FC, coordinate proxy votes, and push for the
-              governance reform the club needs.
-            </p>
-            <div className="flex flex-wrap gap-3.5">
-              <Link
-                href="/membership"
-                className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold bg-csl-gold text-gray-900 hover:brightness-105 transition-all duration-200 shadow-sm"
-              >
-                Join from &pound;10/month
-              </Link>
-              <Link
-                href="/share-tracing"
-                className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors duration-200"
-              >
-                Trace Your Shares
-              </Link>
+
+            <div className="hidden lg:flex lg:flex-col gap-8 lg:flex-shrink-0">
+              {[
+                { num: "12", label: "Governance Demands" },
+                { num: "100%", label: "Volunteer-Led" },
+                { num: "1", label: "Mission" },
+              ].map(({ num, label }) => (
+                <div key={label}>
+                  <div className="text-[clamp(4rem,6vw,7rem)] font-extrabold text-csl-gold leading-none tabular-nums">
+                    {num}
+                  </div>
+                  <div className="text-[0.8rem] text-white/60 uppercase tracking-[0.15em] font-medium mt-2">
+                    {label}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </Container>
@@ -152,33 +172,33 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               {
-                icon: "🔍",
+                icon: Search,
                 title: "Share Tracing",
                 body: "Thousands of Celtic shares are untraceable: certificates lost, estates unsettled, addresses changed. We help shareholders find their holding and decide what to do with it.",
                 link: "/share-tracing",
                 cta: "Start Tracing",
               },
               {
-                icon: "🗳️",
+                icon: Vote,
                 title: "Proxy Assignment",
                 body: "If you hold Celtic shares but cannot attend the AGM, assigning your proxy vote to CSL amplifies our collective voice on governance matters that affect every fan and shareholder.",
                 link: "/proxy",
                 cta: "Assign Your Proxy",
               },
               {
-                icon: "☘",
+                icon: Shield,
                 title: "CSL Membership",
                 body: "Join supporters funding CSL's work. Monthly, annual, or lifetime membership. Your subscription directly funds share acquisition and our governance campaign.",
                 link: "/membership",
                 cta: "Join from £10/month",
               },
-            ].map(({ icon, title, body, link, cta }) => (
+            ].map(({ icon: Icon, title, body, link, cta }) => (
               <div
                 key={title}
                 className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all duration-200"
               >
-                <div className="w-[52px] h-[52px] bg-csl-light rounded-xl flex items-center justify-center text-2xl mb-5">
-                  {icon}
+                <div className="w-[52px] h-[52px] bg-csl-light rounded-xl flex items-center justify-center mb-5">
+                  <Icon className="text-csl-dark" size={26} strokeWidth={1.75} />
                 </div>
                 <h3 className="text-[1.1rem] font-bold mb-2.5">{title}</h3>
                 <p className="text-[0.92rem] text-csl-muted leading-[1.65]">{body}</p>
@@ -469,14 +489,14 @@ export default async function HomePage() {
               <Link
                 key={title}
                 href={href}
-                className="block bg-white rounded-2xl p-7 border border-gray-200 shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all duration-200 group"
+                className="flex flex-col bg-white rounded-2xl p-7 border border-gray-200 border-l-4 border-l-csl-gold shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all duration-200 group"
               >
                 <div className="text-[0.78rem] text-csl-muted uppercase tracking-wider mb-2.5">{date}</div>
                 <h3 className="font-bold text-[1.02rem] mb-2.5 group-hover:text-csl-dark transition-colors duration-150">
                   {title}
                 </h3>
                 <p className="text-[0.88rem] text-csl-muted leading-[1.65]">{summary}</p>
-                <span className="inline-flex items-center gap-1 mt-5 text-[0.85rem] font-semibold text-csl-dark group-hover:gap-2 transition-all duration-200">
+                <span className="inline-flex items-center gap-1 mt-auto pt-5 text-[0.85rem] font-semibold text-csl-dark group-hover:gap-2 transition-all duration-200">
                   Read more &rarr;
                 </span>
               </Link>

@@ -45,6 +45,7 @@ const EVENT_BADGE: Record<string, { label: string; cls: string }> = {
   "email_change.confirmed":   { label: "Email confirmed", cls: "bg-blue-100 text-blue-800 border-blue-200"    },
   "password_reset.requested": { label: "Password reset",  cls: "bg-blue-50 text-blue-700 border-blue-100"    },
   "profile.updated":          { label: "Profile update",  cls: "bg-gray-100 text-gray-600 border-gray-200"   },
+  "password.changed":         { label: "Password changed", cls: "bg-blue-50 text-blue-700 border-blue-100"   },
 };
 
 function eventBadge(type: string): { label: string; cls: string } {
@@ -362,10 +363,12 @@ export default async function AdminMembersPage({
                             {detail || <span className="text-gray-300">-</span>}
                           </td>
                           <td className="px-4 py-3">
-                            {action && (
+                            {action ? (
                               <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 whitespace-nowrap">
                                 {action}
                               </span>
+                            ) : (
+                              <span className="text-gray-300">-</span>
                             )}
                           </td>
                         </tr>

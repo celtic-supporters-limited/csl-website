@@ -57,15 +57,22 @@ export default function CelticParadoxPage() {
       <section className="py-[72px]">
         <Container>
           <div className="max-w-[800px]">
-            <p className="text-[1.05rem] text-gray-700 leading-[1.8]">
+            <p className="text-[1.05rem] text-gray-700 leading-[1.8] mb-7">
               Celtic Football Club is, on every measure that does not involve broadcast money, one of
               the largest football clubs in world football. It is also one of the lowest-earning clubs
               at its level of recognition, because it competes in one of the smallest broadcast markets
-              in European football. The gap between what the brand is worth and what the business is
-              allowed to earn is the Paradox. Celtic Supporters Limited publishes this paper as a
-              shareholder case for a better-governed and more accountable Celtic plc board, built on
-              Celtic plc&apos;s own audited accounts for the five years to 30 June 2025 and on public
-              regulatory records.
+              in European football.
+            </p>
+
+            <p className="text-[1.2rem] text-csl-gold font-bold leading-[1.6] border-l-4 border-csl-gold pl-6 mb-7">
+              The gap between what the brand is worth and what the business is allowed to earn is the
+              Paradox.
+            </p>
+
+            <p className="text-[1.05rem] text-gray-700 leading-[1.8]">
+              Celtic Supporters Limited publishes this paper as a shareholder case for a
+              better-governed and more accountable Celtic plc board, built on Celtic plc&apos;s own
+              audited accounts for the five years to 30 June 2025 and on public regulatory records.
             </p>
           </div>
         </Container>
