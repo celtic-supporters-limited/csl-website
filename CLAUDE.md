@@ -711,6 +711,60 @@ reverse-chronological table. "Show test events" checkbox appears only when test 
 — off by default; test rows shown at 60% opacity with amber TEST badge.
 SQL: `sql/add-member-events.sql` then `sql/add-member-events-is-test.sql` (run in order).
 
+**Phase 16 — Homepage redesign**
+Full rebuild of `app/page.tsx` for a stronger first impression and clearer narrative, after
+two rounds of Cowork visual audits and iterative live feedback (mockup-reviewed via Artifact
+before implementation, then refined directly in code).
+
+Hero restructured into two columns: headline ("Celtic belongs to its shareholders. We're
+organising them.") + CTAs on the left, a "CSL At a Glance" ledger card on the right (12
+Governance Demands, 100% Volunteer-led, mission statement footer) replacing an empty column.
+Ledger-line texture (`repeating-linear-gradient`) plus thin-stroke circle outlines replace the
+old blurred decorative circles — ties visually to the "audited accounts" identity.
+
+Consolidated three previously-overlapping stat blocks (hero numbers, progress bar, financial
+transparency strip) into a single proof strip directly under the hero, on `bg-csl-mid`.
+
+The Celtic Paradox teaser restyled as a document "dossier" (case-file tag, corner-fold accent,
+facts column) instead of a generic dark CTA band — evidence-based research is CSL's actual
+credibility anchor. Third stat is "4 Documents available" (not a vanity file count — kept
+literal per feedback after a rejected "£0 Cost to implement" reinterpretation).
+
+Two standalone full-bleed quote bands (Fergus McCann, Jock Stein) merged into one "In Their
+Own Words" two-up mosaic. "Aggregate. Accumulate. Activate." repositioned to sit directly
+after the "Celtic is Constrained by Its Own Governance Model" problem statement (problem →
+strategy, back-to-back) and merged with the right-column card that previously duplicated the
+same point in different words ("More members. More shares. More votes." now lives as a
+subheading inside the Aggregate/Accumulate/Activate card, with the three points written as
+flowing sentences rather than a label/description table).
+
+Removed the hardcoded "Membership Growth" bar-chart list — investigation found the March/April
+2026 figures predated the real `membership_snapshots` table (created 2026-06-15) and were
+fabricated placeholder data on production. Replaced with the live current member count only;
+no back-dated trend chart until snapshot history is genuinely deep enough (see
+`membership_snapshots` cron in `app/api/cron/membership-snapshot/route.ts`, currently every 3
+days per `vercel.json`).
+
+Removed the "Latest Updates" news section entirely — two of three links were dead `#`
+placeholders and two of three cards duplicated content already covered elsewhere on the page
+(member count, Celtic Paradox), with no CMS behind it to keep it fresh.
+
+Fixed section background rhythm: Services and How We Work were both `bg-csl-light` back to
+back, breaking the dark/mid/cream/white alternation — swapped so the light zone alternates
+cleanly (cream, white, cream, white). Every section eyebrow unified to the same pill-badge
+style (`bg-csl-light text-csl-dark rounded-full`, or `bg-white`/`border-csl-gold/40` variants
+on light/dark section backgrounds respectively) — a bespoke line-accent kicker style introduced
+mid-session was dropped after review found it added no value and was inconsistent with the
+established convention.
+
+Also fixed during this session: `getSubscriptionPeriodEnd()` helper added to `lib/stripe.ts`
+(shared by the member portal and admin member-search route) to fix a real bug where the admin
+single-member Stripe panel silently showed no "next payment date" due to the dahlia API's
+`current_period_end` field moving to the subscription-item level. Member Events admin ACTION
+column gets a fallback dash and a `password.changed` badge. Resolution signatures progress bar
+gets a 4px minimum width. Member Support summary card redesigned (initials avatar, promoted
+Stripe deep-links, Failed/Pending badges on recent charges instead of colour-only signalling).
+
 ## Document Library
 
 - **Route:** `/member-portal/documents` — members only (middleware auth guard)
