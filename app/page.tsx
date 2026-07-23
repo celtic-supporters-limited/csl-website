@@ -54,7 +54,7 @@ export default async function HomePage() {
         <div className="absolute -top-[60px] -right-[60px] w-[500px] h-[500px] bg-white/[0.04] rounded-full" />
         <div className="absolute -bottom-[100px] left-[20%] w-[300px] h-[300px] bg-white/[0.03] rounded-full" />
         <Container className="relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-12 items-center">
+          <div className="flex flex-col lg:flex-row lg:items-start gap-12">
             <div className="max-w-[680px]">
               <div className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 px-3.5 py-1.5 rounded-full text-[0.82rem] font-medium text-white/85 mb-5">
                 Governance-Led Change at Celtic FC
@@ -83,31 +83,15 @@ export default async function HomePage() {
               </div>
             </div>
 
-            <div className="relative bg-white/[0.06] border border-white/15 rounded-2xl p-8 backdrop-blur-sm">
-              <div className="absolute -top-3 -left-3 w-14 h-14 border-2 border-csl-gold/40 rounded-xl pointer-events-none" />
-              <div className="space-y-6">
-                <div>
-                  <div className="text-[2.75rem] font-extrabold text-csl-gold leading-none tabular-nums">
-                    {currentMembers.toLocaleString("en-GB")}
-                  </div>
-                  <div className="text-[0.78rem] text-white/60 uppercase tracking-widest font-medium mt-1.5">
-                    Members and growing
-                  </div>
-                </div>
-                <div className="h-px bg-white/10" />
-                <div>
-                  <div className="text-[2.75rem] font-extrabold text-csl-gold leading-none tabular-nums">
-                    15,000
-                  </div>
-                  <div className="text-[0.78rem] text-white/60 uppercase tracking-widest font-medium mt-1.5">
-                    Shares held
-                  </div>
-                </div>
-                <div className="h-px bg-white/10" />
-                <div className="text-[1.15rem] font-bold text-white leading-snug">
-                  One mission: governance reform at Celtic&nbsp;FC.
-                </div>
-              </div>
+            <div className="w-full lg:w-[360px] lg:flex-shrink-0 bg-white/[0.06] border border-white/15 rounded-2xl p-8">
+              <div className="text-csl-gold font-serif text-[2.75rem] leading-none mb-1">&ldquo;</div>
+              <p className="font-serif text-[1.3rem] font-bold leading-snug mb-6">
+                Real shares. Real votes. Real accountability.
+              </p>
+              <div className="h-px bg-white/15 mb-6" />
+              <p className="text-[0.82rem] text-white/60 uppercase tracking-widest font-medium leading-relaxed">
+                The shareholder-led route to governance reform at Celtic&nbsp;FC
+              </p>
             </div>
           </div>
         </Container>
