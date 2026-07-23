@@ -83,15 +83,21 @@ export default async function HomePage() {
               </div>
             </div>
 
-            <div className="w-full lg:w-[360px] lg:flex-shrink-0 bg-white/[0.06] border border-white/15 rounded-2xl p-8">
-              <div className="text-csl-gold font-serif text-[2.75rem] leading-none mb-1">&ldquo;</div>
-              <p className="font-serif text-[1.3rem] font-bold leading-snug mb-6">
-                Real shares. Real votes. Real accountability.
-              </p>
-              <div className="h-px bg-white/15 mb-6" />
-              <p className="text-[0.82rem] text-white/60 uppercase tracking-widest font-medium leading-relaxed">
-                The shareholder-led route to governance reform at Celtic&nbsp;FC
-              </p>
+            <div className="hidden lg:flex lg:flex-col gap-8 lg:flex-shrink-0">
+              {[
+                { num: "12", label: "Governance Demands" },
+                { num: "100%", label: "Volunteer-Led" },
+                { num: "1", label: "Mission" },
+              ].map(({ num, label }) => (
+                <div key={label}>
+                  <div className="text-[clamp(4rem,6vw,7rem)] font-extrabold text-csl-gold leading-none tabular-nums">
+                    {num}
+                  </div>
+                  <div className="text-[0.8rem] text-white/60 uppercase tracking-[0.15em] font-medium mt-2">
+                    {label}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </Container>
