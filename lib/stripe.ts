@@ -55,6 +55,17 @@ export async function sweepStripeCharges(): Promise<{
   return { total_collected_pence: total, earliest_charge_date: earliest, country_breakdown: countryTally };
 }
 
+// The dahlia Stripe API version moved `current_period_end` from the
+// subscription root to the first subscription item. Older SDK types still
+// expect it on the root, so callers must check both locations — this is the
+// one place that lookup happens, so the two call sites (member portal,
+// admin member search) can't drift out of sync with each other again.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getSubscriptionPeriodEnd(sub: any): number | null {
+  const item = sub?.items?.data?.[0];
+  return item?.current_period_end ?? sub?.current_period_end ?? null;
+}
+
 // Plan identifiers used across client and server
 export type PlanType =
   | "standard"
