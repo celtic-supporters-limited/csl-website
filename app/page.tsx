@@ -489,14 +489,14 @@ export default async function HomePage() {
               <Link
                 key={title}
                 href={href}
-                className="block bg-white rounded-2xl p-7 border border-gray-200 shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all duration-200 group"
+                className="flex flex-col bg-white rounded-2xl p-7 border border-gray-200 border-l-4 border-l-csl-gold shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all duration-200 group"
               >
                 <div className="text-[0.78rem] text-csl-muted uppercase tracking-wider mb-2.5">{date}</div>
                 <h3 className="font-bold text-[1.02rem] mb-2.5 group-hover:text-csl-dark transition-colors duration-150">
                   {title}
                 </h3>
                 <p className="text-[0.88rem] text-csl-muted leading-[1.65]">{summary}</p>
-                <span className="inline-flex items-center gap-1 mt-5 text-[0.85rem] font-semibold text-csl-dark group-hover:gap-2 transition-all duration-200">
+                <span className="inline-flex items-center gap-1 mt-auto pt-5 text-[0.85rem] font-semibold text-csl-dark group-hover:gap-2 transition-all duration-200">
                   Read more &rarr;
                 </span>
               </Link>
