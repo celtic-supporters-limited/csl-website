@@ -11,7 +11,7 @@ const directors = [
     initials: "DS",
     name: "Duncan Smillie",
     role: "Chair",
-    bio: "I am a Celtic supporter and season ticket holder of longstanding, had a successful career in international business with PLC experience. Former co-owner of the Glasgow Rocks pro basketball franchise which was sold in 2020. Former director and chair of Partick Thistle FC and oversaw the transfer of a controlling interest to supporters.",
+    bio: "I am a Celtic supporter and longstanding season ticket holder, had a successful career in international business with PLC experience. Former co-owner of the Glasgow Rocks pro basketball franchise which was sold in 2020. Former director and chair of Partick Thistle FC and oversaw the transfer of a controlling interest to supporters.",
   },
   {
     initials: "DL",
