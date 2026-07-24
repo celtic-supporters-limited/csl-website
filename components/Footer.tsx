@@ -109,7 +109,7 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/membership" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                <Link href="/member-portal" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
                   Upgrade Subscription
                 </Link>
               </li>
@@ -142,6 +142,16 @@ export default function Footer() {
               <li>
                 <Link href="/#about" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
                   About CSL
+                </Link>
+              </li>
+              <li>
+                <Link href="/our-team" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                  Our Team
+                </Link>
+              </li>
+              <li>
+                <Link href="/faq" className="text-[0.85rem] text-white/60 hover:text-white transition-colors duration-150">
+                  FAQs
                 </Link>
               </li>
               <li>
