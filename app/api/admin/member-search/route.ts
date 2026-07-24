@@ -238,7 +238,11 @@ export async function POST(req: NextRequest) {
             amount:      c.amount,
             currency:    c.currency,
             status:      c.status,
-            description: c.description ?? target.plan_name ?? "",
+            description: (() => {
+              const d = c.description as string | null;
+              const isGeneric = !d || d.toLowerCase().includes("subscription creation") || d.toLowerCase().includes("invoice");
+              return isGeneric ? (target.plan_name ?? "Membership") : d;
+            })(),
           }))
         : [];
 
