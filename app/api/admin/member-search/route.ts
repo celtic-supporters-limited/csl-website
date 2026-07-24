@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
 
   let dbQuery = db
     .from("members")
-    .select("id, user_id, email, name, first_name, last_name, plan_name, membership_tier, status, amount_pence, created_at, stripe_customer_id, stripe_subscription_id, is_lifetime, payment_failed_at, pending_email")
+    .select("id, user_id, email, name, first_name, last_name, plan_name, membership_tier, status, amount_pence, created_at, subscription_start_date, stripe_customer_id, stripe_subscription_id, is_lifetime, payment_failed_at, pending_email")
     .limit(10);
 
   if (lowerQ.includes("@")) {
@@ -267,7 +267,7 @@ export async function POST(req: NextRequest) {
       email:           target.email,
       plan:            target.plan_name ?? target.membership_tier ?? "-",
       status:          target.status ?? "-",
-      joinedAt:        target.created_at,
+      joinedAt:        target.subscription_start_date ?? target.created_at,
       isLifetime:      target.is_lifetime,
       paymentFailedAt: target.payment_failed_at,
       pendingEmail:    target.pending_email,
