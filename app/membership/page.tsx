@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import MembershipPlans from "./MembershipPlans";
 import { Container } from "@/components/Container";
+import { getSupabase } from "@/lib/supabase";
 
 export const metadata: Metadata = {
   title: "Join CSL - Celtic Supporters Limited",
@@ -28,8 +29,7 @@ const FAQ = [
 ];
 
 export default async function MembershipPage() {
-  const { createServerSupabase } = await import("@/lib/supabase");
-  const { data: membershipConfig } = await createServerSupabase()
+  const { data: membershipConfig } = await getSupabase()
     .from("site_config")
     .select("value")
     .eq("key", "membership_open")
