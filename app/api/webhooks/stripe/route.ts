@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, getSubscriptionPeriodEnd } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
 import {
@@ -8,6 +8,8 @@ import {
   sendPaymentFailedVolunteerAlert,
   sendCardExpiryWarningEmail,
   sendWelcomeEmail,
+  sendCancellationEmail,
+  sendCancellationVolunteerAlert,
 } from "@/lib/resend";
 import { logMemberEvent } from "@/lib/member-events";
 
@@ -412,12 +414,20 @@ export async function POST(req: NextRequest) {
         const sub = event.data.object as Stripe.Subscription;
         const cid = customerId(sub.customer);
 
+        // Stripe sets this to "cancellation_requested" when the member (or a
+        // volunteer acting for them) initiated the cancellation. Any other
+        // value — in practice, absent — means the subscription was deleted
+        // by Stripe itself after Smart Retries exhausted (8 attempts over
+        // 15 days), i.e. an involuntary, recoverable card-failure case, not
+        // a decision to leave.
+        const voluntary = sub.cancellation_details?.reason === "cancellation_requested";
+
         const { data: cancelledMember, error } = await db
           .from("members")
           .update({ status: "cancelled" })
           .eq("stripe_customer_id", cid)
           .eq("is_lifetime", false)
-          .select("id, email")
+          .select("id, email, first_name, plan_name")
           .maybeSingle();
 
         if (error) {
@@ -427,15 +437,51 @@ export async function POST(req: NextRequest) {
           );
         } else {
           console.log(
-            `[stripe-webhook] customer.subscription.deleted processed for customer ${cid}`
+            `[stripe-webhook] customer.subscription.deleted processed for customer ${cid} (voluntary=${voluntary})`
           );
           logMemberEvent({
             memberId: cancelledMember?.id ?? null,
             eventType: "subscription.cancelled",
+            detail: { voluntary },
             stripeEventId: event.id,
             eventEmail: cancelledMember?.email ?? null,
             isTest: isTestMode,
           }).catch((err) => console.error("[stripe-webhook] Event log error (subscription.cancelled):", err));
+
+          if (cancelledMember?.email) {
+            // getSubscriptionPeriodEnd(), not sub.current_period_end directly —
+            // the dahlia API version moved that field onto the subscription
+            // item, not the subscription root. See lib/stripe.ts.
+            const periodEndUnix = getSubscriptionPeriodEnd(sub);
+            const periodEndDate = periodEndUnix
+              ? new Date(periodEndUnix * 1000).toLocaleDateString("en-GB", {
+                  day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London",
+                })
+              : null;
+
+            try {
+              await sendCancellationEmail({
+                to: cancelledMember.email,
+                firstName: cancelledMember.first_name ?? null,
+                voluntary,
+                periodEndDate,
+                stripeEventId: event.id,
+              });
+            } catch (err) {
+              console.error("[stripe-webhook] Resend error (cancellation member email):", err);
+            }
+
+            try {
+              await sendCancellationVolunteerAlert({
+                memberEmail: cancelledMember.email,
+                planName: cancelledMember.plan_name ?? null,
+                voluntary,
+                stripeEventId: event.id,
+              });
+            } catch (err) {
+              console.error("[stripe-webhook] Resend error (cancellation volunteer alert):", err);
+            }
+          }
         }
         break;
       }
