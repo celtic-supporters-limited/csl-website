@@ -116,7 +116,7 @@ The integration is currently a stub in `lib/resend.ts` (file not yet created).
 | **Format** | `re_...` |
 | **Files that use it** | `lib/resend.ts` (to be created) — called from `app/api/webhooks/stripe/route.ts` (welcome email on `checkout.session.completed`) and intake form API routes |
 | **Needed in Vercel** | Yes — add when implementing the email integration |
-| **Notes** | All outbound email must send from a verified `.co.uk` or `.com` domain, not `.net`. Sending addresses: `membership@celticsupporters.net` (welcome), `shares@celticsupporters.net` (share tracing), `proxy@celticsupporters.net` (proxy). Free tier covers 3,000 emails/month. |
+| **Notes** | All outbound email must send from a verified `.co.uk` or `.com` domain, not `.net`. Sending addresses: `info@celticsupporters.net` (welcome, member-facing notices, volunteer alerts), `shares@celticsupporters.net` (share tracing), `proxy@celticsupporters.net` (proxy). `membership@celticsupporters.net` does not exist and must never be used. Free tier covers 3,000 emails/month. |
 
 ---
 

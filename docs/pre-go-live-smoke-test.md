@@ -70,7 +70,7 @@ Use Stripe test card: `4242 4242 4242 4242`, any future expiry, any CVC, any pos
 | 5.3 | Check Supabase `members` table within 60s | Row present with correct email, `membership_tier = 'monthly'`, `plan_name = 'Monthly 10'`, `status = 'active'` | |
 | 5.4 | Check Supabase `member_events` table | `checkout.completed` event logged with `is_test = true` | |
 | 5.5 | Check Stripe Dashboard > Webhooks > recent deliveries | `checkout.session.completed` event shows 200 response from Vercel | |
-| 5.6 | Check test email inbox | Welcome email received from `membership@celticsupporters.net` (only if `RESEND_API_KEY` is set) | |
+| 5.6 | Check test email inbox | Welcome email received from `info@celticsupporters.net` (only if `RESEND_API_KEY` is set) | |
 | 5.7 | Repeat 5.1–5.3 for Lifetime plan (£5,000) | `membership_tier = 'lifetime'`, `plan_name = 'Lifetime Member'`, `is_lifetime = true` | |
 
 ---

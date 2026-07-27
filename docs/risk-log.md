@@ -33,7 +33,7 @@ Operational risks and go-live blockers for the CSL website. Updated as risks are
 
 ## R02 — Auth emails sent from Supabase default address
 
-**Description:** All Supabase-generated auth emails (magic link, password reset, email change confirmation) send from `noreply@mail.app.supabase.io` rather than `membership@celticsupporters.net`. This undermines trust and increases spam-folder risk.
+**Description:** All Supabase-generated auth emails (magic link, password reset, email change confirmation) send from `noreply@mail.app.supabase.io` rather than `info@celticsupporters.net`. This undermines trust and increases spam-folder risk.
 
 **Status:** Open. Custom SMTP configuration in Supabase Dashboard > Authentication > SMTP Settings requires DNS records (SPF, DKIM) for `celticsupporters.net`. Currently blocked on access to the domain's DNS settings, which are managed by Pure Baltic.
 
@@ -75,7 +75,7 @@ Operational risks and go-live blockers for the CSL website. Updated as risks are
 
 **Owner:** Gary Phinn (Volunteer IT Lead).
 
-**Recommended resolution:** Add `sendMembershipCancelledEmail()` (to member) and `sendCancellationVolunteerAlert()` (to `membership@celticsupporters.net`) in `lib/resend.ts`. Call fire-and-forget in the `customer.subscription.deleted` webhook handler. Blocked on `RESEND_API_KEY` being set in Vercel Production.
+**Recommended resolution:** Add `sendMembershipCancelledEmail()` (to member) and `sendCancellationVolunteerAlert()` (to `info@celticsupporters.net`) in `lib/resend.ts`. Call fire-and-forget in the `customer.subscription.deleted` webhook handler. Blocked on `RESEND_API_KEY` being set in Vercel Production.
 
 ---
 

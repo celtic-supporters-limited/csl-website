@@ -301,7 +301,7 @@ use the "Forgot password" flow to set one — `signUp()` will reject already-reg
 
 - All outbound email sent via Resend from verified `.co.uk` or `.com` domain (not `.net`)
 - Volunteer notification: new intake form → notify `shares@celticsupporters.net` or `proxy@celticsupporters.net`
-- Member welcome email: sent from `membership@celticsupporters.net` after Stripe success
+- Member welcome email: sent from `info@celticsupporters.net` after Stripe success
 - Env var: `RESEND_API_KEY`
 - All Resend calls wrapped in try/catch — email failure must never block a form submission
 - **Currently not implemented** — placeholder only. Implement when `RESEND_API_KEY` is set.
@@ -311,7 +311,7 @@ use the "Forgot password" flow to set one — `signUp()` will reject already-reg
 | Purpose | Address |
 |---------|---------|
 | General | `info@celticsupporters.net` |
-| Membership | `membership@celticsupporters.net` |
+| Membership | `info@celticsupporters.net` |
 | Press | `press@celticsupporters.net` |
 | Share re-tracing | `shares@celticsupporters.net` |
 | Proxy | `proxy@celticsupporters.net` |
@@ -788,6 +788,6 @@ Stripe deep-links, Failed/Pending badges on recent charges instead of colour-onl
 - Implement Zoho CRM integration (replace stubs in `lib/zoho.ts`)
 - Confirm `SUPABASE_SERVICE_ROLE_KEY` is set in Vercel production environment
 - Configure custom SMTP in Supabase (Authentication > SMTP Settings) so all auth
-  emails send from `membership@celticsupporters.net` with CSL branding — requires
+  emails send from `info@celticsupporters.net` with CSL branding — requires
   DNS records (SPF, DKIM) from hosting provider and SMTP credentials from email
   provider; currently blocked on DNS access
