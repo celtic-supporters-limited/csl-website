@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
+import { isGateOpen } from "@/lib/site-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -10,15 +11,11 @@ export default async function MemberPortalLayout({
 }) {
   const db = getSupabase();
 
-  const { data: configRow } = await db
-    .from("site_config")
-    .select("value")
-    .eq("key", "portal_open")
-    .maybeSingle();
-
-  // Treat a missing key as open — avoids locking everyone out in dev environments
-  // where the migration hasn't been run.
-  const portalOpen = !configRow || configRow.value === "true";
+  // Read through lib/site-gates.ts so the value is never served from the
+  // Next.js Data Cache. A missing key or a failed read still resolves to open:
+  // that default lives in GATE_DEFAULTS and exists to avoid locking everyone
+  // out in environments where the migration has not been run.
+  const portalOpen = await isGateOpen("portal_open");
 
   const authClient = createServerSupabase();
   const {

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import MembershipPlans from "./MembershipPlans";
 import { Container } from "@/components/Container";
-import { getSupabase } from "@/lib/supabase";
+import { isGateOpen } from "@/lib/site-gates";
 
 export const metadata: Metadata = {
   title: "Join CSL - Celtic Supporters Limited",
@@ -28,13 +28,13 @@ const FAQ = [
   },
 ];
 
+// Reads the membership gate on every request. Without this the page is
+// statically rendered and serves whatever the gate said at build time, which
+// is why flipping membership_open appeared to have no effect on the site.
+export const dynamic = "force-dynamic";
+
 export default async function MembershipPage() {
-  const { data: membershipConfig } = await getSupabase()
-    .from("site_config")
-    .select("value")
-    .eq("key", "membership_open")
-    .maybeSingle();
-  const membershipOpen = membershipConfig?.value === "true";
+  const membershipOpen = await isGateOpen("membership_open");
   return (
     <>
       {/* HERO */}

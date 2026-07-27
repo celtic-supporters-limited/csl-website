@@ -3,6 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { findOrCreateZohoContact, createZohoCase } from "@/lib/zoho";
 import { sendProxyNotification } from "@/lib/resend";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
+import { AGM_GATE_CLOSED_ERROR, isGateOpen } from "@/lib/site-gates";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -12,6 +13,16 @@ const RATE_LIMIT = 5;
 const WINDOW_MS = 10 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
+  // ── 0. Launch gate ─────────────────────────────────────────────────────────
+  // Checked before rate limiting, validation and any database work. Hiding the
+  // form while leaving this endpoint open would let a replayed request submit.
+  if (!(await isGateOpen("proxy_open"))) {
+    return NextResponse.json(
+      { error: AGM_GATE_CLOSED_ERROR.proxy_open, closed: true },
+      { status: 403 }
+    );
+  }
+
   // ── 1. Rate limiting ───────────────────────────────────────────────────────
   const ip = req.headers.get("x-forwarded-for") ?? "unknown";
   const now = Date.now();

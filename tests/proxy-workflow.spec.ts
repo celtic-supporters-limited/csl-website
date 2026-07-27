@@ -20,6 +20,53 @@
  */
 
 import { test, expect, type APIRequestContext } from "@playwright/test";
+import { createClient } from "@supabase/supabase-js";
+
+// ---------------------------------------------------------------------------
+// Launch gate
+//
+// /proxy and POST /api/proxy are gated by the `proxy_open` key in site_config
+// (lib/site-gates.ts) and default closed. The pre-existing suite below exercises
+// the open path, so the gate is opened for the file and closed again after.
+// This doubles as the "open must not wrongly block" assertion: if the gate
+// regressed, every submission test in this file would fail.
+//
+// Gate state is global. This file must not run in parallel with anything else
+// touching `proxy_open`.
+// ---------------------------------------------------------------------------
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+function adminDb() {
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+    throw new Error(
+      "NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set to run the proxy gate tests"
+    );
+  }
+  return createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+}
+
+async function setProxyGate(open: boolean) {
+  const { error } = await adminDb()
+    .from("site_config")
+    .upsert(
+      { key: "proxy_open", value: open ? "true" : "false", updated_at: new Date().toISOString() },
+      { onConflict: "key" }
+    );
+  if (error) throw new Error(`Failed to set proxy_open=${open}: ${error.message}`);
+}
+
+test.describe.configure({ mode: "serial" });
+
+test.beforeAll(async () => {
+  await setProxyGate(true);
+});
+
+test.afterAll(async () => {
+  // Always leave the gate closed, whatever happened above.
+  await setProxyGate(false);
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -212,8 +259,9 @@ test.describe("Proxy Assignment form — successful submission", () => {
   test("shows success heading and confirmation text", async ({ page }) => {
     await submitForm(page);
     await expect(page.locator("text=Proxy Intent Registered")).toBeVisible({ timeout: 10_000 });
+    // Copy corrected in Package 1: the appointee is a named person, not CSL.
     await expect(
-      page.locator("text=We'll send you the official proxy form")
+      page.getByText(/We will send you the official proxy form/i)
     ).toBeVisible();
   });
 
@@ -309,7 +357,36 @@ test.describe("POST /api/proxy — server-side validation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. Honeypot — bot rejected silently in browser
+// 5. Appointee copy
+//
+// A proxy cannot be appointed to a company. The page must not state or imply
+// that CSL itself is the proxy holder.
+//
+// Scoped to /proxy, which is the page corrected in Package 1. The same claim
+// still appears on /faq and /share-tracing and is reported, not fixed, in this
+// package - so this assertion is deliberately not run site-wide yet.
+// ---------------------------------------------------------------------------
+
+test.describe("Proxy Assignment — appointee copy", () => {
+  test("page never names CSL as the proxy holder", async ({ page }) => {
+    await page.goto("/proxy", { waitUntil: "domcontentloaded" });
+    const body = await page.locator("body").innerText();
+
+    expect(body).not.toMatch(/as your proxy holder/i);
+    expect(body).not.toMatch(/proxy (vote )?to (CSL|Celtic Supporters Limited)/i);
+    expect(body).not.toMatch(/naming Celtic Supporters Limited/i);
+  });
+
+  test("page states the proxy goes to a named person", async ({ page }) => {
+    await page.goto("/proxy", { waitUntil: "domcontentloaded" });
+    const body = await page.locator("body").innerText();
+
+    expect(body).toMatch(/appointed to a named person, not to a company/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. Honeypot — bot rejected silently in browser
 // ---------------------------------------------------------------------------
 
 test.describe("Proxy Assignment — honeypot", () => {
@@ -341,5 +418,43 @@ test.describe("Proxy Assignment — honeypot", () => {
     ).toBeVisible({ timeout: 5_000 });
 
     expect(apiCalled).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. Launch gate closed
+//
+// Runs last: it closes the gate, and the file-level afterAll leaves it closed.
+// ---------------------------------------------------------------------------
+
+test.describe("Proxy Assignment — gate closed", () => {
+  test.beforeAll(async () => {
+    await setProxyGate(false);
+  });
+
+  test("page renders explanation but no form", async ({ page }) => {
+    const res = await page.goto("/proxy", { waitUntil: "domcontentloaded" });
+    expect(res?.status()).toBe(200);
+
+    // Explanatory content still present - this must not be a 404.
+    await expect(page.locator("h1")).toContainText(/Appoint Your/i);
+    await expect(page.getByText(/What Is Proxy Voting/i).first()).toBeVisible();
+
+    // Holding message shown, form absent.
+    await expect(page.getByText(/Notice of the Annual General Meeting/i).first()).toBeVisible();
+    await expect(page.locator("#name")).toHaveCount(0);
+    await expect(page.locator('button[type="submit"]')).toHaveCount(0);
+
+    // Join CSL route stays available.
+    await expect(page.locator('a[href="/membership"]').first()).toBeVisible();
+  });
+
+  test("POST returns 403", async ({ request }) => {
+    const res = await postProxy(request, VALID_PAYLOAD, "10.8.0.1");
+
+    expect(res.status()).toBe(403);
+    const body = (await res.json()) as { error: string; closed?: boolean };
+    expect(body.closed).toBe(true);
+    expect(body.error).toMatch(/not open yet/i);
   });
 });

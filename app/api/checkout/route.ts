@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe, validatePlan, type PlanType } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
+import { isGateOpen } from "@/lib/site-gates";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
 
 const VALID_PLANS: PlanType[] = [
@@ -20,12 +21,7 @@ const WINDOW_MS = 10 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   // ── 0. Membership gate ─────────────────────────────────────────────────────
-  const { data: membershipConfig } = await getSupabase()
-    .from("site_config")
-    .select("value")
-    .eq("key", "membership_open")
-    .maybeSingle();
-  if (membershipConfig?.value !== "true") {
+  if (!(await isGateOpen("membership_open"))) {
     return NextResponse.json(
       { error: "Membership sign-up is not currently open." },
       { status: 403 }

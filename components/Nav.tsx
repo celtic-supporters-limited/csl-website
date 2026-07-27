@@ -7,11 +7,15 @@ import { useEffect, useState } from "react";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 import { Container } from "@/components/Container";
 
+// Every Take Action entry is always visible. Access is controlled by the
+// site_config gates, not by hiding the link: a gated page still explains what
+// it is, when it opens, and offers a Join CSL route. Hiding it only stopped
+// people finding it, since the route was reachable by URL regardless.
 const takeActionLinks = [
   { href: "/share-tracing", label: "Share Tracing" },
   { href: "/proxy", label: "Proxy Assignment" },
   { href: "/resolution", label: "Sign Resolution" },
-];
+] as const;
 
 const aboutLinks = [
   { href: "/our-team", label: "Our Team" },

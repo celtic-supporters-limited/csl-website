@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
+import { AGM_GATE_CLOSED_ERROR, isGateOpen } from "@/lib/site-gates";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -10,6 +11,16 @@ const RATE_LIMIT = 3;
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 export async function POST(req: NextRequest) {
+  // ── 0. Launch gate ─────────────────────────────────────────────────────────
+  // Checked before rate limiting, validation and any database work. Hiding the
+  // form while leaving this endpoint open would let a replayed request submit.
+  if (!(await isGateOpen("resolution_open"))) {
+    return NextResponse.json(
+      { error: AGM_GATE_CLOSED_ERROR.resolution_open, closed: true },
+      { status: 403 }
+    );
+  }
+
   // ── 1. Rate limiting ───────────────────────────────────────────────────────
   const ip = req.headers.get("x-forwarded-for") ?? "unknown";
   const now = Date.now();
