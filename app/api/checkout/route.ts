@@ -132,27 +132,47 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── 5. Duplicate member guard ──────────────────────────────────────────────
+  // ── 5. Duplicate member guard + rejoin customer reuse ──────────────────────
+  // A cancelled member is allowed through to checkout (self-service rejoin);
+  // active and payment_failed members are blocked with guidance specific to
+  // their situation. When a cancelled member does rejoin, their existing
+  // Stripe customer is reused rather than letting Stripe create a new one —
+  // otherwise every rejoin splits their payment history across two customer
+  // records and skews the Reporting page's totals.
+  let existingCustomerId: string | null = null;
   try {
     const { data: existing } = await getSupabase()
       .from("members")
-      .select("id")
+      .select("status, stripe_customer_id")
       .eq("email", email)
       .maybeSingle();
 
     if (existing) {
-      return NextResponse.json(
-        {
-          error:
-            "An account with this email already exists. Please sign in or use a different email address.",
-        },
-        { status: 409 }
-      );
+      if (existing.status === "active") {
+        return NextResponse.json(
+          { error: "You already have an active membership. Please sign in." },
+          { status: 409 }
+        );
+      }
+      if (existing.status === "payment_failed") {
+        return NextResponse.json(
+          { error: "There's a problem with your payment method. Please sign in to update your card." },
+          { status: 409 }
+        );
+      }
+      // status === "cancelled" (or any other non-blocking value) — let the
+      // rejoin through. Legacy rows may have no stripe_customer_id; fall
+      // back to Stripe creating a fresh one in that case.
+      existingCustomerId = existing.stripe_customer_id ?? null;
     }
   } catch (err) {
     console.error("[checkout] Could not check existing member for email:", err);
     // Fail open — a database hiccup should not block legitimate checkouts.
   }
+
+  const customerParams = existingCustomerId
+    ? { customer: existingCustomerId }
+    : { customer_email: email };
 
   const origin = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
@@ -179,7 +199,7 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
-        customer_email: email,
+        ...customerParams,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -197,7 +217,7 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
-        customer_email: email,
+        ...customerParams,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -215,7 +235,7 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
-        customer_email: email,
+        ...customerParams,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -233,7 +253,7 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
-        customer_email: email,
+        ...customerParams,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -241,9 +261,12 @@ export async function POST(req: NextRequest) {
       // lifetime — one-off payment, fixed at £5,000
       // customer_creation: "always" ensures Stripe creates a Customer object
       // even for one-time payments so the webhook gets a stripe_customer_id.
+      // Only valid when Stripe is creating the customer — omit it entirely
+      // when reusing an existing one via customerParams.customer, or Stripe
+      // rejects the session (customer_creation is incompatible with customer).
       session = await stripe.checkout.sessions.create({
         mode: "payment",
-        customer_creation: "always",
+        ...(existingCustomerId ? {} : { customer_creation: "always" as const }),
         line_items: [
           {
             quantity: 1,
@@ -254,7 +277,7 @@ export async function POST(req: NextRequest) {
             },
           },
         ],
-        customer_email: email,
+        ...customerParams,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
