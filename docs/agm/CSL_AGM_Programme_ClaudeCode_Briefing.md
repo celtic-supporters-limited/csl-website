@@ -1,8 +1,18 @@
 # CSL AGM Programme - Claude Code Working Brief
 
+**Version: 1.1**
 **Date:** 27 July 2026
 **Author:** Gary Phinn, Volunteer IT Lead
-**Read this once at the start of the programme.** Every package prompt assumes it.
+**Read this at the start of every package session.** Every package prompt assumes it.
+
+Each package prompt names the brief version it was written against. **If the version above does
+not match the version named in the package prompt, stop and tell Gary before doing anything
+else.** The repository copy at `docs/agm/` is copied over by hand from Gary's working folder, so
+a mismatch means the copy was missed and you are about to follow superseded rules.
+
+**Changes in 1.1, all from Package 1:** no feature branches, work directly on `develop`; runtime
+controls must be proved by flipping them on a deployed Preview; test only what the change
+touches; do not poll `vercel ls` in a loop.
 
 ---
 
@@ -62,19 +72,27 @@ The audit proposes ten packages. We work through them one at a time.
    is ambiguous, or contradicts the audit or the codebase, say so at this point rather than
    picking an interpretation and proceeding. Disagreement here is cheap. Disagreement after the
    build is not.
-4. You branch from `develop` as `feature/agm-package-N-<short-name>`, build, test, and commit.
-   You do not merge.
+4. You work directly on `develop`. **Do not create feature branches.** Commit with the prefix
+   `AGM PN:` so the history stays greppable, for example `AGM P2: rebuild requisition schema`.
+   Push, do not promote to `main`.
 5. You report back in the format in section 5.
-6. Gary reviews, merges, and returns with the next package.
+6. Gary reviews and returns with the next package.
 
-**One package, one session, one branch.** Sessions are not continued across packages. Each
-specification is written to stand alone precisely so that a cold session can execute it, and a
-cold session is what you will be. Do not assume knowledge from a previous package beyond what is
-committed to the repository.
+Why no feature branches: this is a single developer project, every AGM package lands behind a
+gate that is closed by default, and unfinished AGM code therefore cannot affect anyone. Branch
+isolation was buying protection the gates already provide, at the cost of multiple stale
+in-flight branches whenever Gary is diverted onto urgent membership or Stripe work, which happens
+often. The control that does matter is that `develop` is never promoted to `main` mid-package.
+That is Gary's decision to make, not yours. Never merge to `main`.
 
-**After a squash merge the local repository stays on `main`.** Run `git status` and
-`git branch --show-current` at the start of every session and check out `develop` before doing
-anything else.
+**One package, one session.** Sessions are not continued across packages. Each specification is
+written to stand alone precisely so that a cold session can execute it, and a cold session is
+what you will be. Do not assume knowledge from a previous package beyond what is committed to the
+repository.
+
+**After a squash merge the local repository can be left sitting on `main`.** Run `git status` and
+`git branch --show-current` at the start of every session, check out `develop`, and pull before
+doing anything else.
 
 ---
 
@@ -92,6 +110,20 @@ not run full regression suites. Run against the branch Preview deployment using
 `PLAYWRIGHT_BASE_URL`, never against production, because several AGM tests submit to live
 endpoints and would write real rows.
 
+**Waiting for deployments.** Do not poll `vercel ls` in a loop. Each `npx vercel` call re-resolves
+the package and hits the API, and if the match fails the loop burns its full budget and reports
+nothing. Poll the deployed endpoint directly until it responds, then assert on the response, which
+is the thing actually being waited for:
+
+```bash
+URL=https://csl-website-git-develop-gary-phinn-s-projects.vercel.app
+until curl -sf -o /dev/null "$URL/api/agm-gates"; do sleep 5; done && curl -s "$URL/api/agm-gates"
+```
+
+Builds complete in under a minute. If a wait exceeds two minutes, stop and report rather than
+continuing to poll. `npx vercel inspect <url> --wait` is an acceptable alternative to writing a
+loop at all.
+
 **Data.** Never write migration or backfill logic for AGM tables. Where a schema is wrong, drop
 and recreate. If you find yourself writing a migration path for existing rows, stop, you have
 misread the situation.
@@ -99,6 +131,15 @@ misread the situation.
 **Gates.** Both AGM flows are controlled by `site_config` keys read through one shared helper
 used by both pages and both API routes. Gates fail closed on a read error. Never gate a page
 without gating its API route.
+
+**Runtime controls must be proved by flipping them.** Any control changed at runtime rather than
+by deploy needs a test that flips it and confirms the behaviour changed, on a deployed Preview
+and not only on localhost. Storing the value is not the same as honouring it. Next.js caches
+`fetch` results in its Data Cache independently of the edge cache and independently of
+`force-dynamic`, so a toggle can be written correctly, read correctly, and still have no effect
+on a deployed environment. This was live on a Preview during Package 1 and is the single easiest
+way to ship a control that silently does nothing. `X-Vercel-Cache: MISS` does not disprove it,
+that header describes the edge cache only.
 
 **Email.** The same Resend API key is used across Preview and Production. This is a deliberate,
 accepted position for a small volunteer led organisation. It is not a finding, do not raise it,
