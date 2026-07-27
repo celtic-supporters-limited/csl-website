@@ -341,6 +341,11 @@ use the "Forgot password" flow to set one — `signUp()` will reject already-reg
 - File naming: lowercase, hyphenated
 - Commit messages: imperative present tense ("Add hero section to home page")
 
+### Stripe API calls from scripts and tests
+
+- **Never send raw card numbers to the Stripe API** — `paymentMethods.create({ card: { number: ... } })` is blocked server-side by default (PCI restriction) and will fail with "Sending credit card numbers directly to the Stripe API is generally unsafe." Use Stripe's built-in test PaymentMethod tokens instead (e.g. `pm_card_visa`) via `paymentMethods.attach("pm_card_visa", { customer })`.
+- Before writing any new server-side Stripe API call (in a test, script, or route) that goes beyond patterns already used elsewhere in this codebase, check Stripe's own docs/guidance for that specific method first — API shapes and restrictions vary by mode (test vs live) and by method, and assuming a pattern from one Stripe API transfers cleanly to another has already caused a failed test run once.
+
 ## Environment Variables
 
 Required in Vercel (Project Settings > Environment Variables) and `.env.local` for local dev:

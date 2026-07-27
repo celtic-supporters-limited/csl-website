@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, findPendingCancellations } from "@/lib/stripe";
 import { sendMonitoringDigest } from "@/lib/resend";
 import type { DigestData, DigestTrafficLight } from "@/lib/resend";
 
@@ -79,6 +79,32 @@ export async function POST(req: NextRequest) {
       })(),
     ]);
 
+    // Stopgap for the deferred pending-cancellation email/banner work (see
+    // .claude/NOTES.md "Cancellation handling") — separate from the
+    // Promise.all above since it's a two-step operation (Stripe sweep, then
+    // a Supabase join to resolve emails/plans), unlike the single queries
+    // above it. Runs once daily; not a page-render path.
+    let pendingCancellations: { email: string; planName: string | null; endsAtUnix: number }[] = [];
+    try {
+      const stripeInfo = await findPendingCancellations();
+      if (stripeInfo.length > 0) {
+        const { data: matchedMembers } = await db
+          .from("members")
+          .select("email, plan_name, stripe_customer_id")
+          .in("stripe_customer_id", stripeInfo.map((s) => s.customerId));
+        const byCustomerId = new Map((matchedMembers ?? []).map((m) => [m.stripe_customer_id, m]));
+        pendingCancellations = stripeInfo
+          .map((s) => {
+            const member = byCustomerId.get(s.customerId);
+            return member ? { email: member.email, planName: member.plan_name, endsAtUnix: s.endsAtUnix } : null;
+          })
+          .filter((x): x is { email: string; planName: string | null; endsAtUnix: number } => x !== null);
+      }
+    } catch (err) {
+      console.error("[cron/monitoring-digest] findPendingCancellations failed:", err);
+      // Non-fatal — the rest of the digest still sends.
+    }
+
     const sent24h   = emailsSent24h   ?? 0;
     const sentMonth = emailsSentMonth ?? 0;
     const b24h      = bounces24h      ?? 0;
@@ -111,7 +137,9 @@ export async function POST(req: NextRequest) {
     const lapsedAdmins = (lapsedAdminsResult.data ?? []) as { email: string; status: string | null }[];
     const lapsedAdminStatus: DigestTrafficLight = lapsedAdmins.length > 0 ? "amber" : "green";
 
-    const overall = worstOf([todayStatus, monthStatus, bStatus, backupStatus, stripeStatus, dbStatus, lapsedAdminStatus]);
+    const pendingCancellationStatus: DigestTrafficLight = pendingCancellations.length > 0 ? "amber" : "green";
+
+    const overall = worstOf([todayStatus, monthStatus, bStatus, backupStatus, stripeStatus, dbStatus, lapsedAdminStatus, pendingCancellationStatus]);
 
     const attentionItems: string[] = [];
     if (todayStatus !== "green")  attentionItems.push(`Email sends today: ${sent24h} / 100 (${todayStatus === "red" ? "limit reached" : "approaching limit"})`);
@@ -120,6 +148,20 @@ export async function POST(req: NextRequest) {
     if ((paymentFailures24h ?? 0) > 0) attentionItems.push(`Payment failures: ${paymentFailures24h} in the last 24h - check member timelines`);
     if ((cancellations24h ?? 0) > 0)   attentionItems.push(`Subscription cancellations: ${cancellations24h} in the last 24h`);
     if (lapsedAdmins.length > 0)       attentionItems.push(`Admin access with lapsed membership: ${lapsedAdmins.map((a) => `${a.email} (${a.status ?? "unknown"})`).join(", ")} — review admin access`);
+    if (pendingCancellations.length > 0) {
+      // Stopgap for the deferred pending-cancellation email/banner work —
+      // this is the interim signal, not the finished feature. One line per
+      // member (capped) rather than one long comma-joined line, since each
+      // attentionItems entry renders as its own <li> in the digest email.
+      const shown = pendingCancellations.slice(0, 10);
+      for (const c of shown) {
+        const endsDate = new Date(c.endsAtUnix * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" });
+        attentionItems.push(`Pending cancellation: ${c.email} (${c.planName ?? "Unknown plan"}) — access ends ${endsDate}`);
+      }
+      if (pendingCancellations.length > shown.length) {
+        attentionItems.push(`+ ${pendingCancellations.length - shown.length} more pending cancellation(s) — see admin member search for the full list`);
+      }
+    }
     if (backupStatus !== "green") attentionItems.push(`Backup: last success was ${ageHours != null ? Math.round(ageHours) + "h ago" : "never"} (${backupStatus === "red" ? "overdue" : "approaching threshold"})`);
     if (!stripeResult.ok)         attentionItems.push("Stripe: API unreachable - checkout and webhook processing will fail");
     if (stripeMode === "test")    attentionItems.push("Stripe: running in test mode - switch to live keys before go-live");

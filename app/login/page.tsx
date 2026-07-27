@@ -30,6 +30,12 @@ export default function LoginPage({
           </div>
         )}
 
+        {searchParams.notice === "welcome-back" && (
+          <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
+            Welcome back! Your CSL membership has been reactivated. Your existing password still works - sign in below, or use &ldquo;Forgot your password?&rdquo; if you need to reset it.
+          </div>
+        )}
+
         {searchParams.error === "auth_failed" && (
           <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
             That sign-in link has expired or is invalid. Please sign in again.

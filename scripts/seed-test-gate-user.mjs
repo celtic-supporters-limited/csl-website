@@ -10,14 +10,18 @@
 // Each file gets its own row so they can never collide, however Playwright
 // schedules them.
 //
-// Idempotent — safe to re-run.
+// Idempotent — safe to re-run. Every run resets all passwords (there is no
+// way to read a password back out of Supabase to confirm it's unchanged),
+// so this script is the single source of truth for these credentials — it
+// writes them directly into .env.test.local itself. Do not hand-copy
+// printed values into that file; a manual copy step is exactly what caused
+// these credentials to drift out of sync with the file in the past.
 //
 // Usage:
 //   node scripts/seed-test-gate-user.mjs
 //
 // Reads NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from
 // .env.test.local (falls back to .env.local if not found there).
-// Prints the six lines to add to .env.test.local when done.
 
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs";
@@ -54,9 +58,11 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
 // One account per spec file — see the note above on why a shared account
 // is unsafe under Playwright's default cross-file parallelism.
 const ACCOUNTS = [
-  { envVar: "PORTAL_GATE",     email: "csl-test-gate-1@celticsupporters.net", firstName: "Gate1" },
-  { envVar: "MEMBERSHIP_ENDED", email: "csl-test-gate-2@celticsupporters.net", firstName: "Gate2" },
-  { envVar: "PAYMENT_BANNER",  email: "csl-test-gate-3@celticsupporters.net", firstName: "Gate3" },
+  { envVar: "PORTAL_GATE",         email: "csl-test-gate-1@celticsupporters.net", firstName: "Gate1" },
+  { envVar: "MEMBERSHIP_ENDED",    email: "csl-test-gate-2@celticsupporters.net", firstName: "Gate2" },
+  { envVar: "PAYMENT_BANNER",      email: "csl-test-gate-3@celticsupporters.net", firstName: "Gate3" },
+  { envVar: "REJOIN_ROUTING",      email: "csl-test-gate-4@celticsupporters.net", firstName: "Gate4" },
+  { envVar: "PENDING_CANCELLATION", email: "csl-test-gate-5@celticsupporters.net", firstName: "Gate5" },
 ];
 
 const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
@@ -119,21 +125,52 @@ async function seedOne({ email, firstName }) {
   return password;
 }
 
+// Replace or append KEY=value lines in .env.test.local, preserving every
+// other line (comments, unrelated vars) exactly as-is.
+function writeEnvValues(filename, values) {
+  const filePath = path.resolve(filename);
+  const raw = fs.existsSync(filePath)
+    ? fs.readFileSync(filePath, "utf-8").replace(/^﻿/, "")
+    : "";
+  const lines = raw.length ? raw.split(/\r?\n/) : [];
+  const remaining = new Map(Object.entries(values));
+
+  const updated = lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return line;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx < 1) return line;
+    const key = trimmed.slice(0, eqIdx).trim();
+    if (remaining.has(key)) {
+      const value = remaining.get(key);
+      remaining.delete(key);
+      return `${key}=${value}`;
+    }
+    return line;
+  });
+
+  for (const [key, value] of remaining) {
+    updated.push(`${key}=${value}`);
+  }
+
+  fs.writeFileSync(filePath, updated.join("\n") + "\n", "utf-8");
+}
+
 async function main() {
   console.log(`Target Supabase project: ${SUPABASE_URL}\n`);
 
-  const envLines = [];
+  const envValues = {};
   for (const account of ACCOUNTS) {
     console.log(`Seeding ${account.email} (${account.envVar})...`);
     const password = await seedOne(account);
-    envLines.push(`TEST_GATE_${account.envVar}_EMAIL=${account.email}`);
-    envLines.push(`TEST_GATE_${account.envVar}_PASSWORD=${password}`);
+    envValues[`TEST_GATE_${account.envVar}_EMAIL`] = account.email;
+    envValues[`TEST_GATE_${account.envVar}_PASSWORD`] = password;
     console.log("");
   }
 
-  console.log("Done. Add these lines to .env.test.local:\n");
-  console.log(envLines.join("\n"));
-  console.log("\nDo not commit .env.test.local — it is gitignored, keep it that way.");
+  writeEnvValues(".env.test.local", envValues);
+  console.log(`Done. .env.test.local updated directly with ${Object.keys(envValues).length} values.`);
+  console.log("Do not commit .env.test.local — it is gitignored, keep it that way.");
 }
 
 main().catch((err) => {

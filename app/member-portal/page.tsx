@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 export default async function MemberPortalPage({
   searchParams,
 }: {
-  searchParams: { tab?: string; email_updated?: string };
+  searchParams: { tab?: string; email_updated?: string; welcome_back?: string };
 }) {
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -199,6 +199,7 @@ export default async function MemberPortalPage({
                   status: s.status,
                   current_period_end: periodEnd,
                   cancel_at_period_end: s.cancel_at_period_end ?? false,
+                  cancel_at: s.cancel_at ?? null,
                   next_amount_pence: item?.price?.unit_amount ?? null,
                   card_brand: card?.brand ?? null,
                   card_last4: card?.last4 ?? null,
@@ -238,6 +239,7 @@ export default async function MemberPortalPage({
       proxyCount={proxyCount}
       initialTab={searchParams.tab}
       emailUpdated={searchParams.email_updated === "true"}
+      welcomeBack={searchParams.welcome_back === "true"}
     />
   );
 }

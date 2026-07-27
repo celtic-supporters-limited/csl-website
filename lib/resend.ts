@@ -13,15 +13,40 @@ function getResend(): Resend | null {
   return _client;
 }
 
-export function logEmailSend(emailType: string): void {
+export function logEmailSend(emailType: string, stripeEventId?: string | null): void {
   // fire-and-forget — never blocks the send, never throws
   ;(async () => {
     try {
-      await getSupabase().from("email_log").insert({ email_type: emailType });
+      await getSupabase().from("email_log").insert({ email_type: emailType, stripe_event_id: stripeEventId ?? null });
     } catch (e) {
       console.error("[resend] email_log insert failed:", e);
     }
   })();
+}
+
+// Read-before-send idempotency guard. Only meaningful for callers that pass
+// a stripe_event_id — Stripe retries on any non-200 webhook response, and
+// without this a retried event would send the same email twice.
+// Fails open (returns false, i.e. "not sent yet") on any DB error — a
+// missing idempotency check risks a duplicate email; blocking a genuine
+// cancellation email over a DB hiccup is the worse failure mode.
+async function hasEmailBeenSent(emailType: string, stripeEventId: string): Promise<boolean> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("email_log")
+      .select("id")
+      .eq("email_type", emailType)
+      .eq("stripe_event_id", stripeEventId)
+      .maybeSingle();
+    if (error) {
+      console.error("[resend] idempotency check failed, proceeding with send:", error.message);
+      return false;
+    }
+    return !!data;
+  } catch (e) {
+    console.error("[resend] idempotency check failed, proceeding with send:", e);
+    return false;
+  }
 }
 
 const SITE_URL =
@@ -117,7 +142,7 @@ export async function sendWelcomeEmail({
         <p><strong>Your plan:</strong> ${planName}</p>
         <p>Access your member portal:</p>
         <p><a href="${SITE_URL}/member-portal" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Go to your member portal</a></p>
-        <p>Once your account is active you can manage your membership, view documents, and track your enquiries.</p>
+        <p>From your member portal you can manage your membership, view documents, and track your enquiries.</p>
         <p>Together we are building the shareholder voice Celtic FC needs.</p>
         <p>Celtic Supporters Limited</p>
       `,
@@ -435,4 +460,125 @@ export async function sendMonitoringDigest(data: DigestData): Promise<void> {
     throw err;
   }
   logEmailSend("monitoring_digest");
+}
+
+// ── Cancellation emails ──────────────────────────────────────────────────────
+// Branched on Stripe's cancellation_details.reason: "cancellation_requested"
+// is voluntary (member chose to leave); anything else is treated as
+// involuntary — dunning exhaustion after repeated card declines, the only
+// other realistic cause of customer.subscription.deleted. Both branches are
+// idempotency-guarded on stripeEventId — Stripe retries on any non-200
+// response, and without this guard a retry would send the email twice.
+
+export async function sendCancellationEmail({
+  to,
+  firstName,
+  voluntary,
+  periodEndDate,
+  stripeEventId,
+}: {
+  to: string;
+  firstName: string | null;
+  voluntary: boolean;
+  periodEndDate: string | null;
+  stripeEventId: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const emailType = "cancellation_confirmed";
+  if (await hasEmailBeenSent(emailType, stripeEventId)) {
+    console.log(`[resend] ${emailType} already sent for event ${stripeEventId} — skipping`);
+    return;
+  }
+
+  const greeting = firstName ? `Hello ${firstName},` : "Hello,";
+  const endedPhrase = periodEndDate
+    ? `Your membership access ended on ${periodEndDate}.`
+    : "Your membership access has now ended.";
+
+  const html = voluntary
+    ? `
+        <p>${greeting}</p>
+        <p>We're confirming that your Celtic Supporters Limited membership has been cancelled, as requested.</p>
+        <p>${endedPhrase}</p>
+        <p>We'd welcome you back at any time — you can rejoin from the membership page below, and your membership will restart immediately.</p>
+        <p><a href="${SITE_URL}/membership" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Rejoin CSL</a></p>
+        <p>If you have any feedback on why you're leaving, or any questions, contact us at <a href="mailto:info@celticsupporters.net">info@celticsupporters.net</a>.</p>
+        <p>Celtic Supporters Limited</p>
+      `
+    : `
+        <p>${greeting}</p>
+        <p>We were unable to collect your Celtic Supporters Limited membership payment after several attempts, and your membership has now ended.</p>
+        <p>${endedPhrase}</p>
+        <p>Stripe automatically retries a failed payment up to 8 times over 15 days before a membership is cancelled — this usually happens when a card has expired or been replaced, not because of anything you did.</p>
+        <p>If you'd like to continue your membership, you're welcome to rejoin with an up-to-date card at any time:</p>
+        <p><a href="${SITE_URL}/membership" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Rejoin CSL</a></p>
+        <p>If you'd rather speak to us first, contact us at <a href="mailto:info@celticsupporters.net">info@celticsupporters.net</a>.</p>
+        <p>Celtic Supporters Limited</p>
+      `;
+
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: voluntary
+        ? "Your CSL membership has been cancelled"
+        : "Your CSL membership has ended — payment could not be collected",
+      html,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType, to, err });
+    throw err;
+  }
+  logEmailSend(emailType, stripeEventId);
+}
+
+export async function sendCancellationVolunteerAlert({
+  memberEmail,
+  planName,
+  voluntary,
+  stripeEventId,
+}: {
+  memberEmail: string;
+  planName: string | null;
+  voluntary: boolean;
+  stripeEventId: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const emailType = "cancellation_volunteer_alert";
+  if (await hasEmailBeenSent(emailType, stripeEventId)) {
+    console.log(`[resend] ${emailType} already sent for event ${stripeEventId} — skipping`);
+    return;
+  }
+
+  const subject = voluntary
+    ? `Membership cancelled (member requested): ${memberEmail}`
+    : `Membership ended (payment failure, not requested): ${memberEmail}`;
+
+  const bodyNote = voluntary
+    ? "The member requested this cancellation. They may be open to a call to discuss their reasons and, if appropriate, reactivation."
+    : "This was NOT a voluntary cancellation — the member's card was declined through all 8 Smart Retries attempts over 15 days. They may not be aware their membership has ended. Worth a proactive check-in, since this is often a recoverable card issue, not a decision to leave.";
+
+  try {
+    await resend.emails.send({
+      from: "CSL Website <info@celticsupporters.net>",
+      to: "info@celticsupporters.net",
+      subject,
+      html: `
+        <p>A membership has ended.</p>
+        <p><strong>Member:</strong> ${memberEmail}</p>
+        <p><strong>Plan:</strong> ${planName ?? "Unknown"}</p>
+        <p><strong>Reason:</strong> ${voluntary ? "Member requested cancellation" : "Payment failure — dunning exhausted"}</p>
+        <p>${bodyNote}</p>
+        <p><a href="${SITE_URL}/member-portal/admin/members?q=${encodeURIComponent(memberEmail)}">View member timeline</a></p>
+      `,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType, to: "info@celticsupporters.net", err });
+    throw err;
+  }
+  logEmailSend(emailType, stripeEventId);
 }

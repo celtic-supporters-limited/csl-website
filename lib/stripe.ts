@@ -66,6 +66,53 @@ export function getSubscriptionPeriodEnd(sub: any): number | null {
   return item?.current_period_end ?? sub?.current_period_end ?? null;
 }
 
+// Stopgap for the deferred pending-cancellation email/banner work (see
+// .claude/NOTES.md "Cancellation handling") — surfaces the same information
+// via the daily monitoring digest instead, until the real feature is built.
+// Combined signal, not cancel_at_period_end alone: the customer Billing
+// Portal sets cancel_at directly (confirmed via a real captured payload);
+// only our own /api/subscription/* annual-switch flow sets the boolean.
+// Only call from background contexts (cron) — paginates every active
+// subscription, same cost profile as sweepStripeCharges().
+export type PendingCancellationStripeInfo = {
+  customerId: string;
+  endsAtUnix: number;
+  amountPence: number | null;
+  interval: string | null;
+};
+
+export async function findPendingCancellations(): Promise<PendingCancellationStripeInfo[]> {
+  const stripe = getStripe();
+  const results: PendingCancellationStripeInfo[] = [];
+  let hasMore = true;
+  let startingAfter: string | undefined;
+
+  while (hasMore) {
+    const batch = await stripe.subscriptions.list({ status: "active", limit: 100, starting_after: startingAfter });
+    for (const sub of batch.data) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const s = sub as any;
+      const cancelAt: number | null = s.cancel_at ?? (s.cancel_at_period_end ? getSubscriptionPeriodEnd(s) : null);
+      if (cancelAt) {
+        const customerId = typeof s.customer === "string" ? s.customer : s.customer?.id;
+        if (customerId) {
+          const item = s.items?.data?.[0];
+          results.push({
+            customerId,
+            endsAtUnix: cancelAt,
+            amountPence: item?.price?.unit_amount ?? null,
+            interval: item?.price?.recurring?.interval ?? null,
+          });
+        }
+      }
+    }
+    hasMore = batch.has_more;
+    startingAfter = batch.data[batch.data.length - 1]?.id;
+  }
+
+  return results;
+}
+
 // Plan identifiers used across client and server
 export type PlanType =
   | "standard"
