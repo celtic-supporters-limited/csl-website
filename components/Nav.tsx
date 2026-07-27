@@ -7,13 +7,14 @@ import { useEffect, useState } from "react";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 import { Container } from "@/components/Container";
 
-// "Sign Resolution" is gated: it only appears once resolution_open is true.
-// The Proxy Assignment entry is deliberately not gated - the proxy page keeps
-// explaining itself while closed, so the route stays reachable.
+// Every Take Action entry is always visible. Access is controlled by the
+// site_config gates, not by hiding the link: a gated page still explains what
+// it is, when it opens, and offers a Join CSL route. Hiding it only stopped
+// people finding it, since the route was reachable by URL regardless.
 const takeActionLinks = [
-  { href: "/share-tracing", label: "Share Tracing", gate: null },
-  { href: "/proxy", label: "Proxy Assignment", gate: null },
-  { href: "/resolution", label: "Sign Resolution", gate: "resolution_open" },
+  { href: "/share-tracing", label: "Share Tracing" },
+  { href: "/proxy", label: "Proxy Assignment" },
+  { href: "/resolution", label: "Sign Resolution" },
 ] as const;
 
 const aboutLinks = [
@@ -50,26 +51,6 @@ export default function Nav() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileTakeActionOpen, setMobileTakeActionOpen] = useState(false);
   const [mobileAboutOpen, setMobileAboutOpen] = useState(false);
-  const [gates, setGates] = useState<Record<string, boolean>>({});
-
-  // Gate state comes from an API route rather than a direct read: the anon role
-  // has no SELECT policy on site_config, and reading it in the root layout
-  // would opt the whole site out of static rendering. Starts empty, so a gated
-  // entry stays hidden until proven open.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/agm-gates");
-        if (!res.ok) return;
-        const data = (await res.json()) as Record<string, boolean>;
-        if (!cancelled) setGates(data);
-      } catch {
-        // Leave gates closed on any failure.
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     const supabase = createBrowserSupabase();
@@ -84,11 +65,7 @@ export default function Nav() {
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
-  const visibleTakeActionLinks = takeActionLinks.filter(
-    (l) => l.gate === null || gates[l.gate] === true
-  );
-
-  const takeActionActive = visibleTakeActionLinks.some((l) => pathname === l.href);
+  const takeActionActive = takeActionLinks.some((l) => pathname === l.href);
   const aboutActive = aboutLinks.some((l) => pathname === l.href);
 
   const topLinkClass = (active: boolean) =>
@@ -143,7 +120,7 @@ export default function Nav() {
             </button>
             {takeActionOpen && (
               <ul className="absolute top-full left-0 mt-0.5 min-w-[180px] bg-csl-dark border border-white/20 rounded-[6px] shadow-2xl py-1.5 z-50 list-none">
-                {visibleTakeActionLinks.map(({ href, label }) => (
+                {takeActionLinks.map(({ href, label }) => (
                   <li key={href}>
                     <Link href={href} className={dropdownItemClass(pathname === href)}>
                       {label}
@@ -269,7 +246,7 @@ export default function Nav() {
               </button>
               {mobileTakeActionOpen && (
                 <div className="pl-5 pb-1 space-y-0.5">
-                  {visibleTakeActionLinks.map(({ href, label }) => (
+                  {takeActionLinks.map(({ href, label }) => (
                     <Link
                       key={href}
                       href={href}

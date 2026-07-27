@@ -124,7 +124,9 @@ function validBody(email: string) {
  */
 async function openTakeActionMenu(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  // Nav fetches gate state on mount; let that settle before opening the menu.
+  // The dropdown is driven by React state, so wait for hydration before
+  // hovering. Without this the hover lands on unhydrated markup and the menu
+  // never opens.
   await page.waitForTimeout(1_500);
   await page.getByRole("button", { name: /Take Action/i }).hover();
   return page.getByRole("navigation");
@@ -179,12 +181,14 @@ test.describe("Requisition gate closed", () => {
     await expect(page.getByText(/Direct registered shareholder signatures/i)).toHaveCount(0);
   });
 
-  test("nav does not offer Sign Resolution", async ({ page }) => {
+  test("nav still offers Sign Resolution while closed", async ({ page }) => {
+    // Nav visibility is not access control, the gate is. All three Take Action
+    // entries stay visible in every gate state so a shareholder following a
+    // link can still find the page, read what it is, and join CSL.
     const nav = await openTakeActionMenu(page);
-    // Share Tracing proves the menu is genuinely open, so the absence of
-    // Sign Resolution below is meaningful rather than vacuously true.
     await expect(nav.getByRole("link", { name: "Share Tracing" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Sign Resolution" })).toHaveCount(0);
+    await expect(nav.getByRole("link", { name: "Proxy Assignment" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Sign Resolution" })).toBeVisible();
   });
 
   test("POST returns 403 and writes no row", async ({ request }) => {
@@ -219,7 +223,7 @@ test.describe("Requisition gate open", () => {
     await expect(page.getByText(/Direct registered shareholder signatures/i).first()).toBeVisible();
   });
 
-  test("nav offers Sign Resolution", async ({ page }) => {
+  test("nav offers Sign Resolution while open", async ({ page }) => {
     const nav = await openTakeActionMenu(page);
     await expect(nav.getByRole("link", { name: "Sign Resolution" })).toBeVisible();
   });

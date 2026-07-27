@@ -4,12 +4,15 @@ import { getAgmGates } from "@/lib/site-gates";
 /**
  * Public read of the two AGM launch gates.
  *
- * Exists so the client-side Nav can hide the "Sign Resolution" entry while the
- * flow is closed. The anon role has no SELECT policy on site_config, so the Nav
- * cannot read the gate directly, and reading it in the root layout instead
- * would opt the whole site out of static rendering (app/page.tsx uses ISR).
+ * No longer consumed by the UI. It was built so the client-side Nav could hide
+ * the "Sign Resolution" entry while closed; that hiding was removed because nav
+ * visibility is not access control, the gate is, and hiding the link only
+ * stopped people finding a page that explains itself.
  *
- * Returns booleans only. Whether a public page is open is not sensitive.
+ * Kept as an operational check: it is the quickest way to confirm a gate flip
+ * has taken effect on a deployed environment without signing in to the admin,
+ * which matters on AGM week. Returns booleans only, and whether a public page
+ * is open is already evident from the page itself.
  */
 export const dynamic = "force-dynamic";
 
