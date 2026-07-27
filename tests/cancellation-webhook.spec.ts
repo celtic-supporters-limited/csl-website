@@ -25,10 +25,17 @@
  *   - the per-member one-hour repeat guard, added after cancel -> reverse
  *     -> cancel was found to produce three member emails in minutes
  *
- * REQUIRES sql/add-email-log-correlation.sql to have been run first — it
- * adds email_log.stripe_event_id and the service_role GRANT the
- * idempotency check depends on. Tests will fail with a Supabase column/
- * permission error until that migration has been applied.
+ * REQUIRES two migrations to have been run first:
+ *   - sql/add-email-log-correlation.sql — adds email_log.stripe_event_id
+ *     and the service_role GRANT the idempotency check depends on.
+ *   - sql/fix-member-events-unique-constraint.sql — member_events.stripe_event_id
+ *     originally had a single-column UNIQUE constraint, which silently
+ *     swallowed the new cancellation.pending/cancellation.reversed rows
+ *     because the pre-existing generic "subscription.updated" row already
+ *     claimed that stripe_event_id (found while verifying this feature
+ *     locally — see .claude/NOTES.md). Without this migration, the
+ *     member_events assertions below will read null even though detection
+ *     and email sends are working correctly.
  *
  * NOT covered here (deliberately backlogged, not deferred — see NOTES.md):
  * SCA detection.
