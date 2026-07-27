@@ -7,6 +7,9 @@ import BackupButton from "@/components/BackupButton";
 import OperationsExportButton from "@/components/OperationsExportButton";
 import PortalGateToggle from "@/components/PortalGateToggle";
 import MembershipGateToggle from "@/components/MembershipGateToggle";
+import ResolutionGateToggle from "@/components/ResolutionGateToggle";
+import ProxyGateToggle from "@/components/ProxyGateToggle";
+import { getAgmGates } from "@/lib/agm-gates";
 
 export const metadata: Metadata = { title: "Operational Status | CSL Admin" };
 export const dynamic = "force-dynamic";
@@ -191,6 +194,7 @@ export default async function OperationsPage() {
     stripeResult,
     portalConfigResult,
     membershipConfigResult,
+    agmGates,
   ] = await Promise.all([
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", todayStart.toISOString()),
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", monthStart.toISOString()),
@@ -209,6 +213,10 @@ export default async function OperationsPage() {
     })(),
     db.from("site_config").select("value").eq("key", "portal_open").maybeSingle(),
     db.from("site_config").select("value").eq("key", "membership_open").maybeSingle(),
+    // Read through the gate helper, not the shared client: it forces
+    // cache: "no-store" so the toggles show live state rather than a cached
+    // value. See lib/agm-gates.ts.
+    getAgmGates(),
   ]);
 
   const todayCount    = emailsToday       ?? 0;
@@ -219,6 +227,8 @@ export default async function OperationsPage() {
 
   const portalOpenValue      = (portalConfigResult.data      as { value: string | null } | null)?.value ?? null;
   const membershipOpenValue  = (membershipConfigResult.data  as { value: string | null } | null)?.value ?? null;
+  const resolutionOpenValue  = agmGates.resolution_open ? "true" : "false";
+  const proxyOpenValue       = agmGates.proxy_open       ? "true" : "false";
 
   const backupRows = (backupResult.data ?? []) as {
     ran_at: string; status: string; total_rows: number | null;
@@ -417,6 +427,29 @@ export default async function OperationsPage() {
               </p>
             </div>
             <MembershipGateToggle currentValue={membershipOpenValue} />
+          </div>
+        </div>
+
+        {/* AGM launch controls — both closed until deliberately opened */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <div className="pb-3 border-b border-gray-100">
+              <h2 className="font-semibold text-gray-900 text-sm">AGM requisition signing</h2>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Controls /resolution and POST /api/resolution/sign. Open only when the solicitor has confirmed the resolution wording.
+              </p>
+            </div>
+            <ResolutionGateToggle currentValue={resolutionOpenValue} />
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <div className="pb-3 border-b border-gray-100">
+              <h2 className="font-semibold text-gray-900 text-sm">AGM proxy appointment</h2>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Controls /proxy and POST /api/proxy. Open only once Celtic plc has issued the Notice of AGM.
+              </p>
+            </div>
+            <ProxyGateToggle currentValue={proxyOpenValue} />
           </div>
         </div>
 

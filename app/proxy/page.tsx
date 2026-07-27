@@ -2,14 +2,21 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import ProxyForm from "./ProxyForm";
 import { Container } from "@/components/Container";
+import { isAgmGateOpen } from "@/lib/agm-gates";
+import { APPOINTEE_LABEL } from "@/lib/agm-appointee";
 
 export const metadata: Metadata = {
   title: "Proxy Assignment - Celtic Supporters Limited",
   description:
-    "Assign your Celtic PLC AGM proxy vote to Celtic Supporters Limited. It costs nothing, takes minutes, and adds your shares to our collective governance voice.",
+    "Appoint a proxy for the Celtic PLC AGM. Your shares are voted by a named individual acting for CSL members, at no cost, in line with our published governance positions.",
 };
 
-export default function ProxyPage() {
+// Reads the launch gate on every request.
+export const dynamic = "force-dynamic";
+
+export default async function ProxyPage() {
+  const proxyOpen = await isAgmGateOpen("proxy_open");
+
   return (
     <>
       {/* HERO */}
@@ -22,19 +29,20 @@ export default function ProxyPage() {
               Your vote, amplified
             </div>
             <h1 className="text-[clamp(2rem,4vw,3.2rem)] font-extrabold leading-[1.15] tracking-tight mb-5">
-              Assign Your AGM<br />Proxy to CSL
+              Appoint Your<br />AGM Proxy
             </h1>
             <p className="text-[1.1rem] text-white/85 mb-9 max-w-[540px] leading-[1.7]">
               If you hold Celtic PLC shares but cannot attend the Annual General
-              Meeting in person, assigning your proxy vote to Celtic Supporters
-              Limited gives your shares a voice on governance matters that matter
-              to every Celtic fan.
+              Meeting in person, you can appoint someone to attend and vote on your
+              behalf. CSL coordinates proxy appointments to {APPOINTEE_LABEL}, so
+              that shares which would otherwise go uncast are voted on the
+              governance matters that affect every Celtic fan.
             </p>
             <Link
               href="#assign"
               className="inline-flex items-center px-8 py-3.5 rounded-[10px] text-base font-semibold bg-white text-csl-dark hover:bg-csl-light transition-colors duration-200"
             >
-              Assign My Proxy
+              Appoint My Proxy
             </Link>
           </div>
         </Container>
@@ -59,10 +67,11 @@ export default function ProxyPage() {
                 by proxy.
               </p>
               <p className="text-gray-500 leading-[1.75] mb-4">
-                By assigning your proxy to CSL, you direct your shares&apos; votes
-                to us. We vote them on governance resolutions in line with our
-                published positions, which are designed to drive accountability at
-                board level.
+                A proxy has to be appointed to a named person, not to a company.
+                When you appoint through CSL, your proxy is {APPOINTEE_LABEL}, who
+                attends the meeting and votes your shares on governance resolutions
+                in line with our published positions. Your shares, and the ownership
+                of them, remain entirely yours.
               </p>
               <p className="text-gray-500 leading-[1.75]">
                 <strong className="text-gray-800">
@@ -94,9 +103,9 @@ export default function ProxyPage() {
                   Collective Power
                 </div>
                 <div className="text-[0.82rem] text-gray-500 leading-relaxed">
-                  Each proxy adds to CSL&apos;s collective voting weight. As our
-                  holdings and proxies grow, we gain meaningful influence over
-                  board decisions.
+                  Each appointment adds to the block of shares voted together at the
+                  meeting. As our holdings and proxy appointments grow, that block
+                  carries meaningful weight in board decisions.
                 </div>
               </div>
             </div>
@@ -118,9 +127,9 @@ export default function ProxyPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 max-w-[1000px] mx-auto">
             {[
               { num: 1, title: "Register Below", body: "Confirm your name, shareholding details, and email address in the form below." },
-              { num: 2, title: "We Send a Form", body: "CSL sends you the official Proxy Form naming Celtic Supporters Limited as your proxy holder." },
+              { num: 2, title: "We Send a Form", body: `CSL sends you the official proxy form, completed to appoint ${APPOINTEE_LABEL} as your proxy.` },
               { num: 3, title: "Sign and Return", body: "Sign and return the form to Computershare by the stated deadline before the AGM." },
-              { num: 4, title: "We Vote for You", body: "CSL votes your shares on all resolutions in line with our published governance positions." },
+              { num: 4, title: "Your Proxy Votes", body: "Your appointed proxy attends the AGM and votes your shares in line with CSL's published governance positions." },
             ].map(({ num, title, body }, i, arr) => (
               <div key={num} className="relative text-center px-6 py-8">
                 <div className="w-[52px] h-[52px] bg-csl-dark text-white rounded-full flex items-center justify-center font-extrabold text-xl mx-auto mb-4">
@@ -144,17 +153,45 @@ export default function ProxyPage() {
         <Container>
           <div className="text-center mb-[52px]">
             <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
-              Assign Your Proxy
+              Appoint Your Proxy
             </span>
             <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-3.5">
-              Register Your Proxy Intent
+              {proxyOpen ? "Register Your Proxy Intent" : "Proxy Appointment Opens Later This Year"}
             </h2>
             <p className="text-[1.05rem] text-gray-500 max-w-[600px] mx-auto">
-              Complete this form and we&apos;ll send you the official proxy
-              assignment documentation.
+              {proxyOpen
+                ? "Complete this form and we will send you the official proxy documentation before the meeting."
+                : "A proxy can only be appointed for a specific meeting, so this page opens once Celtic PLC issues the formal Notice of the Annual General Meeting."}
             </p>
           </div>
-          <ProxyForm />
+
+          {proxyOpen ? (
+            <ProxyForm />
+          ) : (
+            <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-[520px] mx-auto text-center shadow-lg">
+              <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1 rounded-full text-[0.78rem] font-semibold mb-4">
+                Not open yet
+              </span>
+              <h3 className="text-xl font-bold text-csl-dark mb-3">
+                We will contact you when it opens
+              </h3>
+              <p className="text-gray-600 text-sm leading-relaxed mb-6">
+                Celtic PLC has not yet issued the Notice of AGM. Once it does, this page opens and
+                we will send the proxy form to every CSL member who holds shares. Join CSL to be on
+                that list, or email{" "}
+                <a href="mailto:proxy@celticsupporters.net" className="text-csl-dark underline">
+                  proxy@celticsupporters.net
+                </a>{" "}
+                if you hold shares and are not yet a member.
+              </p>
+              <Link
+                href="/membership"
+                className="inline-flex items-center px-7 py-3 rounded-lg text-[0.92rem] font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200"
+              >
+                Join CSL
+              </Link>
+            </div>
+          )}
         </Container>
       </section>
     </>

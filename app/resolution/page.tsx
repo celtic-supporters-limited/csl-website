@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
+import { isAgmGateOpen } from "@/lib/agm-gates";
 import { Container } from "@/components/Container";
 import ResolutionForm from "./ResolutionForm";
 
@@ -14,7 +16,8 @@ export const dynamic = "force-dynamic";
 export default async function ResolutionPage() {
   const supabase = getSupabase();
 
-  const [signaturesRes, configRes] = await Promise.all([
+  const [signingOpen, signaturesRes, configRes] = await Promise.all([
+    isAgmGateOpen("resolution_open"),
     supabase.from("agm_signatures").select("shareholder_tag"),
     supabase.from("site_config").select("key, value").in("key", ["resolution_target"]),
   ]);
@@ -98,34 +101,63 @@ export default async function ResolutionPage() {
                 </div>
               </div>
 
-              {/* Signature counter */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <div className="flex items-baseline justify-between mb-2">
-                  <p className="text-sm font-semibold text-gray-700">
-                    Direct registered shareholder signatures
+              {/* Signature counter — only while signing is open. A progress bar
+                  toward 100 has nothing to report before collection starts. */}
+              {signingOpen && (
+                <div className="bg-white rounded-xl border border-gray-200 p-6">
+                  <div className="flex items-baseline justify-between mb-2">
+                    <p className="text-sm font-semibold text-gray-700">
+                      Direct registered shareholder signatures
+                    </p>
+                    <span className="text-sm font-bold text-csl-dark tabular-nums">
+                      {directCount.toLocaleString("en-GB")} of {resolutionTarget.toLocaleString("en-GB")}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <div
+                      className="bg-csl-dark h-3 rounded-full transition-all"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                  <p className="text-[0.8rem] text-gray-500 mt-2">
+                    Total signatures (all supporters):{" "}
+                    <span className="font-semibold text-gray-700">
+                      {totalCount.toLocaleString("en-GB")}
+                    </span>
                   </p>
-                  <span className="text-sm font-bold text-csl-dark tabular-nums">
-                    {directCount.toLocaleString("en-GB")} of {resolutionTarget.toLocaleString("en-GB")}
-                  </span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                  <div
-                    className="bg-csl-dark h-3 rounded-full transition-all"
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-                <p className="text-[0.8rem] text-gray-500 mt-2">
-                  Total signatures (all supporters):{" "}
-                  <span className="font-semibold text-gray-700">
-                    {totalCount.toLocaleString("en-GB")}
-                  </span>
-                </p>
-              </div>
+              )}
 
-              {/* Form */}
-              <Suspense fallback={null}>
-                <ResolutionForm />
-              </Suspense>
+              {/* Form, or the holding message while signing is closed */}
+              {signingOpen ? (
+                <Suspense fallback={null}>
+                  <ResolutionForm />
+                </Suspense>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-[560px] mx-auto text-center">
+                  <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1 rounded-full text-[0.78rem] font-semibold mb-4">
+                    Signing not open yet
+                  </span>
+                  <h2 className="text-xl font-bold text-csl-dark mb-3">
+                    This page will open for signature shortly
+                  </h2>
+                  <p className="text-gray-600 text-sm leading-relaxed mb-6">
+                    The resolution wording is with our solicitor. Signing opens as soon as it is
+                    confirmed. If you are a Celtic plc shareholder and want to know the moment it
+                    does, join CSL or contact us at{" "}
+                    <a href="mailto:info@celticsupporters.net" className="text-csl-dark underline">
+                      info@celticsupporters.net
+                    </a>
+                    .
+                  </p>
+                  <Link
+                    href="/membership"
+                    className="inline-flex items-center px-7 py-3 rounded-lg text-[0.92rem] font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200"
+                  >
+                    Join CSL
+                  </Link>
+                </div>
+              )}
 
             </div>
           </Container>

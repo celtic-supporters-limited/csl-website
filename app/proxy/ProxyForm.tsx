@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
+import { APPOINTEE_LABEL } from "@/lib/agm-appointee";
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
@@ -115,8 +116,9 @@ export default function ProxyForm() {
           Proxy Intent Registered
         </h2>
         <p className="text-gray-600 max-w-[420px] mx-auto mb-6">
-          We&apos;ll send you the official proxy form ahead of the next Celtic
-          PLC AGM. Thank you for supporting governance change.
+          We will send you the official proxy form ahead of the next Celtic PLC
+          AGM, completed to appoint {APPOINTEE_LABEL} as your proxy. Thank you
+          for supporting governance change.
         </p>
         <Link
           href="/membership"
