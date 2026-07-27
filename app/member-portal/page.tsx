@@ -199,6 +199,7 @@ export default async function MemberPortalPage({
                   status: s.status,
                   current_period_end: periodEnd,
                   cancel_at_period_end: s.cancel_at_period_end ?? false,
+                  cancel_at: s.cancel_at ?? null,
                   next_amount_pence: item?.price?.unit_amount ?? null,
                   card_brand: card?.brand ?? null,
                   card_last4: card?.last4 ?? null,

@@ -74,6 +74,12 @@ export type StripeSubData = {
   status: string;
   current_period_end: number | null;
   cancel_at_period_end: boolean;
+  // Set directly by the customer Billing Portal on cancellation — distinct
+  // from cancel_at_period_end, which our own /api/subscription/* switch
+  // flow sets instead. Both are real signals for a pending cancellation;
+  // neither alone covers every path. See .claude/NOTES.md "Cancellation
+  // handling" for the real-payload evidence.
+  cancel_at: number | null;
   next_amount_pence: number | null;
   card_brand: string | null;
   card_last4: string | null;
@@ -314,9 +320,18 @@ function DashboardTab({
   }
 
   const isLifetime = member.membership_tier === "Lifetime";
+  // Combined signal: the customer Billing Portal sets cancel_at (a
+  // timestamp) rather than flipping cancel_at_period_end; our own
+  // /api/subscription/* annual-switch flow sets cancel_at_period_end
+  // directly instead. Neither field alone covers every cancellation path —
+  // see .claude/NOTES.md "Cancellation handling" for the real-payload
+  // evidence this is based on.
+  const isPendingCancellation = !!(stripeSub?.cancel_at || stripeSub?.cancel_at_period_end);
+  const pendingCancelDate = stripeSub?.cancel_at ?? stripeSub?.current_period_end ?? null;
   const showNextRenewal =
     !isLifetime &&
     member.status === "active" &&
+    !isPendingCancellation &&
     stripeSub?.current_period_end != null;
 
   const today = new Date();
@@ -391,6 +406,11 @@ function DashboardTab({
           {showNextRenewal && (
             <span className="text-sm text-gray-400 hidden sm:inline">
               Renews {formatDate(stripeSub!.current_period_end)}
+            </span>
+          )}
+          {isPendingCancellation && (
+            <span className="text-sm text-amber-700 hidden sm:inline">
+              Cancels {formatDate(pendingCancelDate)}
             </span>
           )}
           {isLifetime && (
@@ -844,6 +864,9 @@ function MyMembershipTab({
   const isMonthlyActive = !isLifetime && member.membership_tier === "monthly" && member.status === "active";
   const isAnnualActive  = !isLifetime && member.membership_tier === "annual"  && member.status === "active";
   const statusToShow = stripeSub?.status ?? member.status;
+  // See the matching comment in DashboardTab for why both fields are checked.
+  const isPendingCancellation = !!(stripeSub?.cancel_at || stripeSub?.cancel_at_period_end);
+  const pendingCancelDate = stripeSub?.cancel_at ?? stripeSub?.current_period_end ?? null;
   const cardExpiry =
     stripeSub?.card_exp_month != null && stripeSub?.card_exp_year != null
       ? `${String(stripeSub.card_exp_month).padStart(2, "0")}/${String(stripeSub.card_exp_year).slice(-2)}`
@@ -887,10 +910,17 @@ function MyMembershipTab({
         </div>
 
         {/* Cancellation warning inline */}
-        {!isLifetime && stripeSub?.cancel_at_period_end && (
-          <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
-            Your subscription will cancel on {formatDate(stripeSub.current_period_end)}.
-          </p>
+        {!isLifetime && isPendingCancellation && (
+          <div className="mt-2 flex items-center justify-between gap-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+            <span>Your subscription will cancel on {formatDate(pendingCancelDate)}.</span>
+            <button
+              onClick={billingPortal.open}
+              disabled={billingPortal.loading}
+              className="flex-shrink-0 font-semibold underline hover:no-underline disabled:opacity-60"
+            >
+              {billingPortal.loading ? "Opening..." : "Reverse cancellation"}
+            </button>
+          </div>
         )}
       </div>
 

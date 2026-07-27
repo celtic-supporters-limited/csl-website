@@ -54,10 +54,11 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
 // One account per spec file — see the note above on why a shared account
 // is unsafe under Playwright's default cross-file parallelism.
 const ACCOUNTS = [
-  { envVar: "PORTAL_GATE",       email: "csl-test-gate-1@celticsupporters.net", firstName: "Gate1" },
-  { envVar: "MEMBERSHIP_ENDED",  email: "csl-test-gate-2@celticsupporters.net", firstName: "Gate2" },
-  { envVar: "PAYMENT_BANNER",    email: "csl-test-gate-3@celticsupporters.net", firstName: "Gate3" },
-  { envVar: "REJOIN_ROUTING",    email: "csl-test-gate-4@celticsupporters.net", firstName: "Gate4" },
+  { envVar: "PORTAL_GATE",         email: "csl-test-gate-1@celticsupporters.net", firstName: "Gate1" },
+  { envVar: "MEMBERSHIP_ENDED",    email: "csl-test-gate-2@celticsupporters.net", firstName: "Gate2" },
+  { envVar: "PAYMENT_BANNER",      email: "csl-test-gate-3@celticsupporters.net", firstName: "Gate3" },
+  { envVar: "REJOIN_ROUTING",      email: "csl-test-gate-4@celticsupporters.net", firstName: "Gate4" },
+  { envVar: "PENDING_CANCELLATION", email: "csl-test-gate-5@celticsupporters.net", firstName: "Gate5" },
 ];
 
 const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
