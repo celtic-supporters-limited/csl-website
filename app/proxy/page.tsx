@@ -179,8 +179,8 @@ export default async function ProxyPage() {
                 Celtic PLC has not yet issued the Notice of AGM. Once it does, this page opens and
                 we will send the proxy form to every CSL member who holds shares. Join CSL to be on
                 that list, or email{" "}
-                <a href="mailto:proxy@celticsupporters.net" className="text-csl-dark underline">
-                  proxy@celticsupporters.net
+                <a href="mailto:info@celticsupporters.net" className="text-csl-dark underline">
+                  info@celticsupporters.net
                 </a>{" "}
                 if you hold shares and are not yet a member.
               </p>
