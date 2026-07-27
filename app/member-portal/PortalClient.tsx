@@ -177,7 +177,13 @@ function Card({
 }
 
 
-function StatusPill({ status }: { status: string | null }) {
+function StatusPill({ status, isPendingCancellation }: { status: string | null; isPendingCancellation?: boolean }) {
+  if (isPendingCancellation && (status === "active" || status === "trialing"))
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+        &#9679; Cancelling
+      </span>
+    );
   if (status === "active" || status === "trialing")
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
@@ -401,7 +407,7 @@ function DashboardTab({
       {/* Membership status bar — status · plan · renewal · one action */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-3.5">
         <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-          <StatusPill status={member.status} />
+          <StatusPill status={member.status} isPendingCancellation={isPendingCancellation} />
           <span className="font-semibold text-sm text-gray-900">{planDisplay(member)}</span>
           {showNextRenewal && (
             <span className="text-sm text-gray-400 hidden sm:inline">
@@ -883,17 +889,23 @@ function MyMembershipTab({
       <div className="bg-white border border-gray-200 border-l-[3px] border-l-csl-dark rounded-r-xl px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <StatusPill status={statusToShow} />
+            <StatusPill status={statusToShow} isPendingCancellation={isPendingCancellation} />
             <span className="text-sm font-semibold text-gray-900">{planDisplay(member)}</span>
             <span className="text-xs text-gray-400">Member since {formatDate(member.created_at)}</span>
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500">
-            {!isLifetime && stripeSub && (
+            {!isLifetime && stripeSub && !isPendingCancellation && (
               <span>
                 Next{" "}
                 <span className="font-semibold text-gray-800">{formatPence(stripeSub.next_amount_pence)}</span>
                 {" on "}
                 <span className="font-semibold text-gray-800">{formatDate(stripeSub.current_period_end)}</span>
+              </span>
+            )}
+            {!isLifetime && isPendingCancellation && (
+              <span>
+                Ends{" "}
+                <span className="font-semibold text-gray-800">{formatDate(pendingCancelDate)}</span>
               </span>
             )}
             {!isLifetime && stripeSub?.card_brand && stripeSub.card_last4 && (
@@ -1135,7 +1147,7 @@ function MyMembershipTab({
               )}
             </div>
 
-            {/* Row 3: Update card or cancel */}
+            {/* Row 3: Update card or cancel / manage a pending cancellation */}
             <div className={`border-l-4 ${openPanel === "manage" ? "border-l-csl-dark" : "border-l-transparent"}`}>
               <button
                 className="w-full flex items-center gap-3 px-3 py-3 text-left hover:bg-gray-50 transition-colors"
@@ -1150,8 +1162,12 @@ function MyMembershipTab({
                   </svg>
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900">Update card or cancel</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Manage payment method or end your subscription</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {isPendingCancellation ? "Manage payment or reverse cancellation" : "Update card or cancel"}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {isPendingCancellation ? "Update payment method, or undo the scheduled cancellation" : "Manage payment method or end your subscription"}
+                  </p>
                 </div>
                 <ChevronIcon open={openPanel === "manage"} />
               </button>
@@ -1311,8 +1327,12 @@ function MyMembershipTab({
                   </svg>
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900">Update card or cancel</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Manage payment method or end your subscription</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {isPendingCancellation ? "Manage payment or reverse cancellation" : "Update card or cancel"}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {isPendingCancellation ? "Update payment method, or undo the scheduled cancellation" : "Manage payment method or end your subscription"}
+                  </p>
                 </div>
                 <ChevronIcon open={openPanel === "manage"} />
               </button>
@@ -2193,6 +2213,8 @@ export default function PortalClient({
 
   const name = displayName(member, user.email);
   const tierDisplay = member?.plan_name ?? tierLabel(member?.membership_tier ?? null);
+  // See the matching comment in DashboardTab for why both fields are checked.
+  const headerPendingCancellation = !!(stripeSub?.cancel_at || stripeSub?.cancel_at_period_end);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -2215,7 +2237,7 @@ export default function PortalClient({
               Welcome back, {name}
             </h1>
           </div>
-          <StatusPill status={member?.status ?? null} />
+          <StatusPill status={member?.status ?? null} isPendingCancellation={headerPendingCancellation} />
         </div>
       </section>
 

@@ -19,6 +19,17 @@
  * Uses real Stripe test-mode subscriptions (not Checkout) so the exact
  * field Stripe's Billing Portal sets is reproduced directly via the API,
  * rather than asserting against a synthetic payload shape.
+ *
+ * SECOND ROUND (2026-07-27) — a real bug survived the first version of
+ * these tests. My Membership's summary strip still showed "Next £10 on
+ * {date}" directly above the cancellation warning, and the status pill
+ * still read green "Active" — because the first version only asserted the
+ * warning was PRESENT, never that contradictory renewal/payment language
+ * was ABSENT. Third instance of this exact class of bug (see NOTES.md).
+ * Every test below now asserts both: the correct pending-cancellation
+ * copy is shown, AND no "Next £X", "Renews", or green "Active" language
+ * survives anywhere on the page when the signal is set — on both the
+ * dashboard tab and the My Membership tab.
  */
 
 import { test, expect, type Page } from "@playwright/test";
@@ -100,7 +111,25 @@ test.describe("Pending-cancellation display", () => {
     await db().from("members").update({ status: "active" }).eq("email", GATE_EMAIL!);
   });
 
-  test("cancel_at set (Billing Portal path): dashboard shows 'Cancels', not 'Renews'; My Membership shows warning with Reverse cancellation link", async ({ page }) => {
+  // Shared assertions for a pending-cancellation state, run against
+  // whichever tab is currently loaded. Positive: correct copy is shown.
+  // Negative: nothing implying a future renewal/charge survives anywhere.
+  async function assertPendingCancellationState(page: Page) {
+    // Renders in two places at once (portal header + the tab's own pill) —
+    // .first() is correct here, not a workaround for a bug.
+    await expect(page.locator("text=Cancelling").first()).toBeVisible();
+    await expect(page.locator("text=Active")).toHaveCount(0);
+    await expect(page.locator("text=/^Next /")).toHaveCount(0);
+    await expect(page.locator("text=/^Renews /")).toHaveCount(0);
+  }
+
+  async function assertNoPendingCancellationState(page: Page) {
+    await expect(page.locator("text=Cancelling")).toHaveCount(0);
+    await expect(page.locator("text=Your subscription will cancel on")).toHaveCount(0);
+    await expect(page.locator("text=/^Ends /")).toHaveCount(0);
+  }
+
+  test("cancel_at set (Billing Portal path): 'Cancels'/'Cancelling' shown, 'Renews'/'Active'/'Next £' absent, on both tabs", async ({ page }) => {
     const { customerId, subscriptionId } = await createRealSubscription();
     const cancelAtUnix = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60; // 30 days out
     await stripe().subscriptions.update(subscriptionId, { cancel_at: cancelAtUnix });
@@ -109,20 +138,29 @@ test.describe("Pending-cancellation display", () => {
     await signIn(page, GATE_EMAIL!, GATE_PASSWORD!);
     await page.waitForURL("**/member-portal**", { timeout: 15_000 });
 
+    // Dashboard tab (also covers the top-level portal header pill, rendered
+    // on every tab).
     await expect(page.locator("text=/^Cancels /")).toBeVisible();
-    await expect(page.locator("text=/^Renews /")).toHaveCount(0);
+    await assertPendingCancellationState(page);
 
+    // My Membership tab — this is where the bug actually shipped: the
+    // summary strip's "Next £X on {date}" and green "Active" pill both
+    // rendered directly above the amber cancellation warning.
     await page.evaluate(() => { window.location.href = "/member-portal?tab=membership"; });
     await page.waitForLoadState("networkidle", { timeout: 15_000 });
 
     await expect(page.locator("text=Your subscription will cancel on")).toBeVisible();
-    await expect(page.locator("button", { hasText: "Reverse cancellation" })).toBeVisible();
+    await expect(page.locator("button", { hasText: "Reverse cancellation" }).first()).toBeVisible();
+    await expect(page.locator("text=/^Ends /")).toBeVisible();
+    await expect(page.locator("text=Manage payment or reverse cancellation")).toBeVisible();
+    await expect(page.locator("text=Update card or cancel")).toHaveCount(0);
+    await assertPendingCancellationState(page);
 
     await stripe().subscriptions.cancel(subscriptionId).catch(() => {});
-    console.log("PASS: cancel_at signal correctly shows 'Cancels' label and reversal link");
+    console.log("PASS: cancel_at signal — correct copy shown, no contradictory renewal language anywhere");
   });
 
-  test("cancel_at_period_end=true only (internal annual-switch path): same display, same link", async ({ page }) => {
+  test("cancel_at_period_end=true only (internal annual-switch path): same display, same negative assertions", async ({ page }) => {
     const { customerId, subscriptionId } = await createRealSubscription();
     await stripe().subscriptions.update(subscriptionId, { cancel_at_period_end: true });
     await linkMemberToSubscription(customerId, subscriptionId);
@@ -131,19 +169,23 @@ test.describe("Pending-cancellation display", () => {
     await page.waitForURL("**/member-portal**", { timeout: 15_000 });
 
     await expect(page.locator("text=/^Cancels /")).toBeVisible();
-    await expect(page.locator("text=/^Renews /")).toHaveCount(0);
+    await assertPendingCancellationState(page);
 
     await page.evaluate(() => { window.location.href = "/member-portal?tab=membership"; });
     await page.waitForLoadState("networkidle", { timeout: 15_000 });
 
     await expect(page.locator("text=Your subscription will cancel on")).toBeVisible();
-    await expect(page.locator("button", { hasText: "Reverse cancellation" })).toBeVisible();
+    await expect(page.locator("button", { hasText: "Reverse cancellation" }).first()).toBeVisible();
+    await expect(page.locator("text=/^Ends /")).toBeVisible();
+    await expect(page.locator("text=Manage payment or reverse cancellation")).toBeVisible();
+    await expect(page.locator("text=Update card or cancel")).toHaveCount(0);
+    await assertPendingCancellationState(page);
 
     await stripe().subscriptions.cancel(subscriptionId).catch(() => {});
-    console.log("PASS: cancel_at_period_end-only signal also caught by the combined check");
+    console.log("PASS: cancel_at_period_end-only signal — same correct copy, same absence of contradictory language");
   });
 
-  test("neither flag set: dashboard shows 'Renews', no cancellation warning (regression)", async ({ page }) => {
+  test("neither flag set: 'Renews'/'Active'/'Next £' shown, 'Cancels'/'Cancelling'/warning absent (regression)", async ({ page }) => {
     const { customerId, subscriptionId } = await createRealSubscription();
     await linkMemberToSubscription(customerId, subscriptionId);
 
@@ -152,13 +194,17 @@ test.describe("Pending-cancellation display", () => {
 
     await expect(page.locator("text=/^Renews /")).toBeVisible();
     await expect(page.locator("text=/^Cancels /")).toHaveCount(0);
+    await assertNoPendingCancellationState(page);
 
     await page.evaluate(() => { window.location.href = "/member-portal?tab=membership"; });
     await page.waitForLoadState("networkidle", { timeout: 15_000 });
 
-    await expect(page.locator("text=Your subscription will cancel on")).toHaveCount(0);
+    await expect(page.locator("text=/^Next /")).toBeVisible();
+    await expect(page.locator("text=Update card or cancel")).toBeVisible();
+    await expect(page.locator("text=Manage payment or reverse cancellation")).toHaveCount(0);
+    await assertNoPendingCancellationState(page);
 
     await stripe().subscriptions.cancel(subscriptionId).catch(() => {});
-    console.log("PASS: active subscription with no pending cancellation shows the original 'Renews' label");
+    console.log("PASS: active subscription with no pending cancellation — original copy intact, no pending-cancellation language anywhere");
   });
 });
