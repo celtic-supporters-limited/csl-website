@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 import DocumentLibrary from "@/components/DocumentLibrary";
 import type { MemberDocument } from "@/components/DocumentCard";
+import { MembershipStatusBanner } from "@/components/MembershipStatusBanner";
 
 // ── Exported types (imported by page.tsx) ────────────────────────────────────
 
@@ -340,30 +341,6 @@ function DashboardTab({
 
   return (
     <div className="space-y-6">
-
-      {/* Payment failed banner */}
-      {member.status === "payment_failed" && (
-        <div className="rounded-xl border border-red-300 bg-red-50 px-5 py-4 shadow-sm">
-          <div className="flex gap-3 items-start">
-            <span className="flex-shrink-0 text-red-500 text-xl leading-none mt-0.5">&#9888;</span>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-red-800 mb-2">
-                Your last payment failed. Please update your payment details to keep your membership active.
-              </p>
-              {billingPortal.error && (
-                <p className="text-xs text-red-700 mb-2">{billingPortal.error}</p>
-              )}
-              <button
-                onClick={billingPortal.open}
-                disabled={billingPortal.loading}
-                className="inline-flex items-center px-4 py-2.5 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60 min-h-[44px]"
-              >
-                {billingPortal.loading ? "Opening..." : "Update payment method"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* AGM banner — breaking news treatment, only rendered when date is set */}
       {agmDate && agmDateObj && (
@@ -2128,6 +2105,7 @@ export default function PortalClient({
   const router = useRouter();
   const pathname = usePathname();
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const billingPortal = useBillingPortal();
 
   // On bfcache restore (back/forward navigation), verify the session is still
   // valid with a live getUser() call — bfcache restores bypass React mount and
@@ -2356,6 +2334,13 @@ export default function PortalClient({
 
             {/* Main content */}
             <div>
+              <MembershipStatusBanner
+                status={member?.status ?? null}
+                onOpenBilling={billingPortal.open}
+                billingLoading={billingPortal.loading}
+                billingError={billingPortal.error}
+              />
+
               {activeTab === "dashboard" && (
                 <DashboardTab
                   member={member}

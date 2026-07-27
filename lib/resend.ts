@@ -241,7 +241,7 @@ export async function sendPaymentFailedVolunteerAlert({
   try {
     await resend.emails.send({
       from: "CSL Website <info@celticsupporters.net>",
-      to: "membership@celticsupporters.net",
+      to: "info@celticsupporters.net",
       subject: `Payment failure: ${memberEmail} (attempt ${attemptCount})`,
       html: `
         <p>A membership payment has failed.</p>
@@ -253,7 +253,7 @@ export async function sendPaymentFailedVolunteerAlert({
       `,
     });
   } catch (err) {
-    console.error("[resend] send failed", { emailType: "payment_failed_alert", to: "membership@celticsupporters.net", err });
+    console.error("[resend] send failed", { emailType: "payment_failed_alert", to: "info@celticsupporters.net", err });
     throw err;
   }
   logEmailSend("payment_failed_alert");

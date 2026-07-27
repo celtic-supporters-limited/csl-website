@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
       { count: newJoins24h },
       { count: paymentFailures24h },
       { count: cancellations24h },
+      lapsedAdminsResult,
       dbSizeResult,
       backupResult,
       stripeResult,
@@ -60,6 +61,10 @@ export async function POST(req: NextRequest) {
         .eq("event_type", "payment.failed").gte("created_at", window24h.toISOString()),
       db.from("member_events").select("id", { count: "exact", head: true })
         .eq("event_type", "subscription.cancelled").gte("created_at", window24h.toISOString()),
+      // Governance check, not billing — an admin holding full system access
+      // with a lapsed membership is worth flagging even though they still
+      // pass the portal gate (admins always bypass the status gate).
+      db.from("members").select("email, status").eq("is_admin", true).neq("status", "active"),
       db.rpc("admin_get_db_size_bytes").then((r) => r),
       db.from("backup_log").select("ran_at, status, error_msg").order("ran_at", { ascending: false }).limit(1),
       (async () => {
@@ -103,7 +108,10 @@ export async function POST(req: NextRequest) {
     const bStatus      = bounceTraffic(bounceRate);
     const dbStatus     = trafficLight(dbSizeMb,  500);
 
-    const overall = worstOf([todayStatus, monthStatus, bStatus, backupStatus, stripeStatus, dbStatus]);
+    const lapsedAdmins = (lapsedAdminsResult.data ?? []) as { email: string; status: string | null }[];
+    const lapsedAdminStatus: DigestTrafficLight = lapsedAdmins.length > 0 ? "amber" : "green";
+
+    const overall = worstOf([todayStatus, monthStatus, bStatus, backupStatus, stripeStatus, dbStatus, lapsedAdminStatus]);
 
     const attentionItems: string[] = [];
     if (todayStatus !== "green")  attentionItems.push(`Email sends today: ${sent24h} / 100 (${todayStatus === "red" ? "limit reached" : "approaching limit"})`);
@@ -111,6 +119,7 @@ export async function POST(req: NextRequest) {
     if (bStatus !== "green")      attentionItems.push(`Bounce rate: ${bounceRate.toFixed(1)}% this month (${bStatus === "red" ? "above 5% - action required" : "approaching 2% warning threshold"})`);
     if ((paymentFailures24h ?? 0) > 0) attentionItems.push(`Payment failures: ${paymentFailures24h} in the last 24h - check member timelines`);
     if ((cancellations24h ?? 0) > 0)   attentionItems.push(`Subscription cancellations: ${cancellations24h} in the last 24h`);
+    if (lapsedAdmins.length > 0)       attentionItems.push(`Admin access with lapsed membership: ${lapsedAdmins.map((a) => `${a.email} (${a.status ?? "unknown"})`).join(", ")} — review admin access`);
     if (backupStatus !== "green") attentionItems.push(`Backup: last success was ${ageHours != null ? Math.round(ageHours) + "h ago" : "never"} (${backupStatus === "red" ? "overdue" : "approaching threshold"})`);
     if (!stripeResult.ok)         attentionItems.push("Stripe: API unreachable - checkout and webhook processing will fail");
     if (stripeMode === "test")    attentionItems.push("Stripe: running in test mode - switch to live keys before go-live");
