@@ -10,8 +10,11 @@ import {
   sendWelcomeEmail,
   sendCancellationEmail,
   sendCancellationVolunteerAlert,
+  sendPendingCancellationEmail,
+  sendPendingCancellationVolunteerAlert,
+  sendCancellationReversedEmail,
 } from "@/lib/resend";
-import { logMemberEvent } from "@/lib/member-events";
+import { logMemberEvent, hasRecentPendingCancellationActivity } from "@/lib/member-events";
 
 // ── Derivation helpers ────────────────────────────────────────────────────────
 
@@ -385,7 +388,7 @@ export async function POST(req: NextRequest) {
           .update({ amount_pence: amountPence, plan_name: webhookPlanName, membership_tier: newTier })
           .eq("stripe_customer_id", cid)
           .eq("is_lifetime", false)
-          .select("id, email")
+          .select("id, email, first_name, plan_name, amount_pence, subscription_start_date, created_at")
           .maybeSingle();
 
         if (error) {
@@ -405,6 +408,92 @@ export async function POST(req: NextRequest) {
             eventEmail: updatedMember?.email ?? null,
             isTest: isTestMode,
           }).catch((err) => console.error("[stripe-webhook] Event log error (subscription.updated):", err));
+
+          // ── Pending-cancellation detection ──────────────────────────────
+          // Keyed to cancel_at only, not cancel_at_period_end — that field is
+          // also set by our own annual-switch flow (checkout.session.completed
+          // above) and by the Stripe Dashboard's "cancel at period end"
+          // option (confirmed against Stripe's docs, 2026-07-27), and would
+          // misfire on both. See .claude/NOTES.md "Cancellation handling".
+          const previousAttributes = (event.data as { previous_attributes?: Record<string, unknown> }).previous_attributes;
+          const cancelAtChanged = !!(previousAttributes && "cancel_at" in previousAttributes);
+          const nowCancelAt = (sub as unknown as { cancel_at: number | null }).cancel_at;
+
+          if (cancelAtChanged && updatedMember?.email) {
+            const alreadyNotifiedRecently = await hasRecentPendingCancellationActivity(updatedMember.email);
+
+            if (alreadyNotifiedRecently) {
+              console.log(
+                `[stripe-webhook] Suppressing pending-cancellation/reversal email for ${updatedMember.email} — ` +
+                `already notified within the last hour (event ${event.id})`
+              );
+            } else if (nowCancelAt) {
+              // Newly scheduled cancellation.
+              const periodEndDate = new Date(nowCancelAt * 1000).toLocaleDateString("en-GB", {
+                day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London",
+              });
+              const memberSinceUnix = updatedMember.subscription_start_date ?? updatedMember.created_at;
+              const memberSinceDate = memberSinceUnix
+                ? new Date(memberSinceUnix).toLocaleDateString("en-GB", {
+                    day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London",
+                  })
+                : null;
+              const daysRemaining = Math.max(0, Math.round((nowCancelAt * 1000 - Date.now()) / (1000 * 60 * 60 * 24)));
+
+              try {
+                await sendPendingCancellationEmail({
+                  to: updatedMember.email,
+                  firstName: updatedMember.first_name ?? null,
+                  periodEndDate,
+                  stripeEventId: event.id,
+                });
+              } catch (err) {
+                console.error("[stripe-webhook] Resend error (pending-cancellation member email):", err);
+              }
+
+              try {
+                await sendPendingCancellationVolunteerAlert({
+                  memberEmail: updatedMember.email,
+                  planName: updatedMember.plan_name ?? null,
+                  amountPence: updatedMember.amount_pence ?? null,
+                  memberSinceDate,
+                  periodEndDate,
+                  daysRemaining,
+                  stripeEventId: event.id,
+                });
+              } catch (err) {
+                console.error("[stripe-webhook] Resend error (pending-cancellation volunteer alert):", err);
+              }
+
+              logMemberEvent({
+                memberId: updatedMember.id,
+                eventType: "cancellation.pending",
+                detail: { period_end_date: periodEndDate },
+                stripeEventId: event.id,
+                eventEmail: updatedMember.email,
+                isTest: isTestMode,
+              }).catch((err) => console.error("[stripe-webhook] Event log error (cancellation.pending):", err));
+            } else {
+              // Reversal — cancel_at cleared.
+              try {
+                await sendCancellationReversedEmail({
+                  to: updatedMember.email,
+                  firstName: updatedMember.first_name ?? null,
+                  stripeEventId: event.id,
+                });
+              } catch (err) {
+                console.error("[stripe-webhook] Resend error (cancellation reversed email):", err);
+              }
+
+              logMemberEvent({
+                memberId: updatedMember.id,
+                eventType: "cancellation.reversed",
+                stripeEventId: event.id,
+                eventEmail: updatedMember.email,
+                isTest: isTestMode,
+              }).catch((err) => console.error("[stripe-webhook] Event log error (cancellation.reversed):", err));
+            }
+          }
         }
         break;
       }
