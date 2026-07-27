@@ -26,7 +26,7 @@ import { createClient } from "@supabase/supabase-js";
 // Launch gate
 //
 // /proxy and POST /api/proxy are gated by the `proxy_open` key in site_config
-// (lib/agm-gates.ts) and default closed. The pre-existing suite below exercises
+// (lib/site-gates.ts) and default closed. The pre-existing suite below exercises
 // the open path, so the gate is opened for the file and closed again after.
 // This doubles as the "open must not wrongly block" assertion: if the gate
 // regressed, every submission test in this file would fail.

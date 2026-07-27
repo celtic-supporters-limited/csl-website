@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAgmGates } from "@/lib/agm-gates";
+import { getAgmGates } from "@/lib/site-gates";
 
 /**
  * Public read of the two AGM launch gates.

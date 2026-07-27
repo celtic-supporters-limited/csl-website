@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import { getStripe } from "@/lib/stripe";
+import { getGates } from "@/lib/site-gates";
 import { OperationsReportPdf } from "@/components/OperationsReportPdf";
 import type { OperationsReportData, TrafficLight, BackupRow } from "@/components/OperationsReportPdf";
 
@@ -51,8 +52,7 @@ export async function GET() {
     dbSizeResult,
     backupResult,
     stripeResult,
-    portalConfigResult,
-    membershipConfigResult,
+    gates,
   ] = await Promise.all([
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", todayStart.toISOString()),
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", monthStart.toISOString()),
@@ -68,8 +68,9 @@ export async function GET() {
         return { ok: false, latencyMs: 0 };
       }
     })(),
-    db.from("site_config").select("value").eq("key", "portal_open").maybeSingle(),
-    db.from("site_config").select("value").eq("key", "membership_open").maybeSingle(),
+    // Same uncached path the site enforces on, so the export cannot report a
+    // gate state that differs from reality. See lib/site-gates.ts.
+    getGates("portal_open", "membership_open"),
   ]);
 
   const todayCount  = emailsToday  ?? 0;
@@ -113,8 +114,8 @@ export async function GET() {
     supabase: { dbSizeMb, dbStatus },
     backup: { lastSuccess, lastSuccessAgeHours, backupStatus, recentRuns: backupRows },
     gates: {
-      portalOpen: (portalConfigResult.data as { value: string } | null)?.value === "true",
-      membershipOpen: (membershipConfigResult.data as { value: string } | null)?.value === "true",
+      portalOpen: gates.portal_open,
+      membershipOpen: gates.membership_open,
     },
   };
 

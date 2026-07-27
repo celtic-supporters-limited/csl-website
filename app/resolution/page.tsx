@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
-import { isAgmGateOpen } from "@/lib/agm-gates";
+import { isGateOpen } from "@/lib/site-gates";
 import { Container } from "@/components/Container";
 import ResolutionForm from "./ResolutionForm";
 
@@ -17,7 +17,7 @@ export default async function ResolutionPage() {
   const supabase = getSupabase();
 
   const [signingOpen, signaturesRes, configRes] = await Promise.all([
-    isAgmGateOpen("resolution_open"),
+    isGateOpen("resolution_open"),
     supabase.from("agm_signatures").select("shareholder_tag"),
     supabase.from("site_config").select("key, value").in("key", ["resolution_target"]),
   ]);

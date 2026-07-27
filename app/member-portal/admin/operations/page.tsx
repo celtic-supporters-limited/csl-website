@@ -9,7 +9,7 @@ import PortalGateToggle from "@/components/PortalGateToggle";
 import MembershipGateToggle from "@/components/MembershipGateToggle";
 import ResolutionGateToggle from "@/components/ResolutionGateToggle";
 import ProxyGateToggle from "@/components/ProxyGateToggle";
-import { getAgmGates } from "@/lib/agm-gates";
+import { getGates } from "@/lib/site-gates";
 
 export const metadata: Metadata = { title: "Operational Status | CSL Admin" };
 export const dynamic = "force-dynamic";
@@ -192,9 +192,7 @@ export default async function OperationsPage() {
     dbSizeResult,
     backupResult,
     stripeResult,
-    portalConfigResult,
-    membershipConfigResult,
-    agmGates,
+    gates,
   ] = await Promise.all([
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", todayStart.toISOString()),
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", monthStart.toISOString()),
@@ -211,12 +209,10 @@ export default async function OperationsPage() {
         return { ok: false, latencyMs: 0, mode: "unknown" } as const;
       }
     })(),
-    db.from("site_config").select("value").eq("key", "portal_open").maybeSingle(),
-    db.from("site_config").select("value").eq("key", "membership_open").maybeSingle(),
-    // Read through the gate helper, not the shared client: it forces
-    // cache: "no-store" so the toggles show live state rather than a cached
-    // value. See lib/agm-gates.ts.
-    getAgmGates(),
+    // All four gates read through the helper, not the shared client: it forces
+    // cache: "no-store" so the toggles show the state the site is actually
+    // enforcing rather than a cached value. See lib/site-gates.ts.
+    getGates("portal_open", "membership_open", "resolution_open", "proxy_open"),
   ]);
 
   const todayCount    = emailsToday       ?? 0;
@@ -225,10 +221,10 @@ export default async function OperationsPage() {
   const bounceRatePct = monthCount > 0 ? (bounceCount / monthCount) * 100 : 0;
   const dbSizeMb      = typeof dbSizeResult.data === "number" ? Math.round(dbSizeResult.data / 1024 / 1024) : 0;
 
-  const portalOpenValue      = (portalConfigResult.data      as { value: string | null } | null)?.value ?? null;
-  const membershipOpenValue  = (membershipConfigResult.data  as { value: string | null } | null)?.value ?? null;
-  const resolutionOpenValue  = agmGates.resolution_open ? "true" : "false";
-  const proxyOpenValue       = agmGates.proxy_open       ? "true" : "false";
+  const portalOpenValue      = gates.portal_open     ? "true" : "false";
+  const membershipOpenValue  = gates.membership_open ? "true" : "false";
+  const resolutionOpenValue  = gates.resolution_open ? "true" : "false";
+  const proxyOpenValue       = gates.proxy_open      ? "true" : "false";
 
   const backupRows = (backupResult.data ?? []) as {
     ran_at: string; status: string; total_rows: number | null;

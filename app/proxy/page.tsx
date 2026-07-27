@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import ProxyForm from "./ProxyForm";
 import { Container } from "@/components/Container";
-import { isAgmGateOpen } from "@/lib/agm-gates";
+import { isGateOpen } from "@/lib/site-gates";
 import { APPOINTEE_LABEL } from "@/lib/agm-appointee";
 
 export const metadata: Metadata = {
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function ProxyPage() {
-  const proxyOpen = await isAgmGateOpen("proxy_open");
+  const proxyOpen = await isGateOpen("proxy_open");
 
   return (
     <>
