@@ -582,3 +582,152 @@ export async function sendCancellationVolunteerAlert({
   }
   logEmailSend(emailType, stripeEventId);
 }
+
+// ── Pending-cancellation emails (click-time) ────────────────────────────────
+// Fires on customer.subscription.updated when cancel_at transitions from
+// null to a timestamp — NOT on cancel_at_period_end, which our own
+// /api/subscription/* annual-switch flow also sets, and which the Stripe
+// Dashboard's "cancel at period end" option sets too (confirmed against
+// Stripe's own docs) — sending "your cancellation has been received" in
+// either of those cases would be wrong. See app/api/webhooks/stripe/route.ts
+// for the detection logic and the per-member one-hour repeat guard.
+
+export async function sendPendingCancellationEmail({
+  to,
+  firstName,
+  periodEndDate,
+  stripeEventId,
+}: {
+  to: string;
+  firstName: string | null;
+  periodEndDate: string | null;
+  stripeEventId: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const emailType = "cancellation_pending";
+  if (await hasEmailBeenSent(emailType, stripeEventId)) {
+    console.log(`[resend] ${emailType} already sent for event ${stripeEventId} — skipping`);
+    return;
+  }
+
+  const greeting = firstName ? `Hello ${firstName},` : "Hello,";
+  const endedPhrase = periodEndDate
+    ? `right up until ${periodEndDate}`
+    : "right up until your current billing period ends";
+
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: "We've received your cancellation",
+      html: `
+        <p>${greeting}</p>
+        <p>We've received your request to cancel your Celtic Supporters Limited membership. We're sorry to see you go.</p>
+        <p>You'll keep full access to your membership - the portal, documents, and everything else - ${endedPhrase}. Nothing changes before then.</p>
+        <p>If you change your mind, you can reverse this at any time before then from your member portal:</p>
+        <p><a href="${SITE_URL}/member-portal?tab=membership" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Manage my membership</a></p>
+        <p>A volunteer may be in touch to hear how we can do better, but there's nothing you need to do.</p>
+        <p>Celtic Supporters Limited</p>
+      `,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType, to, err });
+    throw err;
+  }
+  logEmailSend(emailType, stripeEventId);
+}
+
+export async function sendPendingCancellationVolunteerAlert({
+  memberEmail,
+  planName,
+  amountPence,
+  memberSinceDate,
+  periodEndDate,
+  daysRemaining,
+  stripeEventId,
+}: {
+  memberEmail: string;
+  planName: string | null;
+  amountPence: number | null;
+  memberSinceDate: string | null;
+  periodEndDate: string | null;
+  daysRemaining: number | null;
+  stripeEventId: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const emailType = "cancellation_pending_volunteer_alert";
+  if (await hasEmailBeenSent(emailType, stripeEventId)) {
+    console.log(`[resend] ${emailType} already sent for event ${stripeEventId} — skipping`);
+    return;
+  }
+
+  const amountDisplay = amountPence != null ? `£${(amountPence / 100).toFixed(2)}` : "Unknown";
+  const daysNote = daysRemaining != null
+    ? `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} from now`
+    : "unknown";
+
+  try {
+    await resend.emails.send({
+      from: "CSL Website <info@celticsupporters.net>",
+      to: "info@celticsupporters.net",
+      subject: `Cancellation scheduled: ${memberEmail} — act before ${periodEndDate ?? "the end date"}`,
+      html: `
+        <p>A member has scheduled their cancellation - this is still reversible.</p>
+        <p><strong>Member:</strong> ${memberEmail}</p>
+        <p><strong>Plan:</strong> ${planName ?? "Unknown"}</p>
+        <p><strong>Amount:</strong> ${amountDisplay}</p>
+        <p><strong>Member since:</strong> ${memberSinceDate ?? "Unknown"}</p>
+        <p><strong>Access ends:</strong> ${periodEndDate ?? "Unknown"} (${daysNote})</p>
+        <p>This is the best window to reach out - they haven't left yet. A short, genuine call to understand why and offer to help often turns this around.</p>
+        <p><a href="${SITE_URL}/member-portal/admin/members?q=${encodeURIComponent(memberEmail)}">View member timeline</a></p>
+      `,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType, to: "info@celticsupporters.net", err });
+    throw err;
+  }
+  logEmailSend(emailType, stripeEventId);
+}
+
+export async function sendCancellationReversedEmail({
+  to,
+  firstName,
+  stripeEventId,
+}: {
+  to: string;
+  firstName: string | null;
+  stripeEventId: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const emailType = "cancellation_reversed";
+  if (await hasEmailBeenSent(emailType, stripeEventId)) {
+    console.log(`[resend] ${emailType} already sent for event ${stripeEventId} — skipping`);
+    return;
+  }
+
+  const greeting = firstName ? `Hello ${firstName},` : "Hello,";
+
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: "Your cancellation has been reversed - you're still a member",
+      html: `
+        <p>${greeting}</p>
+        <p>Good news - your Celtic Supporters Limited membership cancellation has been reversed. Your membership will continue as normal, and nothing further is required from you.</p>
+        <p>Thank you for staying with us.</p>
+        <p>Celtic Supporters Limited</p>
+      `,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType, to, err });
+    throw err;
+  }
+  logEmailSend(emailType, stripeEventId);
+}

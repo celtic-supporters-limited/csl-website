@@ -1,5 +1,6 @@
 /**
- * Cancellation webhook branching — customer.subscription.deleted.
+ * Cancellation webhook branching — customer.subscription.deleted AND
+ * customer.subscription.updated (pending-cancellation / reversal).
  *
  * Authorised and built 2026-07-27, after Tranche 1 sequencing was
  * reconsidered — see .claude/NOTES.md "Cancellation handling" for the full
@@ -7,22 +8,37 @@
  * real coverage for what actually shipped:
  *
  *   - voluntary vs involuntary branch on cancellation_details.reason
+ *     (customer.subscription.deleted)
  *   - member cancellation email + volunteer alert, distinct copy/subject
  *     per branch
  *   - period-end date read via getSubscriptionPeriodEnd() (item-level, not
  *     sub.current_period_end directly — see lib/stripe.ts)
  *   - email_log idempotency: the same event replayed (Stripe's own retry
  *     behaviour) must not send either email twice
+ *   - pending-cancellation detection on customer.subscription.updated,
+ *     keyed to previous_attributes.cancel_at transitioning from null —
+ *     NOT cancel_at_period_end, which our own annual-switch flow and the
+ *     Stripe Dashboard's "cancel at period end" option both also set
+ *   - reversal detection (cancel_at transitioning back to null)
+ *   - the annual-switch case (cancel_at_period_end changes, cancel_at does
+ *     not) produces no pending-cancellation email
+ *   - the per-member one-hour repeat guard, added after cancel -> reverse
+ *     -> cancel was found to produce three member emails in minutes
  *
- * REQUIRES sql/add-email-log-correlation.sql to have been run first — it
- * adds email_log.stripe_event_id and the service_role GRANT the
- * idempotency check depends on. Tests will fail with a Supabase column/
- * permission error until that migration has been applied.
+ * REQUIRES two migrations to have been run first:
+ *   - sql/add-email-log-correlation.sql — adds email_log.stripe_event_id
+ *     and the service_role GRANT the idempotency check depends on.
+ *   - sql/fix-member-events-unique-constraint.sql — member_events.stripe_event_id
+ *     originally had a single-column UNIQUE constraint, which silently
+ *     swallowed the new cancellation.pending/cancellation.reversed rows
+ *     because the pre-existing generic "subscription.updated" row already
+ *     claimed that stripe_event_id (found while verifying this feature
+ *     locally — see .claude/NOTES.md). Without this migration, the
+ *     member_events assertions below will read null even though detection
+ *     and email sends are working correctly.
  *
- * NOT covered here (still deferred — see NOTES.md): cancel_at_period_end /
- * cancel_at flip detection on customer.subscription.updated, and the
- * pending-cancellation banner that depends on it. SCA detection is
- * backlogged, not built.
+ * NOT covered here (deliberately backlogged, not deferred — see NOTES.md):
+ * SCA detection.
  *
  * Payload factory follows the pattern established in
  * tests/stripe-webhook.spec.ts (kept as a local copy, matching that file's
@@ -73,6 +89,44 @@ function subscriptionDeletedEvent(customerId: string, opts: { reason: string | n
           }],
         },
       },
+    },
+  };
+}
+
+// previousCancelAt: "absent" means the key is not present in
+// previous_attributes at all (nothing about cancel_at changed on this
+// event — e.g. an annual-switch update that only touched
+// cancel_at_period_end). null/a-number means the key IS present with that
+// prior value — a genuine cancel_at transition.
+function subscriptionUpdatedEvent(customerId: string, opts: {
+  cancelAt: number | null;
+  previousCancelAt: number | null | "absent";
+  cancelAtPeriodEnd?: boolean;
+}) {
+  const previousAttributes: Record<string, unknown> = {};
+  if (opts.previousCancelAt !== "absent") {
+    previousAttributes.cancel_at = opts.previousCancelAt;
+  }
+  return {
+    id: `evt_test_subupdated_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    object: "event",
+    type: "customer.subscription.updated",
+    livemode: false,
+    data: {
+      object: {
+        id: `sub_test_${Date.now()}`,
+        object: "subscription",
+        customer: customerId,
+        status: "active",
+        cancel_at: opts.cancelAt,
+        cancel_at_period_end: opts.cancelAtPeriodEnd ?? false,
+        items: {
+          data: [{
+            price: { unit_amount: 1000, recurring: { interval: "month" } },
+          }],
+        },
+      },
+      previous_attributes: previousAttributes,
     },
   };
 }
@@ -192,6 +246,149 @@ test.describe("customer.subscription.deleted — voluntary vs involuntary", () =
     expect(await emailLogCount("cancellation_volunteer_alert", event.id)).toBe(1);
 
     console.log("PASS: replayed event did not duplicate either email — idempotency guard held");
+  });
+});
+
+test.describe("customer.subscription.updated — pending cancellation / reversal", () => {
+  test.beforeEach(({}, testInfo) => {
+    if (!canRun) testInfo.skip(true, "STRIPE_WEBHOOK_SECRET / SUPABASE_SERVICE_ROLE_KEY not set");
+  });
+
+  test("pending cancellation: cancel_at newly set sends member email + volunteer alert, logs cancellation.pending", async ({ request }) => {
+    const customerId = `cus_test_pending_${Date.now()}`;
+    const email = `csl-test-cancel-pending-${Date.now()}@celticsupporters.net`;
+    await seedMember(customerId, email, "Pending", "Monthly 10");
+
+    const cancelAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+    const event = subscriptionUpdatedEvent(customerId, { cancelAt, previousCancelAt: null });
+    const res = await postWebhook(request, event);
+    expect(res.status()).toBe(200);
+
+    expect(await emailLogCount("cancellation_pending", event.id)).toBe(1);
+    expect(await emailLogCount("cancellation_pending_volunteer_alert", event.id)).toBe(1);
+
+    const { data: memberEvent } = await db()
+      .from("member_events")
+      .select("id")
+      .eq("stripe_event_id", event.id)
+      .eq("event_type", "cancellation.pending")
+      .maybeSingle();
+    expect(memberEvent).toBeTruthy();
+
+    console.log("PASS: pending cancellation detected — both emails sent once, member_events logged");
+  });
+
+  test("reversal: cancel_at cleared sends reversal email, logs cancellation.reversed", async ({ request }) => {
+    const customerId = `cus_test_reversed_${Date.now()}`;
+    const email = `csl-test-cancel-reversed-${Date.now()}@celticsupporters.net`;
+    await seedMember(customerId, email, "Reversed", "Monthly 10");
+
+    const priorCancelAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+    const event = subscriptionUpdatedEvent(customerId, { cancelAt: null, previousCancelAt: priorCancelAt });
+    const res = await postWebhook(request, event);
+    expect(res.status()).toBe(200);
+
+    expect(await emailLogCount("cancellation_reversed", event.id)).toBe(1);
+    // Reversal has no volunteer alert in this design — confirm none was sent.
+    expect(await emailLogCount("cancellation_pending_volunteer_alert", event.id)).toBe(0);
+
+    const { data: memberEvent } = await db()
+      .from("member_events")
+      .select("id")
+      .eq("stripe_event_id", event.id)
+      .eq("event_type", "cancellation.reversed")
+      .maybeSingle();
+    expect(memberEvent).toBeTruthy();
+
+    console.log("PASS: reversal detected — email sent once, member_events logged");
+  });
+
+  test("annual-switch case: cancel_at_period_end changes but cancel_at does not — no pending-cancellation email", async ({ request }) => {
+    const customerId = `cus_test_annualswitch_${Date.now()}`;
+    const email = `csl-test-cancel-annualswitch-${Date.now()}@celticsupporters.net`;
+    await seedMember(customerId, email, "AnnualSwitch", "Monthly 10");
+
+    // cancel_at_period_end: true, but previous_attributes has no "cancel_at"
+    // key at all — this is what our own annual-switch flow (and the Stripe
+    // Dashboard's "cancel at period end" option) actually produces.
+    const event = subscriptionUpdatedEvent(customerId, {
+      cancelAt: null,
+      previousCancelAt: "absent",
+      cancelAtPeriodEnd: true,
+    });
+    const res = await postWebhook(request, event);
+    expect(res.status()).toBe(200);
+
+    expect(await emailLogCount("cancellation_pending", event.id)).toBe(0);
+    expect(await emailLogCount("cancellation_pending_volunteer_alert", event.id)).toBe(0);
+    expect(await emailLogCount("cancellation_reversed", event.id)).toBe(0);
+
+    const { data: memberEvent } = await db()
+      .from("member_events")
+      .select("id")
+      .eq("stripe_event_id", event.id)
+      .in("event_type", ["cancellation.pending", "cancellation.reversed"])
+      .maybeSingle();
+    expect(memberEvent).toBeNull();
+
+    console.log("PASS: cancel_at_period_end-only change (annual-switch shape) does not trigger a pending-cancellation email");
+  });
+
+  test("one-hour repeat guard: cancel then immediate reversal for the same member both send — guard is scoped per transition type, not blanket", async ({ request }) => {
+    const customerId = `cus_test_repeatguard_${Date.now()}`;
+    const email = `csl-test-cancel-repeatguard-${Date.now()}@celticsupporters.net`;
+    await seedMember(customerId, email, "RepeatGuard", "Monthly 10");
+
+    const cancelAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+
+    // First event: pending cancellation — should send normally.
+    const firstEvent = subscriptionUpdatedEvent(customerId, { cancelAt, previousCancelAt: null });
+    const firstRes = await postWebhook(request, firstEvent);
+    expect(firstRes.status()).toBe(200);
+    expect(await emailLogCount("cancellation_pending", firstEvent.id)).toBe(1);
+
+    // Second event, seconds later: reversal for the same member. Genuinely
+    // distinct Stripe event (different event.id), so stripe_event_id
+    // idempotency alone would let it through. This is the single most
+    // common real case — a member cancels then immediately changes their
+    // mind — and must always get a reversal confirmation, even though a
+    // "cancellation.pending" row for this member exists within the last
+    // hour. The guard is scoped per event_type precisely so this does not
+    // get suppressed (a bug found via manual testing, 2026-07-27: the
+    // original blanket "any pending-or-reversed activity" check silently
+    // dropped exactly this email).
+    const secondEvent = subscriptionUpdatedEvent(customerId, { cancelAt: null, previousCancelAt: cancelAt });
+    const secondRes = await postWebhook(request, secondEvent);
+    expect(secondRes.status()).toBe(200);
+    expect(await emailLogCount("cancellation_reversed", secondEvent.id)).toBe(1);
+
+    const { data: secondMemberEvent } = await db()
+      .from("member_events")
+      .select("id")
+      .eq("stripe_event_id", secondEvent.id)
+      .eq("event_type", "cancellation.reversed")
+      .maybeSingle();
+    expect(secondMemberEvent).not.toBeNull();
+
+    // Third event, seconds later: a second cancellation for the same
+    // member. This IS a genuine repeat of the same transition type
+    // ("cancellation.pending" following another "cancellation.pending"
+    // within the hour) and must be suppressed — this is what the guard is
+    // actually for.
+    const thirdEvent = subscriptionUpdatedEvent(customerId, { cancelAt, previousCancelAt: null });
+    const thirdRes = await postWebhook(request, thirdEvent);
+    expect(thirdRes.status()).toBe(200); // still 200 — suppression is not an error
+    expect(await emailLogCount("cancellation_pending", thirdEvent.id)).toBe(0);
+
+    const { data: thirdMemberEvent } = await db()
+      .from("member_events")
+      .select("id")
+      .eq("stripe_event_id", thirdEvent.id)
+      .eq("event_type", "cancellation.pending")
+      .maybeSingle();
+    expect(thirdMemberEvent).toBeNull();
+
+    console.log("PASS: cancel + immediate reversal both sent; same-type repeat within the hour was suppressed");
   });
 });
 
