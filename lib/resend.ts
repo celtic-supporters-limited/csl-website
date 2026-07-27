@@ -117,7 +117,7 @@ export async function sendWelcomeEmail({
         <p><strong>Your plan:</strong> ${planName}</p>
         <p>Access your member portal:</p>
         <p><a href="${SITE_URL}/member-portal" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Go to your member portal</a></p>
-        <p>Once your account is active you can manage your membership, view documents, and track your enquiries.</p>
+        <p>From your member portal you can manage your membership, view documents, and track your enquiries.</p>
         <p>Together we are building the shareholder voice Celtic FC needs.</p>
         <p>Celtic Supporters Limited</p>
       `,

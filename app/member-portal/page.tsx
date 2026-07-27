@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 export default async function MemberPortalPage({
   searchParams,
 }: {
-  searchParams: { tab?: string; email_updated?: string };
+  searchParams: { tab?: string; email_updated?: string; welcome_back?: string };
 }) {
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -238,6 +238,7 @@ export default async function MemberPortalPage({
       proxyCount={proxyCount}
       initialTab={searchParams.tab}
       emailUpdated={searchParams.email_updated === "true"}
+      welcomeBack={searchParams.welcome_back === "true"}
     />
   );
 }

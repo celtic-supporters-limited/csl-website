@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getStripe } from "@/lib/stripe";
+import { createServerSupabase, getSupabase } from "@/lib/supabase";
 
 export const metadata: Metadata = {
   title: "Welcome to CSL - Celtic Supporters Limited",
@@ -21,6 +23,31 @@ export default async function MembershipSuccessPage({
       email = session.customer_details?.email ?? null;
     } catch {
       // Non-fatal — signup link still works, email just won't be pre-filled.
+    }
+  }
+
+  // Returning-member branch. A members row with a user_id already set means
+  // an auth.users account exists from a previous signup — user_id is never
+  // cleared on cancellation and is never touched by the checkout webhook's
+  // upsert, so this is safe to check regardless of whether the webhook for
+  // THIS checkout has processed yet (no race with a brand-new member either:
+  // their members row won't exist yet, so this simply falls through below).
+  if (email) {
+    const { data: existingMember } = await getSupabase()
+      .from("members")
+      .select("user_id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (existingMember?.user_id) {
+      // /membership-ended deliberately keeps the session alive so a member
+      // clicking Rejoin returns from Stripe still signed in — that makes
+      // this the primary rejoin path, not an edge case.
+      const { data: { user } } = await createServerSupabase().auth.getUser();
+      if (user?.email === email) {
+        redirect("/member-portal?welcome_back=true");
+      }
+      redirect("/login?notice=welcome-back");
     }
   }
 

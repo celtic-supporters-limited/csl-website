@@ -101,6 +101,7 @@ type Props = {
   proxyCount: number;
   initialTab?: string;
   emailUpdated?: boolean;
+  welcomeBack?: boolean;
 };
 
 type Tab =
@@ -2097,15 +2098,24 @@ export default function PortalClient({
   sharesRepresented,
   initialTab,
   emailUpdated,
+  welcomeBack,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>(
     VALID_TABS.has(initialTab as Tab) ? (initialTab as Tab) : "dashboard"
   );
   const [signingOut, setSigningOut] = useState(false);
+  const [welcomeBackBanner, setWelcomeBackBanner] = useState(welcomeBack ?? false);
   const router = useRouter();
   const pathname = usePathname();
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const billingPortal = useBillingPortal();
+
+  useEffect(() => {
+    if (welcomeBackBanner) {
+      const t = setTimeout(() => setWelcomeBackBanner(false), 6000);
+      return () => clearTimeout(t);
+    }
+  }, [welcomeBackBanner]);
 
   // On bfcache restore (back/forward navigation), verify the session is still
   // valid with a live getUser() call — bfcache restores bypass React mount and
@@ -2334,6 +2344,20 @@ export default function PortalClient({
 
             {/* Main content */}
             <div>
+              {welcomeBackBanner && (
+                <div className="flex items-start justify-between gap-3 mb-6 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+                  <span>Welcome back! Your CSL membership has been reactivated.</span>
+                  <button
+                    type="button"
+                    onClick={() => setWelcomeBackBanner(false)}
+                    className="flex-shrink-0 text-green-600 hover:text-green-800 font-bold leading-none"
+                    aria-label="Dismiss"
+                  >
+                    &times;
+                  </button>
+                </div>
+              )}
+
               <MembershipStatusBanner
                 status={member?.status ?? null}
                 onOpenBilling={billingPortal.open}
