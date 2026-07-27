@@ -2,21 +2,27 @@ import { getSupabase } from "@/lib/supabase";
 
 // Per-member (not per-event) repeat-send guard for the pending-cancellation
 // email pair. stripe_event_id idempotency doesn't cover this: cancel ->
-// reverse -> cancel produces three genuinely distinct Stripe events in
-// minutes, each with its own event ID, so the existing per-event guard lets
-// all three through. This checks whether EITHER a "cancellation.pending" or
-// "cancellation.reversed" event was already logged for this email in the
-// last hour — those rows are only written when an email was actually sent
-// (see the webhook handler), so this only ever suppresses on top of a real
-// prior send, never cascades.
-export async function hasRecentPendingCancellationActivity(email: string): Promise<boolean> {
+// cancel (two "no feedback given" style updates, or a genuine repeat) can
+// produce multiple distinct Stripe events in minutes, each with its own
+// event ID, so the existing per-event guard lets them all through. This
+// checks whether the SAME transition type was already logged for this email
+// in the last hour — scoped per type so a cancellation doesn't suppress its
+// own reversal (or vice versa), since cancel-then-immediately-reverse is the
+// single most common real case and must always get its confirmation. Rows
+// are only written when an email was actually sent (see the webhook
+// handler), so this only ever suppresses on top of a real prior send of the
+// same kind, never cascades.
+export async function hasRecentPendingCancellationActivity(
+  email: string,
+  eventType: "cancellation.pending" | "cancellation.reversed",
+): Promise<boolean> {
   try {
     const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { data, error } = await getSupabase()
       .from("member_events")
       .select("id")
       .eq("event_email", email)
-      .in("event_type", ["cancellation.pending", "cancellation.reversed"])
+      .eq("event_type", eventType)
       .gte("created_at", since)
       .limit(1)
       .maybeSingle();

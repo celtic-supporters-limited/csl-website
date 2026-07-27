@@ -334,7 +334,7 @@ test.describe("customer.subscription.updated — pending cancellation / reversal
     console.log("PASS: cancel_at_period_end-only change (annual-switch shape) does not trigger a pending-cancellation email");
   });
 
-  test("one-hour repeat guard: a second cancel_at transition for the same member within the hour is suppressed", async ({ request }) => {
+  test("one-hour repeat guard: cancel then immediate reversal for the same member both send — guard is scoped per transition type, not blanket", async ({ request }) => {
     const customerId = `cus_test_repeatguard_${Date.now()}`;
     const email = `csl-test-cancel-repeatguard-${Date.now()}@celticsupporters.net`;
     await seedMember(customerId, email, "RepeatGuard", "Monthly 10");
@@ -349,13 +349,18 @@ test.describe("customer.subscription.updated — pending cancellation / reversal
 
     // Second event, seconds later: reversal for the same member. Genuinely
     // distinct Stripe event (different event.id), so stripe_event_id
-    // idempotency alone would let it through — the one-hour per-member
-    // guard is what must suppress it here.
+    // idempotency alone would let it through. This is the single most
+    // common real case — a member cancels then immediately changes their
+    // mind — and must always get a reversal confirmation, even though a
+    // "cancellation.pending" row for this member exists within the last
+    // hour. The guard is scoped per event_type precisely so this does not
+    // get suppressed (a bug found via manual testing, 2026-07-27: the
+    // original blanket "any pending-or-reversed activity" check silently
+    // dropped exactly this email).
     const secondEvent = subscriptionUpdatedEvent(customerId, { cancelAt: null, previousCancelAt: cancelAt });
     const secondRes = await postWebhook(request, secondEvent);
-    expect(secondRes.status()).toBe(200); // still 200 — suppression is not an error
-
-    expect(await emailLogCount("cancellation_reversed", secondEvent.id)).toBe(0);
+    expect(secondRes.status()).toBe(200);
+    expect(await emailLogCount("cancellation_reversed", secondEvent.id)).toBe(1);
 
     const { data: secondMemberEvent } = await db()
       .from("member_events")
@@ -363,9 +368,27 @@ test.describe("customer.subscription.updated — pending cancellation / reversal
       .eq("stripe_event_id", secondEvent.id)
       .eq("event_type", "cancellation.reversed")
       .maybeSingle();
-    expect(secondMemberEvent).toBeNull();
+    expect(secondMemberEvent).not.toBeNull();
 
-    console.log("PASS: second cancel_at transition within the hour was suppressed — no email, no member_events row");
+    // Third event, seconds later: a second cancellation for the same
+    // member. This IS a genuine repeat of the same transition type
+    // ("cancellation.pending" following another "cancellation.pending"
+    // within the hour) and must be suppressed — this is what the guard is
+    // actually for.
+    const thirdEvent = subscriptionUpdatedEvent(customerId, { cancelAt, previousCancelAt: null });
+    const thirdRes = await postWebhook(request, thirdEvent);
+    expect(thirdRes.status()).toBe(200); // still 200 — suppression is not an error
+    expect(await emailLogCount("cancellation_pending", thirdEvent.id)).toBe(0);
+
+    const { data: thirdMemberEvent } = await db()
+      .from("member_events")
+      .select("id")
+      .eq("stripe_event_id", thirdEvent.id)
+      .eq("event_type", "cancellation.pending")
+      .maybeSingle();
+    expect(thirdMemberEvent).toBeNull();
+
+    console.log("PASS: cancel + immediate reversal both sent; same-type repeat within the hour was suppressed");
   });
 });
 

@@ -420,12 +420,13 @@ export async function POST(req: NextRequest) {
           const nowCancelAt = (sub as unknown as { cancel_at: number | null }).cancel_at;
 
           if (cancelAtChanged && updatedMember?.email) {
-            const alreadyNotifiedRecently = await hasRecentPendingCancellationActivity(updatedMember.email);
+            const targetEventType = nowCancelAt ? "cancellation.pending" : "cancellation.reversed";
+            const alreadyNotifiedRecently = await hasRecentPendingCancellationActivity(updatedMember.email, targetEventType);
 
             if (alreadyNotifiedRecently) {
               console.log(
-                `[stripe-webhook] Suppressing pending-cancellation/reversal email for ${updatedMember.email} — ` +
-                `already notified within the last hour (event ${event.id})`
+                `[stripe-webhook] Suppressing ${targetEventType} email for ${updatedMember.email} — ` +
+                `already sent within the last hour (event ${event.id})`
               );
             } else if (nowCancelAt) {
               // Newly scheduled cancellation.
