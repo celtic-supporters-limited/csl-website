@@ -13,8 +13,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
-const GATE_EMAIL    = process.env.TEST_GATE_USER_EMAIL;
-const GATE_PASSWORD = process.env.TEST_GATE_USER_PASSWORD;
+const GATE_EMAIL    = process.env.TEST_GATE_MEMBERSHIP_ENDED_EMAIL;
+const GATE_PASSWORD = process.env.TEST_GATE_MEMBERSHIP_ENDED_PASSWORD;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -41,7 +41,7 @@ async function signIn(page: Page, email: string, password: string) {
 }
 
 test.describe("/membership-ended", () => {
-  test.skip(!canRun, "TEST_GATE_USER_EMAIL / TEST_GATE_USER_PASSWORD / SUPABASE_SERVICE_ROLE_KEY not set");
+  test.skip(!canRun, "TEST_GATE_MEMBERSHIP_ENDED_EMAIL / TEST_GATE_MEMBERSHIP_ENDED_PASSWORD / SUPABASE_SERVICE_ROLE_KEY not set");
 
   test.beforeEach(async () => {
     await setMemberStatus(GATE_EMAIL!, "cancelled");
@@ -71,7 +71,9 @@ test.describe("/membership-ended", () => {
     await page.waitForURL("**/login**", { timeout: 15_000 });
 
     // Confirms the sign-out actually cleared the session, not just navigated.
-    await page.evaluate(() => { window.location.href = "/member-portal"; });
+    // The evaluate itself triggers a hard navigation, which destroys its own
+    // execution context before the call can resolve — don't await it directly.
+    void page.evaluate(() => { window.location.href = "/member-portal"; }).catch(() => {});
     await page.waitForURL("**/login**", { timeout: 15_000 });
     console.log("PASS: sign-out clears the session — repeat portal visit redirects to /login");
   });

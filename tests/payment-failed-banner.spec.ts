@@ -13,8 +13,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
-const GATE_EMAIL    = process.env.TEST_GATE_USER_EMAIL;
-const GATE_PASSWORD = process.env.TEST_GATE_USER_PASSWORD;
+const GATE_EMAIL    = process.env.TEST_GATE_PAYMENT_BANNER_EMAIL;
+const GATE_PASSWORD = process.env.TEST_GATE_PAYMENT_BANNER_PASSWORD;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -41,7 +41,7 @@ async function signIn(page: Page, email: string, password: string) {
 }
 
 test.describe("payment_failed banner", () => {
-  test.skip(!canRun, "TEST_GATE_USER_EMAIL / TEST_GATE_USER_PASSWORD / SUPABASE_SERVICE_ROLE_KEY not set");
+  test.skip(!canRun, "TEST_GATE_PAYMENT_BANNER_EMAIL / TEST_GATE_PAYMENT_BANNER_PASSWORD / SUPABASE_SERVICE_ROLE_KEY not set");
 
   test.afterEach(async () => {
     await setMemberStatus(GATE_EMAIL!, "active");
