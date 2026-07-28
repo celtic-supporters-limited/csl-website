@@ -70,7 +70,7 @@ export async function GET() {
     })(),
     // Same uncached path the site enforces on, so the export cannot report a
     // gate state that differs from reality. See lib/site-gates.ts.
-    getGates("portal_open", "membership_open"),
+    getGates("portal_open", "membership_open", "resolution_open", "proxy_open"),
   ]);
 
   const todayCount  = emailsToday  ?? 0;
@@ -116,6 +116,8 @@ export async function GET() {
     gates: {
       portalOpen: gates.portal_open,
       membershipOpen: gates.membership_open,
+      resolutionOpen: gates.resolution_open,
+      proxyOpen: gates.proxy_open,
     },
   };
 
