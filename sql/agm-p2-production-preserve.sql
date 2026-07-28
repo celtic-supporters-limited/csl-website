@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS agm_p2_preserve_log (
   supporters_inserted  INTEGER NOT NULL
 );
 
+-- Tables created in the SQL Editor are owned by postgres and carry no
+-- privileges for service_role, so without this the log is unreadable by the
+-- application and by any verification script. Same omission that leaves
+-- backup_log unreadable and the operations report showing no backups.
+-- Service-role only: an internal migration log, never read from a public key.
+ALTER TABLE agm_p2_preserve_log ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE agm_p2_preserve_log TO service_role;
+
 DO $$
 DECLARE
   v_source_rows INTEGER;
