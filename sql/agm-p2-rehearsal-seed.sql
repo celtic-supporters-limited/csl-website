@@ -2,21 +2,28 @@
 --
 -- STAGING ONLY. NEVER RUN THIS ON PRODUCTION.
 --
--- Recreates the pre-rebuild table shape and fills it with two synthetic rows
--- matching the production pair: one shareholder, one non-shareholder, each with
--- a single postal_address blob, no share class and no discrete ticks.
+-- Recreates the pre-Package-2 table as a faithful replica, under its real name
+-- `agm_signatures`, so that the staging rehearsal runs the exact production
+-- sequence:
 --
--- The point is that agm-p2-production-preserve.sql gets executed against these
--- before it is ever executed against the only copy of two real people's
--- records.
+--   staging     reset -> THIS FILE -> rename -> schema -> preserve
+--   production           (already exists) -> rename -> schema -> preserve
 --
--- Run after agm-p2-schema.sql, then run agm-p2-production-preserve.sql.
+-- The DDL below is copied from sql/add-agm-signatures.sql deliberately, rather
+-- than paraphrased, so that PostgreSQL generates the same constraint and index
+-- names production carries (agm_signatures_pkey, agm_signatures_email_key).
+-- Those names are what the rename script has to deal with, so the rehearsal is
+-- worthless if they differ.
+--
+-- Two synthetic rows matching the production pair: one shareholder, one
+-- non-shareholder, each with a single postal_address blob, no share class and
+-- no discrete ticks.
 
-DROP TABLE IF EXISTS agm_signatures_pre_p2 CASCADE;
-DROP TABLE IF EXISTS agm_p2_preserve_log   CASCADE;
+DROP TABLE IF EXISTS agm_signatures         CASCADE;
+DROP TABLE IF EXISTS agm_signatures_pre_p2  CASCADE;
+DROP TABLE IF EXISTS agm_p2_preserve_log    CASCADE;
 
--- Exact column set of the pre-Package-2 table.
-CREATE TABLE agm_signatures_pre_p2 (
+CREATE TABLE agm_signatures (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   full_name            TEXT NOT NULL,
   email                TEXT NOT NULL UNIQUE,
@@ -34,8 +41,15 @@ CREATE TABLE agm_signatures_pre_p2 (
   created_at           TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Synthetic, clearly fake, and shaped exactly like the production pair.
-INSERT INTO agm_signatures_pre_p2
+ALTER TABLE agm_signatures ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "agm_signatures_insert" ON agm_signatures
+  FOR INSERT TO anon, authenticated WITH CHECK (true);
+
+GRANT ALL    ON TABLE agm_signatures TO service_role;
+GRANT INSERT ON TABLE agm_signatures TO anon, authenticated;
+
+INSERT INTO agm_signatures
   (full_name, email, postal_address, is_shareholder, shareholder_type,
    computershare_srn, nominee_platform, approximate_shares, typed_signature,
    signature_date, declaration_accepted, shareholder_tag, member_tag, created_at)
@@ -53,3 +67,9 @@ VALUES
    FALSE, NULL, NULL, NULL, NULL,
    'Rehearsal Supporter', CURRENT_DATE - 2, TRUE,
    'non-shareholder', 'member', NOW() - INTERVAL '2 days');
+
+-- Confirm the names the rename script will have to move.
+SELECT conname AS constraint_name
+FROM pg_constraint
+WHERE conrelid = 'agm_signatures'::regclass
+ORDER BY conname;

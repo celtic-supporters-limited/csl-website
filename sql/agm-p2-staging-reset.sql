@@ -6,7 +6,7 @@
 -- and recreate rather than migrate. Production holds two real records and must
 -- go through agm-p2-production-rename.sql instead.
 --
--- Run this, then agm-p2-schema.sql.
+-- Run this, then agm-p2-rehearsal-seed.sql.
 
 DROP TABLE IF EXISTS agm_signatures         CASCADE;
 DROP TABLE IF EXISTS agm_supporters         CASCADE;

@@ -4,10 +4,14 @@
 --   shareholders     -> agm_signatures, capture_status = 'pre_rebuild'
 --   non-shareholders -> agm_supporters
 --
--- This is the script that runs against production. It is rehearsed on staging
--- first, against the synthetic rows from agm-p2-rehearsal-seed.sql, so that it
--- is never executed for the first time against the only copy of two real
--- people's records.
+-- This is the script that runs against production. Staging rehearses the whole
+-- production sequence, not just this step:
+--
+--   staging     reset -> rehearsal-seed -> rename -> schema -> THIS FILE
+--   production  export -> rename -> schema -> THIS FILE
+--
+-- so the rename, the schema creation and this preserve have all been executed
+-- in order before any of them touch the only copy of two real people's records.
 --
 -- Refuses to run twice. The guard is a log table, not a row count, so it holds
 -- whatever the shape of the source data: a source containing only
@@ -16,9 +20,9 @@
 --
 -- Runs as a single DO block, so it either completes or leaves nothing behind.
 --
--- Prerequisites: agm-p2-schema.sql has been run, and agm_signatures_pre_p2
--- exists (via agm-p2-production-rename.sql on production, or
--- agm-p2-rehearsal-seed.sql on staging).
+-- Prerequisites: agm-p2-production-rename.sql and then agm-p2-schema.sql have
+-- both been run, so agm_signatures_pre_p2 holds the old rows and a rebuilt
+-- agm_signatures exists to receive them.
 
 CREATE TABLE IF NOT EXISTS agm_p2_preserve_log (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),

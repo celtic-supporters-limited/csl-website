@@ -2,17 +2,24 @@
 -- Run in Supabase Dashboard > SQL Editor.
 --
 -- Creates tables only. Destroys nothing, so it is safe on both staging and
--- production. Ordering:
+-- production.
 --
---   STAGING    1. agm-p2-staging-reset.sql   (drops, staging only)
---              2. this file
---              3. agm-p2-rehearsal-seed.sql  (synthetic old-shaped rows)
---              4. agm-p2-production-preserve.sql   (rehearsal of the real run)
+-- Staging runs the same sequence production will, so the rename is rehearsed
+-- rather than executed for the first time against real records:
+--
+--   STAGING    1. agm-p2-staging-reset.sql       (drops, staging only)
+--              2. agm-p2-rehearsal-seed.sql      (old-shaped agm_signatures,
+--                                                 two synthetic rows)
+--              3. agm-p2-production-rename.sql
+--              4. this file
+--              5. agm-p2-production-preserve.sql
 --
 --   PRODUCTION 1. export the two real rows first
 --              2. agm-p2-production-rename.sql
 --              3. this file
 --              4. agm-p2-production-preserve.sql
+--
+-- Steps 3 to 5 on staging are byte for byte the steps 2 to 4 production runs.
 
 -- ── 1. Resolution versions ───────────────────────────────────────────────────
 -- Append only. A signature references the exact wording it was signed against,
