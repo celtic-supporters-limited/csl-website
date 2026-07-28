@@ -1,7 +1,8 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Runtime controls for the four gated flows.
+ * Uncached reads of site_config: the four launch gates, plus the option lists
+ * and flags that must be changeable without a deploy.
  *
  * Single source of truth for every page and every API route that depends on a
  * gate. The realistic failure mode is not an attacker, it is a page and its
@@ -129,6 +130,59 @@ export async function getGates<K extends SiteGateKey>(
 ): Promise<Record<K, boolean>> {
   const values = await Promise.all(keys.map((k) => isGateOpen(k)));
   return Object.fromEntries(keys.map((k, i) => [k, values[i]])) as Record<K, boolean>;
+}
+
+// ── General site_config reads ────────────────────────────────────────────────
+// Same uncached client as the gates, so an option list or flag changed in
+// site_config takes effect on the next request rather than the next deploy.
+
+/** Raw value for a key, or null if absent or unreadable. */
+export async function getConfigValue(key: string): Promise<string | null> {
+  try {
+    const { data, error } = await getGateClient()
+      .from("site_config")
+      .select("value")
+      .eq("key", key)
+      .maybeSingle();
+
+    if (error) {
+      console.error(`[site-gates] read failed for ${key}:`, error.message);
+      return null;
+    }
+    return data?.value ?? null;
+  } catch (err) {
+    console.error(`[site-gates] unexpected error reading ${key}:`, err);
+    return null;
+  }
+}
+
+/**
+ * JSON array of allowed values for a constrained dropdown.
+ *
+ * Returns [] when absent or malformed. Callers must treat an empty list as
+ * "cannot validate" and reject, not as "anything goes", otherwise the
+ * constraint is decorative.
+ */
+export async function getConfigList(key: string): Promise<string[]> {
+  const raw = await getConfigValue(key);
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      console.error(`[site-gates] ${key} is not a JSON array`);
+      return [];
+    }
+    return parsed.filter((v): v is string => typeof v === "string");
+  } catch {
+    console.error(`[site-gates] ${key} is not valid JSON`);
+    return [];
+  }
+}
+
+/** Boolean flag outside the four gates. Defaults false on any failure. */
+export async function isConfigFlagOn(key: string): Promise<boolean> {
+  return (await getConfigValue(key)) === "true";
 }
 
 /** Convenience wrapper for the two AGM gates. */

@@ -22,7 +22,7 @@ export default async function ResolutionAdminPage() {
 
   if (!member?.is_admin) redirect("/member-portal");
 
-  const [signaturesRes, configRes] = await Promise.all([
+  const [signaturesRes, configRes, supportersRes, versionsRes] = await Promise.all([
     supabase
       .from("agm_signatures")
       .select("*")
@@ -31,6 +31,12 @@ export default async function ResolutionAdminPage() {
       .from("site_config")
       .select("key, value")
       .eq("key", "resolution_target"),
+    supabase
+      .from("agm_supporters")
+      .select("id", { count: "exact", head: true }),
+    supabase
+      .from("agm_resolution_versions")
+      .select("id, version_label"),
   ]);
 
   const signatures = signaturesRes.data ?? [];
@@ -39,11 +45,20 @@ export default async function ResolutionAdminPage() {
   );
   const resolutionTarget = parseInt(configMap["resolution_target"] ?? "100", 10);
 
+  // Resolved here rather than in the client so the CSV can state which wording
+  // each person signed, not just an opaque id.
+  const versionLabels = Object.fromEntries(
+    ((versionsRes.data ?? []) as { id: string; version_label: string }[])
+      .map((v) => [v.id, v.version_label])
+  );
+
   return (
     <PortalShell user={{ email: user.email!, id: user.id }} member={member}>
       <ResolutionAdminClient
         signatures={signatures}
+        supporterCount={supportersRes.count ?? 0}
         resolutionTarget={resolutionTarget}
+        versionLabels={versionLabels}
       />
     </PortalShell>
   );
