@@ -1,16 +1,18 @@
 -- AGM Package 2 - requisition capture schema
 -- Run in Supabase Dashboard > SQL Editor.
 --
--- STAGING: safe to run as-is. Drops and recreates agm_signatures.
--- PRODUCTION: do NOT run the DROP at the top until the two real rows have been
--- exported. See sql/agm-p2-production-preserve.sql for the production path.
+-- Creates tables only. Destroys nothing, so it is safe on both staging and
+-- production. Ordering:
 --
--- Creates:
---   agm_resolution_versions  append-only resolution wording, one current row
---   agm_signatures           rebuilt to the director brief Section 3.1
---   agm_supporters           non-shareholders, who cannot sign the requisition
+--   STAGING    1. agm-p2-staging-reset.sql   (drops, staging only)
+--              2. this file
+--              3. agm-p2-rehearsal-seed.sql  (synthetic old-shaped rows)
+--              4. agm-p2-production-preserve.sql   (rehearsal of the real run)
 --
--- Seeds the three config option lists and the IP capture flag.
+--   PRODUCTION 1. export the two real rows first
+--              2. agm-p2-production-rename.sql
+--              3. this file
+--              4. agm-p2-production-preserve.sql
 
 -- ── 1. Resolution versions ───────────────────────────────────────────────────
 -- Append only. A signature references the exact wording it was signed against,
@@ -75,11 +77,8 @@ SELECT
 WHERE NOT EXISTS (SELECT 1 FROM agm_resolution_versions);
 
 -- ── 2. Signatures ────────────────────────────────────────────────────────────
--- Staging only. On production this DROP must not run: see the production script.
 
-DROP TABLE IF EXISTS agm_signatures;
-
-CREATE TABLE agm_signatures (
+CREATE TABLE IF NOT EXISTS agm_signatures (
   id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   full_name              TEXT NOT NULL,
@@ -89,6 +88,11 @@ CREATE TABLE agm_signatures (
   address_line_2         TEXT,
   address_town           TEXT,
   address_postcode       TEXT,
+  -- The original single-blob address, populated only for rows preserved from
+  -- the pre-rebuild schema. It cannot be split reliably, and discarding the
+  -- only address we hold for a real signatory would lose data.
+  legacy_postal_address  TEXT,
+
   email                  TEXT NOT NULL UNIQUE,
 
   how_held               TEXT NOT NULL CHECK (how_held IN ('direct', 'nominee')),
@@ -132,7 +136,25 @@ CREATE TABLE agm_signatures (
   shareholder_tag        TEXT NOT NULL CHECK (shareholder_tag IN ('direct-registered', 'nominee-platform')),
   member_tag             TEXT NOT NULL CHECK (member_tag IN ('member', 'non-member')),
 
-  created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  -- Completeness is enforced here, not only in the API, so that a later script,
+  -- a future package or a manual insert cannot create a row that claims to be
+  -- complete while missing the fields a lodgeable signature needs.
+  --
+  -- address_line_2 is deliberately excluded: the director brief marks it
+  -- optional, and many valid addresses have no second line.
+  CONSTRAINT agm_signatures_complete_is_complete CHECK (
+    capture_status <> 'complete' OR (
+      address_line_1         IS NOT NULL AND
+      address_town           IS NOT NULL AND
+      address_postcode       IS NOT NULL AND
+      share_class            IS NOT NULL AND
+      eligibility_confirmed  IS NOT NULL AND
+      resolution_supported   IS NOT NULL AND
+      privacy_policy_version IS NOT NULL
+    )
+  )
 );
 
 CREATE INDEX IF NOT EXISTS agm_signatures_tag_status
@@ -153,10 +175,24 @@ CREATE TABLE IF NOT EXISTS agm_supporters (
 );
 
 -- ── 4. RLS ───────────────────────────────────────────────────────────────────
--- Posture preserved from the previous schema: insert only for anon and
--- authenticated, no select, update or delete policy, so no one can read another
--- signatory's details with a public key. All reads go through the service-role
--- client behind an is_admin guard.
+--
+-- agm_signatures and agm_supporters
+--   Both are written from a public form, so both get the same posture:
+--   INSERT only for anon and authenticated, and no SELECT, UPDATE or DELETE
+--   policy, so neither role can read another person's details with a public
+--   key. Every read goes through the service-role client behind an is_admin
+--   guard (app/member-portal/admin/resolution/page.tsx) or a server component
+--   (app/resolution/page.tsx).
+--
+-- agm_resolution_versions
+--   Read through the service-role client only. app/resolution/page.tsx already
+--   reads the current version that way, and Package 3 will do the same for
+--   rendering and editing. It therefore gets NO anon or authenticated policy
+--   and NO grant: RLS is on, no policy exists, and no privilege is granted, so
+--   both layers deny. Writes are admin-only via the service role.
+--
+-- RLS is enabled on all three. None is left off, and none is left on with a
+-- policy that silently permits nothing it should.
 
 ALTER TABLE agm_signatures          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agm_supporters          ENABLE ROW LEVEL SECURITY;
@@ -170,14 +206,14 @@ DROP POLICY IF EXISTS agm_supporters_insert ON agm_supporters;
 CREATE POLICY agm_supporters_insert ON agm_supporters
   FOR INSERT TO anon, authenticated WITH CHECK (true);
 
--- Versions carry no personal data and the current wording is public once
--- signing opens, but reads still go through the service-role client.
+-- Deliberately no policy on agm_resolution_versions.
 
 GRANT ALL    ON TABLE agm_signatures          TO service_role;
 GRANT ALL    ON TABLE agm_supporters          TO service_role;
 GRANT ALL    ON TABLE agm_resolution_versions TO service_role;
 GRANT INSERT ON TABLE agm_signatures          TO anon, authenticated;
 GRANT INSERT ON TABLE agm_supporters          TO anon, authenticated;
+-- Deliberately no grant to anon or authenticated on agm_resolution_versions.
 
 -- ── 5. Config ────────────────────────────────────────────────────────────────
 -- Option lists are JSON arrays so the real values can be dropped in without a

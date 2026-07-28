@@ -11,6 +11,22 @@
  * API refuses to collect signatures while the placeholder is current. Setup
  * creates one, teardown removes it and restores the placeholder.
  *
+ * SAFETY, read before changing beforeAll.
+ *
+ * beforeAll opens the requisition gate AND makes a non-placeholder version
+ * current. Between those two statements and afterAll, the public form is live
+ * and will accept real signatures against the test wording. The placeholder
+ * guard does NOT cover this window, because the whole point of the setup is to
+ * move off the placeholder.
+ *
+ * If the process is killed mid-run the target environment is left signable.
+ * Recovery is two writes: set site_config.resolution_open = 'false', and set
+ * is_current back to the placeholder version.
+ *
+ * The mitigation is that this suite refuses to run against production at all,
+ * see the guard in beforeAll. On staging a stray open gate is recoverable and
+ * the data is disposable.
+ *
  * Gate state is global. Run with --workers=1 and not in parallel with
  * tests/site-gates.spec.ts.
  *
@@ -92,14 +108,36 @@ async function cleanup(email: string) {
 
 test.describe.configure({ mode: "serial" });
 
+// Staging project ref. Not a secret: it is part of NEXT_PUBLIC_SUPABASE_URL and
+// ships in the client bundle. An allowlist rather than a production deny-list,
+// so that if the ref ever changes this fails loudly instead of quietly running
+// somewhere it should not.
+const STAGING_PROJECT_REF = "mixwriunejiaxbpgxqmp";
+
 test.beforeAll(async () => {
+  // This suite opens the requisition gate and moves off the placeholder
+  // version, which makes the target briefly signable by the public. That is
+  // acceptable on staging, where the data is disposable, and unacceptable
+  // anywhere else.
+  if (!SUPABASE_URL?.includes(STAGING_PROJECT_REF)) {
+    throw new Error(
+      `Refusing to run: this suite opens the requisition gate and must only target staging (${STAGING_PROJECT_REF}). ` +
+      `Got ${SUPABASE_URL ?? "no NEXT_PUBLIC_SUPABASE_URL"}. ` +
+      `If the staging project ref has changed, update STAGING_PROJECT_REF in this file.`
+    );
+  }
+
   await setConfig("resolution_open", "true");
   await setConfig("agm_capture_signer_metadata", "false");
 
   const { data, error } = await db()
     .from("agm_resolution_versions")
     .insert({
-      body: "Automated test resolution wording. Not a real resolution.",
+      body:
+        "AUTOMATED TEST VERSION - NOT A RESOLUTION. Created by " +
+        "tests/agm-requisition-capture.spec.ts. If this text is visible on a " +
+        "public page, a test run was interrupted: close the requisition gate " +
+        "and make the placeholder version current again.",
       version_label: TEST_VERSION_LABEL,
       is_placeholder: false,
       created_by: "playwright",
