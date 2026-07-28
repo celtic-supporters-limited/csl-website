@@ -5,13 +5,14 @@ import {
   AGM_GATE_CLOSED_ERROR,
   getConfigList,
   getConfigValue,
+  getCurrentMeetingRef,
   isConfigFlagOn,
   isGateOpen,
 } from "@/lib/site-gates";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// In-memory rate limiter — resets on cold starts; best-effort deterrent only.
+// In-memory rate limiter - resets on cold starts; best-effort deterrent only.
 const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
 const RATE_LIMIT = 3;
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -262,6 +263,10 @@ export async function POST(req: NextRequest) {
     capture_status:         "complete",
     shareholder_tag:        shareholderTag,
     member_tag:             memberRow ? "member" : "non-member",
+    // Read live rather than left to the column default, so that changing
+    // current_meeting_ref alone is enough for a future AGM - a code change is
+    // not required for new rows to follow it.
+    meeting_ref:            await getCurrentMeetingRef(),
   });
 
   if (dbError) {

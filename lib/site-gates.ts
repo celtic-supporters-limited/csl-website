@@ -185,6 +185,17 @@ export async function isConfigFlagOn(key: string): Promise<boolean> {
   return (await getConfigValue(key)) === "true";
 }
 
+/**
+ * Which AGM meeting is currently active, for scoping signatures, supporters
+ * and resolution versions. With one meeting this changes no behaviour; it
+ * exists so a second AGM is a config change, not a migration against
+ * signature rows that are evidence of a statutory request and cannot be
+ * deleted. Falls back to the column default if the key is somehow missing.
+ */
+export async function getCurrentMeetingRef(): Promise<string> {
+  return (await getConfigValue("current_meeting_ref")) ?? "2026-AGM";
+}
+
 /** Convenience wrapper for the two AGM gates. */
 export async function getAgmGates() {
   return getGates("resolution_open", "proxy_open");

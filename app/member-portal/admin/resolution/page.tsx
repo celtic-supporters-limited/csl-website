@@ -5,6 +5,7 @@ import PortalShell from "@/components/PortalShell";
 import ResolutionAdminClient from "./ResolutionAdminClient";
 import { getResolutionSigningState } from "@/lib/agm-signing-state";
 import { SigningStateNotice } from "@/components/SigningStateNotice";
+import { getCurrentMeetingRef } from "@/lib/site-gates";
 
 export const metadata: Metadata = { title: "AGM Resolution Progress | CSL Admin" };
 export const dynamic = "force-dynamic";
@@ -24,10 +25,15 @@ export default async function ResolutionAdminPage() {
 
   if (!member?.is_admin) redirect("/member-portal");
 
+  const currentMeetingRef = await getCurrentMeetingRef();
+
   const [signaturesRes, configRes, supportersRes, versionsRes, signingState] = await Promise.all([
+    // Scoped to the active meeting. With one meeting this excludes nothing;
+    // next year it stops a second AGM's signatures inflating this tracker.
     supabase
       .from("agm_signatures")
       .select("*")
+      .eq("meeting_ref", currentMeetingRef)
       .order("created_at", { ascending: false }),
     supabase
       .from("site_config")
@@ -35,7 +41,8 @@ export default async function ResolutionAdminPage() {
       .eq("key", "resolution_target"),
     supabase
       .from("agm_supporters")
-      .select("id", { count: "exact", head: true }),
+      .select("id", { count: "exact", head: true })
+      .eq("meeting_ref", currentMeetingRef),
     supabase
       .from("agm_resolution_versions")
       .select("id, version_label"),
