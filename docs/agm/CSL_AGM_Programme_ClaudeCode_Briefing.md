@@ -1,7 +1,7 @@
 # CSL AGM Programme - Claude Code Working Brief
 
-**Version: 1.1**
-**Date:** 27 July 2026
+**Version: 1.3**
+**Date:** 28 July 2026
 **Author:** Gary Phinn, Volunteer IT Lead
 **Read this at the start of every package session.** Every package prompt assumes it.
 
@@ -13,6 +13,21 @@ a mismatch means the copy was missed and you are about to follow superseded rule
 **Changes in 1.1, all from Package 1:** no feature branches, work directly on `develop`; runtime
 controls must be proved by flipping them on a deployed Preview; test only what the change
 touches; do not poll `vercel ls` in a loop.
+
+**Changes in 1.2, all from Package 2:** every SQL Editor table needs an explicit GRANT; rehearse
+the exact production sequence, not an approximation of it; suspect your own code before blaming
+the infrastructure.
+
+**Changes in 1.3, from the solicitor pack review:** a third item added to section 6, the
+declaration must be in the correct legal frame; version binding extended to cover the declaration
+and consent wording, not only the resolution; and a note that the free-mistake window closes when
+signing opens rather than when answers arrive.
+
+**Changes in 1.2.1, session efficiency only, nothing about how the work is done:** environment
+facts recorded once in section 2a so no session re-derives them; local dev hygiene; reporting
+economy; a stated rule on when localhost is an acceptable test target. Package prompts now
+reference this brief rather than repeating its rules, so this document is the single place any
+standing rule changes.
 
 ---
 
@@ -58,6 +73,34 @@ deploy. Nothing has to be perfect the day it merges. It has to be correct the da
 
 ---
 
+## 2a. Environment facts
+
+Established facts, so no session spends time re-deriving them. Every one of these has already
+cost time at least once, and one was re-derived wrongly and produced a false finding that had to
+be unwound.
+
+| Fact | Value |
+|---|---|
+| Staging Supabase project ref | `mixwriunejiaxbpgxqmp` |
+| What the Vercel Preview reads | **Staging.** Proven by controlled experiment on 27 July |
+| Preview URL for `develop` | `https://csl-website-git-develop-gary-phinn-s-projects.vercel.app` |
+| Production database | Not accessible to you. Gary runs anything that touches it |
+| Row counts, as a sanity check | Staging `shareholder_cases` in the tens, production in single figures |
+| DDL | You cannot execute it. PostgREST will not, and there is no arbitrary-SQL RPC. Write the SQL, Gary runs it in the Supabase SQL Editor |
+| `vercel env pull` | Returns keys with empty values for this account. This is normal and says nothing about configuration. Do not treat it as evidence |
+| `X-Vercel-Cache` | Describes the edge cache only. It does not tell you whether the Next.js Data Cache served a stale value |
+
+If any of these turns out to be wrong, say so in your report and I will correct the brief. Do not
+work around a discrepancy silently.
+
+**Local dev hygiene.** Never run `npm run build` against a working directory that has a dev server
+running on it. The build overwrites `.next` beneath the running server, every JS chunk then 404s,
+no page hydrates, and the symptoms look exactly like application bugs. This has already produced a
+confident but false "pre-existing test failure" conclusion that had to be unwound. Stop the server
+first, or build elsewhere.
+
+---
+
 ## 3. How we will work
 
 The audit proposes ten packages. We work through them one at a time.
@@ -71,7 +114,9 @@ The audit proposes ten packages. We work through them one at a time.
 3. **You confirm the scope back to Gary in your own words before writing any code.** If the spec
    is ambiguous, or contradicts the audit or the codebase, say so at this point rather than
    picking an interpretation and proceeding. Disagreement here is cheap. Disagreement after the
-   build is not.
+   build is not. **Keep it to about 200 words plus any blockers.** It is a check that you read the
+   spec correctly, not a restatement of it. Blockers are uncapped, and are the reason this step
+   exists: Package 2's confirmation surfaced two that would otherwise have wasted a whole build.
 4. You work directly on `develop`. **Do not create feature branches.** Commit with the prefix
    `AGM PN:` so the history stays greppable, for example `AGM P2: rebuild requisition schema`.
    Push, do not promote to `main`.
@@ -106,9 +151,25 @@ not fix them. A package that quietly does the next package's work as well cannot
 and review is the only quality control this project has.
 
 **Testing.** Test what the change touches, plus any existing test covering the same routes. Do
-not run full regression suites. Run against the branch Preview deployment using
-`PLAYWRIGHT_BASE_URL`, never against production, because several AGM tests submit to live
-endpoints and would write real rows.
+not run full regression suites. Never test against production, because several AGM tests submit to
+live endpoints and would write real rows.
+
+Where to run, and this distinction matters:
+
+- **The deployed Preview is required** for anything touching caching, render mode, a runtime
+  control, or anything whose behaviour could differ between `next dev` and a production build.
+  Localhost does not reproduce the Data Cache or static rendering, and both have already produced
+  live defects that localhost passed cleanly.
+- **Localhost against the staging database is acceptable** for validation logic, schema
+  constraints and API branching, which are none of those things. If you run locally, say so and
+  say why in one line.
+
+Known constraint: the sign endpoint allows two requests per hour per IP, and Vercel sets
+`x-forwarded-for` to the real client IP, so a whole suite run from one machine shares one bucket
+and trips it. That is the limiter working correctly, not a defect. It does mean Preview runs of
+the full capture suite are currently impractical. **Backlog item, not to be solved inside a
+package:** a test-only bypass validated against a secret, or a raised limit scoped to Preview. Do
+not silently default to localhost because the Preview run was inconvenient.
 
 **Waiting for deployments.** Do not poll `vercel ls` in a loop. Each `npx vercel` call re-resolves
 the package and hits the API, and if the match fails the loop burns its full budget and reports
@@ -123,6 +184,30 @@ until curl -sf -o /dev/null "$URL/api/agm-gates"; do sleep 5; done && curl -s "$
 Builds complete in under a minute. If a wait exceeds two minutes, stop and report rather than
 continuing to poll. `npx vercel inspect <url> --wait` is an acceptable alternative to writing a
 loop at all.
+
+**Every table created in the Supabase SQL Editor needs an explicit GRANT.** Tables created there
+are owned by `postgres` and carry no privileges for `service_role`, so the application cannot read
+them. This has now bitten twice, `backup_log` and `agm_p2_preserve_log`, and in both cases the
+symptom was silent: the reader returned zero rows rather than an error, so an operations report
+said "no backups" when it meant "cannot see backups". Include the GRANT in the same script that
+creates the table, read the table back from the application afterwards to prove it, and where a
+reader can return empty, make it distinguish "no rows" from "cannot read".
+
+**Rehearse the exact production sequence, not an approximation of it.** A rehearsal that runs
+different steps in a different order proves nothing about the run that matters. Package 2's
+rehearsal originally dropped the table on staging while production renamed it, which skipped the
+one step that would have failed: `ALTER TABLE ... RENAME` does not move indexes or constraints, so
+recreating the table collides and aborts partway, leaving the original renamed and the new one
+half built. Staging must execute the same scripts in the same order, manufacturing its starting
+state first if necessary.
+
+**Suspect your own code before blaming the infrastructure.** Two findings in this programme have
+been withdrawn after review, and both had the same shape: a surprising observation, then an
+environmental explanation reached for before the mundane one. A Preview deployment appeared to
+read a different database, and was in fact serving a cached value from a bug in the code under
+test. Rate limiters appeared ineffective, and were in fact working correctly against a test
+harness making every request from one IP. Before concluding that a platform is misconfigured, rule
+out your own change and your own test conditions, and say which you ruled out and how.
 
 **Data.** Never write migration or backfill logic for AGM tables. Where a schema is wrong, drop
 and recreate. If you find yourself writing a migration path for existing rows, stop, you have
@@ -177,18 +262,43 @@ At the end of every package, in the chat, not as a file:
 
 Then stop. Do not begin the next package.
 
+**Length.** Items 1 and 2 should be terse: file paths, one line each, and the actual test output.
+Do not narrate the working, do not restate the specification back, and do not explain decisions
+that went exactly as specified.
+
+**Items 3, 4 and 5 are not capped and should not be trimmed.** They are the most valuable output
+of the session and have repeatedly changed decisions: a retracted claim about which database a
+Preview reads, a withdrawn finding about rate limiters, a deliberate deviation on fail-open
+behaviour that was correct and was upheld, a correction to an assumption Gary had made about a
+test fixture, and a null field in preserved data that changed what happens to a real person. None
+of those were asked for. If you are unsure whether something belongs, include it.
+
+**This brief is the single source of standing rules.** Package prompts will not repeat them. If a
+package prompt appears to contradict this document, say so rather than guessing which wins.
+
 ---
 
 ## 6. What good looks like
 
-The two things in this programme that cannot be fixed after the fact:
+The three things in this programme that cannot be fixed after the fact:
 
 - **The proxy appointee must be locked to a named natural person, server side.** It must never be
   blank, null, defaulted to the Chairman of the meeting, or substituted by the user. Celtic's own
   form defaults to the Chairman. Ours must not, and a test must assert it.
-- **A signature must be bound to the exact version of the resolution text that was signed.** If
-  the wording changes after collection and we cannot prove what each person agreed to, the
-  signatures are worthless.
+- **A signature must be bound to the exact text that was on screen when it was made.** Not just
+  the resolution: the declaration and the consent wording too. If any of them changes after
+  collection and we cannot prove what each person saw, the signatures are worthless.
+- **The declaration must be in the correct legal frame.** A section 338 request comes from the
+  members themselves. Each signatory is a requisitionist in their own right, not a supporter of
+  someone else's requisition. Wording along the lines of "I support CSL requisitioning a
+  resolution" is the wrong frame and may be void however perfectly it is bound to a version. The
+  version binding proves what someone agreed to; the frame determines whether what they agreed to
+  is a request at all.
 
-Everything else in this programme is recoverable. Those two are not. When a package touches
-either, slow down.
+Everything else in this programme is recoverable. Those three are not. When a package touches any
+of them, slow down.
+
+**The window in which mistakes are free closes when signing opens, not when the answers arrive.**
+While no signatures exist, changing wording or adding a column costs minutes. Once signatures
+exist, the same change means people agreed to something different and any schema work is a
+migration against real records. Build now, deliberately, while it is cheap.
