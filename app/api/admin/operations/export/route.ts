@@ -58,7 +58,10 @@ export async function GET() {
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", monthStart.toISOString()),
     db.from("email_bounces").select("id", { count: "exact", head: true }).gte("bounced_at", monthStart.toISOString()),
     db.rpc("admin_get_db_size_bytes").then((r) => r),
-    db.from("backup_log").select("ran_at, status, total_rows, table_counts, error_msg").order("ran_at", { ascending: false }).limit(6),
+    // 30, not 6: the PDF lists the 3 most recent and summarises the rest on one
+    // line, so the fetch has to see enough history for that summary to mean
+    // something. Row count does not affect page count, the table is capped.
+    db.from("backup_log").select("ran_at, status, total_rows, table_counts, error_msg").order("ran_at", { ascending: false }).limit(30),
     (async () => {
       try {
         const t0 = Date.now();
@@ -80,6 +83,7 @@ export async function GET() {
   const dbSizeMb = typeof dbSizeResult.data === "number" ? Math.round(dbSizeResult.data / 1024 / 1024) : 0;
 
   const backupRows = (backupResult.data ?? []) as BackupRow[];
+
   const lastSuccess = backupRows.find((r) => r.status === "success") ?? null;
   const lastSuccessAgeHours = lastSuccess
     ? (now.getTime() - new Date(lastSuccess.ran_at).getTime()) / 1000 / 60 / 60

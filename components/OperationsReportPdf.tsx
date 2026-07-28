@@ -85,25 +85,28 @@ const s = StyleSheet.create({
 
   goldBar:     { backgroundColor: GOLD, height: 3 },
 
-  body:        { paddingHorizontal: 28, paddingTop: 14 },
+  body:        { paddingHorizontal: 28, paddingTop: 10 },
 
-  secHead:     { fontFamily: "Helvetica-Bold", fontSize: 7.5, color: GREEN, textTransform: "uppercase", letterSpacing: 0.6, borderBottomWidth: 1.5, borderBottomColor: GREEN, paddingBottom: 3, marginBottom: 8 },
+  // Vertical rhythm is deliberately tight: the report must hold to one A4 page
+  // as the service status and backup sections grow. Font sizes are unchanged,
+  // the saving comes from spacing only.
+  secHead:     { fontFamily: "Helvetica-Bold", fontSize: 7.5, color: GREEN, textTransform: "uppercase", letterSpacing: 0.6, borderBottomWidth: 1.5, borderBottomColor: GREEN, paddingBottom: 2, marginBottom: 5, marginTop: 6 },
 
-  statusBanner:{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 7, borderRadius: 3, marginBottom: 10 },
+  statusBanner:{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 3, marginBottom: 6 },
   bannerDot:   { width: 7, height: 7, borderRadius: 4, marginRight: 7 },
   bannerText:  { fontFamily: "Helvetica-Bold", fontSize: 8.5 },
 
-  pillRow:     { flexDirection: "row", flexWrap: "wrap", gap: 4, marginBottom: 10 },
+  pillRow:     { flexDirection: "row", flexWrap: "wrap", gap: 4, marginBottom: 6 },
   pill:        { flexDirection: "row", alignItems: "center", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 2, borderWidth: 0.5, borderColor: LGREY },
   pillDot:     { width: 5, height: 5, borderRadius: 3, marginRight: 4 },
   pillText:    { fontSize: 7, color: GREY },
 
-  cardRow:     { flexDirection: "row", gap: 8, marginBottom: 10 },
-  execCard:    { flex: 1, borderWidth: 0.5, borderColor: LGREY, borderRadius: 3, padding: 8, alignItems: "center" },
+  cardRow:     { flexDirection: "row", gap: 8, marginBottom: 6 },
+  execCard:    { flex: 1, borderWidth: 0.5, borderColor: LGREY, borderRadius: 3, padding: 6, alignItems: "center" },
   execVal:     { fontFamily: "Helvetica-Bold", fontSize: 15, color: GREEN, marginBottom: 2 },
   execLabel:   { fontSize: 6.5, color: GREY, textTransform: "uppercase", letterSpacing: 0.4 },
 
-  cols:        { flexDirection: "row", gap: 12, marginBottom: 10 },
+  cols:        { flexDirection: "row", gap: 12, marginBottom: 6 },
   col:         { flex: 1 },
 
   tHead:       { flexDirection: "row", backgroundColor: GREEN, paddingVertical: 4, paddingHorizontal: 6 },
@@ -118,7 +121,7 @@ const s = StyleSheet.create({
   right:       { textAlign: "right" },
   bold:        { fontFamily: "Helvetica-Bold" },
 
-  notesBox:    { borderLeftWidth: 2, borderLeftColor: GOLD, paddingLeft: 8, paddingVertical: 5, marginTop: 8 },
+  notesBox:    { borderLeftWidth: 2, borderLeftColor: GOLD, paddingLeft: 8, paddingVertical: 4, marginTop: 5 },
   notesText:   { fontSize: 7, color: GREY, lineHeight: 1.5 },
 
   upgradeTotal:{ flexDirection: "row", paddingVertical: 4, paddingHorizontal: 6, backgroundColor: LIGHT, borderTopWidth: 1, borderTopColor: GREEN },
@@ -161,6 +164,45 @@ function fmtDate(iso: string) {
   }) + " UTC";
 }
 
+/** Backup runs listed in full. The rest are summarised on one line. */
+const BACKUP_ROWS_SHOWN = 3;
+
+/**
+ * One-line summary of the runs the table does not list, so capping the table
+ * does not hide whether backups have been succeeding.
+ */
+function backupOverflow(d: OperationsReportData): string | null {
+  const runs = d.backup.recentRuns;
+  if (runs.length <= BACKUP_ROWS_SHOWN) return null;
+
+  const rest = runs.slice(BACKUP_ROWS_SHOWN);
+  const ok = rest.filter((r) => r.status === "success").length;
+  const failed = rest.length - ok;
+
+  const failPart = failed > 0 ? `, ${failed} failed` : "";
+  return `${rest.length} earlier run${rest.length === 1 ? "" : "s"} not shown: ${ok} successful${failPart}.`;
+}
+
+type GateCard = { label: string; open: boolean; desc: string };
+
+/**
+ * Chunks the gate cards into rows so the section stays two rows tall as gates
+ * are added, rather than growing a row at a time and pushing the report onto a
+ * second page.
+ *
+ * Two columns up to four gates, three columns for five or six. Four across at
+ * flex: 1 on an A4 column leaves the labels unreadable, which is why the
+ * two-column form is kept while it fits.
+ */
+function gateRows(cards: GateCard[]): GateCard[][] {
+  const perRow = cards.length > 4 ? 3 : 2;
+  const rows: GateCard[][] = [];
+  for (let i = 0; i < cards.length; i += perRow) {
+    rows.push(cards.slice(i, i + perRow));
+  }
+  return rows;
+}
+
 function StatusCell({ t, children }: { t: TrafficLight; children: string }) {
   const color = t === "red" ? RED : t === "amber" ? AMBER : GREEN;
   return <Text style={[s.tCell, { color, fontFamily: "Helvetica-Bold" }]}>{children}</Text>;
@@ -191,7 +233,7 @@ export function OperationsReportPdf(d: OperationsReportData) {
         <View style={s.body}>
 
           {/* Executive summary */}
-          <Text style={[s.secHead, { marginTop: 10 }]}>Executive summary</Text>
+          <Text style={[s.secHead, { marginTop: 8 }]}>Executive summary</Text>
 
           <View style={[s.statusBanner, { backgroundColor: bannerBg(d.overall) }]}>
             <View style={[s.bannerDot, { backgroundColor: dotColor(d.overall) }]} />
@@ -236,16 +278,12 @@ export function OperationsReportPdf(d: OperationsReportData) {
 
           {/* Two per row: four across an A4 column leaves the labels and
               descriptions too narrow to read. */}
-          {[
-            [
-              { label: "Member portal", open: d.gates.portalOpen, desc: "Authenticated member access to /member-portal" },
-              { label: "New membership sign-ups", open: d.gates.membershipOpen, desc: "Public access to join via /membership checkout" },
-            ],
-            [
-              { label: "AGM requisition signing", open: d.gates.resolutionOpen, desc: "Public signing of the AGM resolution via /resolution" },
-              { label: "AGM proxy appointment", open: d.gates.proxyOpen, desc: "Public proxy appointment capture via /proxy" },
-            ],
-          ].map((row, rowIdx) => (
+          {gateRows([
+            { label: "Member portal", open: d.gates.portalOpen, desc: "Authenticated member access to /member-portal" },
+            { label: "New membership sign-ups", open: d.gates.membershipOpen, desc: "Public access to join via /membership checkout" },
+            { label: "AGM requisition signing", open: d.gates.resolutionOpen, desc: "Public signing of the AGM resolution via /resolution" },
+            { label: "AGM proxy appointment", open: d.gates.proxyOpen, desc: "Public proxy appointment capture via /proxy" },
+          ]).map((row, rowIdx) => (
             <View key={rowIdx} style={s.cardRow}>
               {row.map((g) => (
                 <View key={g.label} style={[s.execCard, { alignItems: "flex-start" }]}>
@@ -345,34 +383,49 @@ export function OperationsReportPdf(d: OperationsReportData) {
           {/* Database backup */}
           <Text style={s.secHead}>Database backup history</Text>
 
-          <View style={s.tHead}>
-            <Text style={[s.tHeadCell, { width: 110 }]}>Date / time (UTC)</Text>
-            <Text style={[s.tHeadCell, { width: 55 }]}>Outcome</Text>
-            <Text style={[s.tHeadCell, { width: 55, textAlign: "right" }]}>Total rows</Text>
-            <Text style={[s.tHeadCell, { width: 55, textAlign: "right" }]}>Members</Text>
-            <Text style={[s.tHeadCell, { flex: 1, textAlign: "right" }]}>Trigger</Text>
-          </View>
-          {d.backup.recentRuns.slice(0, 6).map((row, i) => {
-            const isOk = row.status === "success";
-            return (
-              <View key={i} style={[s.tRow, i % 2 === 1 ? s.tRowAlt : {}]}>
-                <Text style={[s.tCell, { width: 110 }]}>{fmtDate(row.ran_at)}</Text>
-                <Text style={[s.tCell, { width: 55, color: isOk ? GREEN : RED, fontFamily: "Helvetica-Bold" }]}>{isOk ? "Success" : "Failed"}</Text>
-                <Text style={[s.tCell, s.right, { width: 55 }]}>{row.total_rows?.toLocaleString("en-GB") ?? "-"}</Text>
-                <Text style={[s.tCell, s.right, { width: 55 }]}>{row.table_counts?.members?.toLocaleString("en-GB") ?? "-"}</Text>
-                <Text style={[s.tCell, s.right, { flex: 1 }]}>Scheduled</Text>
-              </View>
-            );
-          })}
-          <View style={s.notesBox}>
-            <Text style={s.notesText}>
-              Note: This is a CSV export workaround. Point-in-time recovery is not available on the Supabase free tier.
-              Upgrading to Supabase Pro provides 7-day PITR with automated daily snapshots managed by Supabase infrastructure.
+          {/* Capped at BACKUP_ROWS_SHOWN. The table gains a row per run, so an
+              uncapped list pushes the report onto a second page within days.
+              Three answers the only question this section needs to answer:
+              are backups running and succeeding. */}
+          {d.backup.recentRuns.length === 0 ? (
+            <Text style={[s.notesText, { marginBottom: 2 }]}>
+              No backup runs recorded.
             </Text>
-          </View>
+          ) : (
+            <>
+              <View style={s.tHead}>
+                <Text style={[s.tHeadCell, { width: 110 }]}>Date / time (UTC)</Text>
+                <Text style={[s.tHeadCell, { width: 55 }]}>Outcome</Text>
+                <Text style={[s.tHeadCell, { width: 55, textAlign: "right" }]}>Total rows</Text>
+                <Text style={[s.tHeadCell, { width: 55, textAlign: "right" }]}>Members</Text>
+                <Text style={[s.tHeadCell, { flex: 1, textAlign: "right" }]}>Trigger</Text>
+              </View>
+              {d.backup.recentRuns.slice(0, BACKUP_ROWS_SHOWN).map((row, i) => {
+                const isOk = row.status === "success";
+                return (
+                  <View key={i} style={[s.tRow, i % 2 === 1 ? s.tRowAlt : {}]}>
+                    <Text style={[s.tCell, { width: 110 }]}>{fmtDate(row.ran_at)}</Text>
+                    <Text style={[s.tCell, { width: 55, color: isOk ? GREEN : RED, fontFamily: "Helvetica-Bold" }]}>{isOk ? "Success" : "Failed"}</Text>
+                    <Text style={[s.tCell, s.right, { width: 55 }]}>{row.total_rows?.toLocaleString("en-GB") ?? "-"}</Text>
+                    <Text style={[s.tCell, s.right, { width: 55 }]}>{row.table_counts?.members?.toLocaleString("en-GB") ?? "-"}</Text>
+                    <Text style={[s.tCell, s.right, { flex: 1 }]}>Scheduled</Text>
+                  </View>
+                );
+              })}
+              {backupOverflow(d) && (
+                <Text style={[s.notesText, { marginTop: 3 }]}>{backupOverflow(d)}</Text>
+              )}
+            </>
+          )}
+          {/* Plain line rather than a notesBox: the box chrome costs more
+              vertical space than the sentence. PITR is covered in the upgrade
+              table below. */}
+          <Text style={[s.notesText, { marginTop: 3 }]}>
+            Note: CSV export workaround. Point-in-time recovery is not available on the Supabase free tier.
+          </Text>
 
           {/* Upgrade recommendations */}
-          <Text style={[s.secHead, { marginTop: 12 }]}>Upgrade recommendations and forecast cost</Text>
+          <Text style={s.secHead}>Upgrade recommendations and forecast cost</Text>
 
           <View style={s.tHead}>
             <Text style={[s.tHeadCell, { width: 55 }]}>Service</Text>
@@ -420,12 +473,11 @@ export function OperationsReportPdf(d: OperationsReportData) {
             <Text style={[s.upgradeTotalCell, { width: 60, textAlign: "right" }]}>£65 / month</Text>
             <Text style={[s.tCellGrey, { width: 100, textAlign: "right" }]}>Recommended pre-migration</Text>
           </View>
+          {/* Reduced to the cost framing. The per-service reasoning it used to
+              repeat is already in the Upgrade trigger column above. */}
           <View style={s.notesBox}>
             <Text style={s.notesText}>
-              Resend upgrade is a pre-migration requirement if bulk welcome emails are sent in a single day.
-              Supabase upgrade is the highest priority - auto-pause poses a production availability risk once members rely on the portal daily.
-              Vercel upgrade can follow once team access is required. Upgrading all three removes the most significant operational
-              risks at £65/month, equivalent to approximately 6.5 new Standard memberships per month.
+              £65/month for the full Pro stack, equivalent to approximately 6.5 new Standard memberships per month.
             </Text>
           </View>
 
