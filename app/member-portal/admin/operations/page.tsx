@@ -10,6 +10,8 @@ import MembershipGateToggle from "@/components/MembershipGateToggle";
 import ResolutionGateToggle from "@/components/ResolutionGateToggle";
 import ProxyGateToggle from "@/components/ProxyGateToggle";
 import { getGates } from "@/lib/site-gates";
+import { getResolutionSigningState } from "@/lib/agm-signing-state";
+import { SigningStateNotice } from "@/components/SigningStateNotice";
 
 export const metadata: Metadata = { title: "Operational Status | CSL Admin" };
 export const dynamic = "force-dynamic";
@@ -193,6 +195,7 @@ export default async function OperationsPage() {
     backupResult,
     stripeResult,
     gates,
+    signingState,
   ] = await Promise.all([
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", todayStart.toISOString()),
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", monthStart.toISOString()),
@@ -213,6 +216,10 @@ export default async function OperationsPage() {
     // cache: "no-store" so the toggles show the state the site is actually
     // enforcing rather than a cached value. See lib/site-gates.ts.
     getGates("portal_open", "membership_open", "resolution_open", "proxy_open"),
+    // Signing needs the gate open AND a non-placeholder resolution version.
+    // The toggle alone cannot show that, which is how "I opened the gate and
+    // nothing happened" starts.
+    getResolutionSigningState(),
   ]);
 
   const todayCount    = emailsToday       ?? 0;
@@ -435,7 +442,11 @@ export default async function OperationsPage() {
                 Controls /resolution and POST /api/resolution/sign. Open only when the solicitor has confirmed the resolution wording.
               </p>
             </div>
-            <ResolutionGateToggle currentValue={resolutionOpenValue} />
+            <SigningStateNotice state={signingState} />
+            <ResolutionGateToggle
+              currentValue={resolutionOpenValue}
+              blockedReason={signingState.blockedReason}
+            />
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">

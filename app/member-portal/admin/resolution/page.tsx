@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import PortalShell from "@/components/PortalShell";
 import ResolutionAdminClient from "./ResolutionAdminClient";
+import { getResolutionSigningState } from "@/lib/agm-signing-state";
+import { SigningStateNotice } from "@/components/SigningStateNotice";
 
 export const metadata: Metadata = { title: "AGM Resolution Progress | CSL Admin" };
 export const dynamic = "force-dynamic";
@@ -22,7 +24,7 @@ export default async function ResolutionAdminPage() {
 
   if (!member?.is_admin) redirect("/member-portal");
 
-  const [signaturesRes, configRes, supportersRes, versionsRes] = await Promise.all([
+  const [signaturesRes, configRes, supportersRes, versionsRes, signingState] = await Promise.all([
     supabase
       .from("agm_signatures")
       .select("*")
@@ -37,6 +39,7 @@ export default async function ResolutionAdminPage() {
     supabase
       .from("agm_resolution_versions")
       .select("id, version_label"),
+    getResolutionSigningState(),
   ]);
 
   const signatures = signaturesRes.data ?? [];
@@ -54,6 +57,9 @@ export default async function ResolutionAdminPage() {
 
   return (
     <PortalShell user={{ email: user.email!, id: user.id }} member={member}>
+      <div className="mb-5">
+        <SigningStateNotice state={signingState} />
+      </div>
       <ResolutionAdminClient
         signatures={signatures}
         supporterCount={supportersRes.count ?? 0}
