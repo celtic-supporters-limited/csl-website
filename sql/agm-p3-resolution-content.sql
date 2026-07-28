@@ -96,8 +96,9 @@ $$ LANGUAGE plpgsql;
 -- undecided, and leaving it null here is the seeded state the page is built
 -- to render correctly, not a gap.
 INSERT INTO agm_resolution_versions
-  (body, declaration_text, consent_text, supporting_statement, is_placeholder, is_current, created_by)
+  (version_label, body, declaration_text, consent_text, supporting_statement, is_placeholder, is_current, created_by)
 VALUES (
+  'Placeholder (pre-solicitor)',
   'PLACEHOLDER - THIS IS NOT THE RESOLUTION. The resolution wording is with CSL''s solicitor and has not been settled. No signature may be collected against this text. Use the admin Version Management page to create and activate the approved wording once it arrives.',
   'DRAFT - NOT APPROVED BY THE SOLICITOR. I am a member of Celtic plc. Under section 338 of the Companies Act 2006 I require the company to give notice of the resolution set out above to members entitled to receive notice of the next Annual General Meeting.',
   'DRAFT - NOT APPROVED BY THE SOLICITOR. I consent to Celtic Supporters Limited holding the details I have given for the purpose of this requisition, and I understand that my name and address will be provided to Celtic plc as part of the request. See the privacy policy.',
