@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
-import { isGateOpen } from "@/lib/site-gates";
+import { getConfigList, isGateOpen } from "@/lib/site-gates";
 import { Container } from "@/components/Container";
 import ResolutionForm from "./ResolutionForm";
 
@@ -10,17 +10,26 @@ export const metadata: Metadata = {
   title: "Support the CSL Resolution | Celtic Supporters Limited",
 };
 
-// Force dynamic — reads live signature counts
+// Reads the launch gate, the current resolution version and the live counts.
 export const dynamic = "force-dynamic";
 
 export default async function ResolutionPage() {
   const supabase = getSupabase();
 
-  const [signingOpen, signaturesRes, configRes] = await Promise.all([
-    isGateOpen("resolution_open"),
-    supabase.from("agm_signatures").select("shareholder_tag"),
-    supabase.from("site_config").select("key, value").in("key", ["resolution_target"]),
-  ]);
+  const [signingOpen, signaturesRes, configRes, versionRes, platforms, years, bands] =
+    await Promise.all([
+      isGateOpen("resolution_open"),
+      supabase.from("agm_signatures").select("shareholder_tag, capture_status"),
+      supabase.from("site_config").select("key, value").in("key", ["resolution_target"]),
+      supabase
+        .from("agm_resolution_versions")
+        .select("id, is_placeholder")
+        .eq("is_current", true)
+        .maybeSingle(),
+      getConfigList("agm_nominee_platforms"),
+      getConfigList("agm_year_options"),
+      getConfigList("agm_share_bands"),
+    ]);
 
   const signatures = signaturesRes.data ?? [];
   const config = configRes.data ?? [];
@@ -28,9 +37,19 @@ export default async function ResolutionPage() {
   const configMap = Object.fromEntries(config.map((r) => [r.key, r.value]));
   const resolutionTarget = parseInt(configMap["resolution_target"] ?? "100", 10);
 
-  const directCount = signatures.filter((s) => s.shareholder_tag === "direct-registered").length;
-  const totalCount = signatures.length;
+  // Counting logic unchanged: only direct registered holders count toward the
+  // 100. Rows preserved from the pre-rebuild schema are excluded, because they
+  // were collected without a resolution version and cannot be relied on.
+  const directCount = signatures.filter(
+    (s) => s.shareholder_tag === "direct-registered" && s.capture_status === "complete"
+  ).length;
+  const totalCount = signatures.filter((s) => s.capture_status === "complete").length;
   const progressPct = Math.min(100, Math.round((directCount / resolutionTarget) * 100));
+
+  // While the current version is the placeholder there is no resolution to
+  // support, so the form is not offered. The API enforces the same rule.
+  const awaitingWording = !versionRes.data || versionRes.data.is_placeholder === true;
+  const canSign = signingOpen && !awaitingWording;
 
   return (
     <>
@@ -43,8 +62,8 @@ export default async function ResolutionPage() {
             </h1>
             <p className="text-white/80 text-lg max-w-2xl leading-relaxed">
               Celtic Supporters Limited is requisitioning a resolution at the next Celtic plc Annual
-              General Meeting. Add your name and tell us whether you hold Celtic shares. You do not
-              need to be a CSL member to sign.
+              General Meeting. To support it you must hold shares in Celtic plc, as a registered
+              holder or through a nominee platform.
             </p>
           </Container>
         </section>
@@ -68,10 +87,10 @@ export default async function ResolutionPage() {
                   </p>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <h2 className="text-base font-bold text-gray-900 mb-3">Who should sign</h2>
+                  <h2 className="text-base font-bold text-gray-900 mb-3">Who can sign</h2>
                   <p className="text-gray-600 text-sm leading-relaxed mb-3">
-                    Sign whether or not you hold Celtic shares. All signatures help the campaign;
-                    shareholder type determines what counts toward the legal threshold.
+                    Only Celtic plc shareholders can support the requisition. You do not need to be a
+                    CSL member.
                   </p>
                   <ul className="space-y-2 text-sm text-gray-600">
                     <li className="flex items-start gap-2">
@@ -93,17 +112,16 @@ export default async function ResolutionPage() {
                     <li className="flex items-start gap-2">
                       <span className="text-gray-400 font-bold shrink-0 mt-0.5">&#10003;</span>
                       <span>
-                        <strong className="text-gray-800">Non-shareholders</strong> - your signature
-                        counts for the campaign, though not toward the legal requisition threshold.
+                        <strong className="text-gray-800">Not a shareholder?</strong> You cannot sign
+                        the requisition, but you can register your support and join CSL.
                       </span>
                     </li>
                   </ul>
                 </div>
               </div>
 
-              {/* Signature counter — only while signing is open. A progress bar
-                  toward 100 has nothing to report before collection starts. */}
-              {signingOpen && (
+              {/* Signature counter — only while signing is live */}
+              {canSign && (
                 <div className="bg-white rounded-xl border border-gray-200 p-6">
                   <div className="flex items-baseline justify-between mb-2">
                     <p className="text-sm font-semibold text-gray-700">
@@ -120,7 +138,7 @@ export default async function ResolutionPage() {
                     />
                   </div>
                   <p className="text-[0.8rem] text-gray-500 mt-2">
-                    Total signatures (all supporters):{" "}
+                    Total signatures (all shareholders):{" "}
                     <span className="font-semibold text-gray-700">
                       {totalCount.toLocaleString("en-GB")}
                     </span>
@@ -128,10 +146,13 @@ export default async function ResolutionPage() {
                 </div>
               )}
 
-              {/* Form, or the holding message while signing is closed */}
-              {signingOpen ? (
+              {canSign ? (
                 <Suspense fallback={null}>
-                  <ResolutionForm />
+                  <ResolutionForm
+                    nomineePlatforms={platforms}
+                    yearOptions={years}
+                    shareBands={bands}
+                  />
                 </Suspense>
               ) : (
                 <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-[560px] mx-auto text-center">

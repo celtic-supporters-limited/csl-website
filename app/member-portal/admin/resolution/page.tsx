@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import PortalShell from "@/components/PortalShell";
 import ResolutionAdminClient from "./ResolutionAdminClient";
+import { getResolutionSigningState } from "@/lib/agm-signing-state";
+import { SigningStateNotice } from "@/components/SigningStateNotice";
 
 export const metadata: Metadata = { title: "AGM Resolution Progress | CSL Admin" };
 export const dynamic = "force-dynamic";
@@ -22,7 +24,7 @@ export default async function ResolutionAdminPage() {
 
   if (!member?.is_admin) redirect("/member-portal");
 
-  const [signaturesRes, configRes] = await Promise.all([
+  const [signaturesRes, configRes, supportersRes, versionsRes, signingState] = await Promise.all([
     supabase
       .from("agm_signatures")
       .select("*")
@@ -31,6 +33,13 @@ export default async function ResolutionAdminPage() {
       .from("site_config")
       .select("key, value")
       .eq("key", "resolution_target"),
+    supabase
+      .from("agm_supporters")
+      .select("id", { count: "exact", head: true }),
+    supabase
+      .from("agm_resolution_versions")
+      .select("id, version_label"),
+    getResolutionSigningState(),
   ]);
 
   const signatures = signaturesRes.data ?? [];
@@ -39,11 +48,23 @@ export default async function ResolutionAdminPage() {
   );
   const resolutionTarget = parseInt(configMap["resolution_target"] ?? "100", 10);
 
+  // Resolved here rather than in the client so the CSV can state which wording
+  // each person signed, not just an opaque id.
+  const versionLabels = Object.fromEntries(
+    ((versionsRes.data ?? []) as { id: string; version_label: string }[])
+      .map((v) => [v.id, v.version_label])
+  );
+
   return (
     <PortalShell user={{ email: user.email!, id: user.id }} member={member}>
+      <div className="mb-5">
+        <SigningStateNotice state={signingState} />
+      </div>
       <ResolutionAdminClient
         signatures={signatures}
+        supporterCount={supportersRes.count ?? 0}
         resolutionTarget={resolutionTarget}
+        versionLabels={versionLabels}
       />
     </PortalShell>
   );

@@ -12,10 +12,19 @@ import { useRouter } from "next/navigation";
  */
 export default function ResolutionGateToggle({
   currentValue,
+  blockedReason,
 }: {
   currentValue: string | null;
+  /**
+   * Set when the gate is open but signing is still not possible, for example
+   * because the current resolution version is a placeholder. The toggle must
+   * not read as plainly "Open" in that case: that is the false belief this
+   * whole notice exists to prevent.
+   */
+  blockedReason?: string | null;
 }) {
   const isOpen = currentValue === "true";
+  const openButBlocked = isOpen && !!blockedReason;
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -53,17 +62,17 @@ export default function ResolutionGateToggle({
       <div className="flex items-center gap-3">
         <span
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold ${
-            isOpen
+            isOpen && !openButBlocked
               ? "bg-green-50 border-green-200 text-green-700"
               : "bg-amber-50 border-amber-200 text-amber-700"
           }`}
         >
           <span
             className={`inline-block w-1.5 h-1.5 rounded-full ${
-              isOpen ? "bg-green-500" : "bg-amber-400"
+              isOpen && !openButBlocked ? "bg-green-500" : "bg-amber-400"
             }`}
           />
-          {isOpen ? "Open" : "Closed"}
+          {openButBlocked ? "Open, not signing" : isOpen ? "Open" : "Closed"}
         </span>
 
         {!confirming && (
@@ -77,9 +86,11 @@ export default function ResolutionGateToggle({
       </div>
 
       <p className="text-[11px] text-gray-500">
-        {isOpen
-          ? "Open: any visitor can sign the requisition and the nav link is visible."
-          : "Closed: the form is hidden, the nav link is hidden, and submissions are rejected."}
+        {openButBlocked
+          ? `Gate is open, but signing is still blocked because ${blockedReason}. Nothing can be signed.`
+          : isOpen
+          ? "Open: any visitor can sign the requisition."
+          : "Closed: the form is hidden and submissions are rejected."}
       </p>
 
       {confirming && (

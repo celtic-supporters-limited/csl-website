@@ -2,18 +2,31 @@
 
 import { useState } from "react";
 
-type Signature = {
+export type Signature = {
   id: string;
   full_name: string;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  address_town: string | null;
+  address_postcode: string | null;
   email: string;
-  postal_address: string;
-  is_shareholder: boolean;
-  shareholder_type: string | null;
+  how_held: string;
   computershare_srn: string | null;
   nominee_platform: string | null;
-  approximate_shares: number | null;
-  typed_signature: string;
-  signature_date: string;
+  nominee_platform_other: string | null;
+  year_of_purchase: string | null;
+  shares_held: string | null;
+  share_class: string | null;
+  eligibility_confirmed: boolean | null;
+  resolution_supported: boolean | null;
+  consent_given: boolean;
+  privacy_policy_version: string | null;
+  resolution_version_id: string | null;
+  signature_name: string;
+  signed_at: string;
+  signer_ip: string | null;
+  signer_user_agent: string | null;
+  capture_status: string;
   shareholder_tag: string;
   member_tag: string;
   created_at: string;
@@ -32,9 +45,9 @@ function tagBadge(tag: string) {
   const map: Record<string, { label: string; cls: string }> = {
     "direct-registered": { label: "Direct", cls: "bg-green-100 text-green-800" },
     "nominee-platform":  { label: "Nominee", cls: "bg-blue-100 text-blue-700" },
-    "non-shareholder":   { label: "Non-shareholder", cls: "bg-gray-100 text-gray-600" },
     "member":            { label: "Member", cls: "bg-csl-light text-csl-dark" },
     "non-member":        { label: "Non-member", cls: "bg-gray-100 text-gray-500" },
+    "pre_rebuild":       { label: "Needs completion", cls: "bg-amber-100 text-amber-800" },
   };
   const { label, cls } = map[tag] ?? { label: tag, cls: "bg-gray-100 text-gray-500" };
   return (
@@ -61,21 +74,29 @@ function toCsv(rows: Record<string, unknown>[]): string {
 
 export default function ResolutionAdminClient({
   signatures,
+  supporterCount,
   resolutionTarget,
+  versionLabels,
 }: {
   signatures: Signature[];
+  supporterCount: number;
   resolutionTarget: number;
+  versionLabels: Record<string, string>;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  const directCount      = signatures.filter((s) => s.shareholder_tag === "direct-registered").length;
-  const nomineeCount     = signatures.filter((s) => s.shareholder_tag === "nominee-platform").length;
-  const nonShareholderCount = signatures.filter((s) => s.shareholder_tag === "non-shareholder").length;
-  const memberCount      = signatures.filter((s) => s.member_tag === "member").length;
-  const nonMemberCount   = signatures.filter((s) => s.member_tag === "non-member").length;
-  const totalCount       = signatures.length;
-  const progressPct      = Math.min(100, Math.round((directCount / resolutionTarget) * 100));
+  // Counting logic unchanged: only direct registered holders count toward the
+  // 100. Rows preserved from the old schema are excluded, because they were
+  // collected without a resolution version and cannot be relied on.
+  const complete   = signatures.filter((s) => s.capture_status === "complete");
+  const preRebuild = signatures.filter((s) => s.capture_status === "pre_rebuild");
+
+  const directCount    = complete.filter((s) => s.shareholder_tag === "direct-registered").length;
+  const nomineeCount   = complete.filter((s) => s.shareholder_tag === "nominee-platform").length;
+  const memberCount    = complete.filter((s) => s.member_tag === "member").length;
+  const nonMemberCount = complete.filter((s) => s.member_tag === "non-member").length;
+  const progressPct    = Math.min(100, Math.round((directCount / resolutionTarget) * 100));
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -89,21 +110,39 @@ export default function ResolutionAdminClient({
     return sortDir === "asc" ? cmp : -cmp;
   });
 
+  // Reconciliation working file, not a report: raw ids and full ISO timestamps,
+  // every schema field, and capture_status so incomplete rows are visible.
   function downloadCsv() {
     const rows = signatures.map((s) => ({
-      date:              fmtDate(s.created_at),
-      full_name:         s.full_name,
-      email:             s.email,
-      postal_address:    s.postal_address,
-      is_shareholder:    s.is_shareholder ? "Yes" : "No",
-      shareholder_type:  s.shareholder_type ?? "",
-      computershare_srn: s.computershare_srn ?? "",
-      nominee_platform:  s.nominee_platform ?? "",
-      approximate_shares: s.approximate_shares ?? "",
-      typed_signature:   s.typed_signature,
-      signature_date:    s.signature_date,
-      shareholder_tag:   s.shareholder_tag,
-      member_tag:        s.member_tag,
+      id:                     s.id,
+      capture_status:         s.capture_status,
+      created_at:             s.created_at,
+      signed_at:              s.signed_at,
+      full_name:              s.full_name,
+      email:                  s.email,
+      address_line_1:         s.address_line_1 ?? "",
+      address_line_2:         s.address_line_2 ?? "",
+      address_town:           s.address_town ?? "",
+      address_postcode:       s.address_postcode ?? "",
+      how_held:               s.how_held,
+      computershare_srn:      s.computershare_srn ?? "",
+      nominee_platform:       s.nominee_platform ?? "",
+      nominee_platform_other: s.nominee_platform_other ?? "",
+      year_of_purchase:       s.year_of_purchase ?? "",
+      shares_held:            s.shares_held ?? "",
+      share_class:            s.share_class ?? "",
+      eligibility_confirmed:  s.eligibility_confirmed ?? "",
+      resolution_supported:   s.resolution_supported ?? "",
+      consent_given:          s.consent_given,
+      privacy_policy_version: s.privacy_policy_version ?? "",
+      resolution_version_id:  s.resolution_version_id ?? "",
+      resolution_version_label:
+        s.resolution_version_id ? (versionLabels[s.resolution_version_id] ?? "") : "",
+      signature_name:         s.signature_name,
+      signer_ip:              s.signer_ip ?? "",
+      signer_user_agent:      s.signer_user_agent ?? "",
+      shareholder_tag:        s.shareholder_tag,
+      member_tag:             s.member_tag,
     }));
     const csv = toCsv(rows as unknown as Record<string, unknown>[]);
     const today = new Date().toISOString().split("T")[0];
@@ -133,15 +172,14 @@ export default function ResolutionAdminClient({
         </button>
       </div>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {[
           { label: "Direct registered shareholders", value: directCount, highlight: true },
           { label: "Nominee / platform holders", value: nomineeCount },
-          { label: "Non-shareholders", value: nonShareholderCount },
-          { label: "Total signatures", value: totalCount },
+          { label: "Complete signatures", value: complete.length },
           { label: "CSL members", value: memberCount },
           { label: "Non-members", value: nonMemberCount },
+          { label: "Supporters (non-shareholders)", value: supporterCount },
         ].map(({ label, value, highlight }) => (
           <div
             key={label}
@@ -157,7 +195,19 @@ export default function ResolutionAdminClient({
         ))}
       </div>
 
-      {/* Progress bar */}
+      {preRebuild.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <p className="text-sm font-semibold text-amber-900">
+            {preRebuild.length} record{preRebuild.length === 1 ? "" : "s"} need completion
+          </p>
+          <p className="text-[0.8rem] text-amber-800 mt-1 leading-relaxed">
+            Preserved from before the Package 2 rebuild. They predate the discrete address, share
+            class and resolution version fields, so they are excluded from the count toward{" "}
+            {resolutionTarget}. Each person needs to sign again once the wording is locked.
+          </p>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <div className="flex items-baseline justify-between mb-2">
           <p className="text-sm font-semibold text-gray-700">Direct registered shareholder signatures</p>
@@ -171,7 +221,6 @@ export default function ResolutionAdminClient({
         <p className="text-[0.75rem] text-gray-400 mt-1.5">{progressPct}% of target</p>
       </div>
 
-      {/* Signatures table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -189,36 +238,41 @@ export default function ResolutionAdminClient({
                   className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 cursor-pointer whitespace-nowrap"
                   onClick={() => toggleSort("shareholder_tag")}
                 >
-                  Shareholder <SortIcon k="shareholder_tag" />
+                  Held <SortIcon k="shareholder_tag" />
                 </th>
                 <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Member</th>
                 <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">SRN</th>
-                <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Platform</th>
-                <th className="px-4 py-3 text-right text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Shares</th>
+                <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Class</th>
+                <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Postcode</th>
+                <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Status</th>
               </tr>
             </thead>
             <tbody>
               {sorted.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-gray-400 text-sm">
+                  <td colSpan={9} className="px-4 py-10 text-center text-gray-400 text-sm">
                     No signatures yet.
                   </td>
                 </tr>
               )}
-              {sorted.map((s) => (
-                <tr key={s.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(s.created_at)}</td>
-                  <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{s.full_name}</td>
-                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{s.email}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{tagBadge(s.shareholder_tag)}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{tagBadge(s.member_tag)}</td>
-                  <td className="px-4 py-3 text-gray-500 text-[0.8rem] whitespace-nowrap">{s.computershare_srn ?? "-"}</td>
-                  <td className="px-4 py-3 text-gray-500 text-[0.8rem] whitespace-nowrap">{s.nominee_platform ?? "-"}</td>
-                  <td className="px-4 py-3 text-right text-gray-600 tabular-nums whitespace-nowrap">
-                    {s.approximate_shares?.toLocaleString("en-GB") ?? "-"}
-                  </td>
-                </tr>
-              ))}
+              {sorted.map((s) => {
+                const incomplete = s.capture_status === "pre_rebuild";
+                return (
+                  <tr key={s.id} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${incomplete ? "bg-amber-50/40" : ""}`}>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(s.created_at)}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{s.full_name}</td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{s.email}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{tagBadge(s.shareholder_tag)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{tagBadge(s.member_tag)}</td>
+                    <td className="px-4 py-3 text-gray-500 text-[0.8rem] whitespace-nowrap">{s.computershare_srn ?? "-"}</td>
+                    <td className="px-4 py-3 text-gray-500 text-[0.8rem] whitespace-nowrap">{s.share_class ?? "-"}</td>
+                    <td className="px-4 py-3 text-gray-500 text-[0.8rem] whitespace-nowrap">{s.address_postcode ?? "-"}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {incomplete ? tagBadge("pre_rebuild") : <span className="text-[0.75rem] text-gray-400">Complete</span>}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

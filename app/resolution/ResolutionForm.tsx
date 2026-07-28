@@ -6,26 +6,41 @@ import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 
 type FormState = "idle" | "submitting" | "success" | "error" | "duplicate";
+type HowHeld = "direct" | "nominee" | "";
 
 const inputClass =
   "w-full px-3.5 py-2.5 border-[1.5px] border-gray-200 rounded-lg text-[0.92rem] font-[inherit] transition-colors duration-200 focus:outline-none focus:border-csl-dark focus:ring-2 focus:ring-csl-dark/10";
 const labelClass = "block text-[0.85rem] font-semibold text-gray-800 mb-1.5";
-const radioClass = "w-4 h-4 accent-csl-dark shrink-0 mt-0.5";
+const radioClass = "w-4 h-4 accent-csl-dark shrink-0";
+const hintClass = "text-[0.78rem] text-gray-500 mb-1.5";
+const branchClass = "mb-5 pl-4 border-l-2 border-csl-light";
 
-export default function ResolutionForm() {
+export default function ResolutionForm({
+  nomineePlatforms,
+  yearOptions,
+  shareBands,
+}: {
+  nomineePlatforms: string[];
+  yearOptions: string[];
+  shareBands: string[];
+}) {
   const [state, setState] = useState<FormState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [firstName, setFirstName] = useState("");
 
-  // Prefill from session
+  // Shareholder question gates the whole form. Non-shareholders cannot support
+  // a section 338 request, so they are routed to the supporter path instead of
+  // dead-ending.
+  const [isShareholder, setIsShareholder] = useState<boolean | null>(null);
+  const [howHeld, setHowHeld] = useState<HowHeld>("");
+  const [platform, setPlatform] = useState("");
+
   const [prefillName, setPrefillName] = useState("");
   const [prefillEmail, setPrefillEmail] = useState("");
 
-  // Conditional fields
-  const [isShareholder, setIsShareholder] = useState<boolean | null>(null);
-  const [shareholderType, setShareholderType] = useState<"direct" | "nominee" | "">("");
-  const [isMember, setIsMember] = useState<boolean | null>(null);
-  const [declaration, setDeclaration] = useState(false);
+  const [eligibility, setEligibility] = useState(false);
+  const [supported, setSupported] = useState(false);
+  const [consent, setConsent] = useState(false);
 
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileError, setTurnstileError] = useState("");
@@ -62,64 +77,34 @@ export default function ResolutionForm() {
     }
   }, [state]);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+  function resetTurnstile() {
+    turnstileRef.current?.reset();
+    setTurnstileToken("");
+  }
 
-    // Honeypot
-    if (fd.get("website")) {
-      setState("success");
-      return;
-    }
-
-    if (!declaration) {
-      setErrorMsg("You must accept the declaration before submitting.");
-      setState("error");
-      return;
-    }
-    if (!turnstileToken) {
-      setTurnstileError("Security check not completed. Please wait a moment.");
-      return;
-    }
-    setTurnstileError("");
+  async function post(url: string, payload: Record<string, unknown>) {
     setState("submitting");
     setErrorMsg("");
-
-    const payload = {
-      fullName:          fd.get("fullName") as string,
-      email:             fd.get("email") as string,
-      postalAddress:     fd.get("postalAddress") as string,
-      isShareholder,
-      shareholderType:   isShareholder ? shareholderType : null,
-      computershareSrn:  fd.get("computershareSrn") as string,
-      nomineePlatform:   fd.get("nomineePlatform") as string,
-      approximateShares: fd.get("approximateShares") ? Number(fd.get("approximateShares")) : null,
-      isMember,
-      typedSignature:    fd.get("typedSignature") as string,
-      declarationAccepted: declaration,
-      turnstileToken,
-    };
-
     try {
-      const res = await fetch("/api/resolution/sign", {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await res.json() as { ok?: boolean; error?: string; firstName?: string; duplicate?: boolean };
+      const data = (await res.json()) as {
+        ok?: boolean; error?: string; firstName?: string; duplicate?: boolean;
+      };
 
       if (res.status === 409 || data.duplicate) {
         setErrorMsg(data.error ?? "We already have a signature from this email address.");
         setState("duplicate");
-        turnstileRef.current?.reset();
-        setTurnstileToken("");
+        resetTurnstile();
         return;
       }
       if (!res.ok) {
         setErrorMsg(data.error ?? "Something went wrong. Please try again.");
         setState("error");
-        turnstileRef.current?.reset();
-        setTurnstileToken("");
+        resetTurnstile();
         return;
       }
       setFirstName(data.firstName ?? "");
@@ -127,20 +112,71 @@ export default function ResolutionForm() {
     } catch {
       setErrorMsg("Network error. Please check your connection and try again.");
       setState("error");
-      turnstileRef.current?.reset();
-      setTurnstileToken("");
+      resetTurnstile();
     }
   }
 
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+
+    if (fd.get("website")) { setState("success"); return; }
+    if (!turnstileToken) {
+      setTurnstileError("Security check not completed. Please wait a moment.");
+      return;
+    }
+    setTurnstileError("");
+
+    // Supporter path: not a shareholder, so no signature is collected.
+    if (isShareholder === false) {
+      if (!consent) {
+        setErrorMsg("Please confirm your consent before submitting.");
+        setState("error");
+        return;
+      }
+      await post("/api/resolution/supporter", {
+        fullName: fd.get("fullName"),
+        email: fd.get("email"),
+        consentGiven: consent,
+        turnstileToken,
+      });
+      return;
+    }
+
+    await post("/api/resolution/sign", {
+      fullName:             fd.get("fullName"),
+      addressLine1:         fd.get("addressLine1"),
+      addressLine2:         fd.get("addressLine2"),
+      addressTown:          fd.get("addressTown"),
+      addressPostcode:      fd.get("addressPostcode"),
+      email:                fd.get("email"),
+      howHeld,
+      computershareSrn:     fd.get("computershareSrn"),
+      nomineePlatform:      platform,
+      nomineePlatformOther: fd.get("nomineePlatformOther"),
+      yearOfPurchase:       fd.get("yearOfPurchase"),
+      sharesHeld:           fd.get("sharesHeld"),
+      shareClass:           fd.get("shareClass"),
+      eligibilityConfirmed: eligibility,
+      resolutionSupported:  supported,
+      consentGiven:         consent,
+      signatureName:        fd.get("signatureName"),
+      turnstileToken,
+    });
+  }
+
   if (state === "success") {
+    const wasSupporter = isShareholder === false;
     return (
       <div ref={successRef} className="bg-csl-light rounded-2xl text-center px-8 py-16 max-w-[560px] mx-auto">
         <div className="text-5xl mb-4 text-csl-dark">&#10003;</div>
         <h2 className="text-2xl font-extrabold text-csl-dark mb-3">
-          Signature recorded
+          {wasSupporter ? "Support registered" : "Signature recorded"}
         </h2>
-        <p className="text-gray-700 max-w-[420px] mx-auto mb-6">
-          Thank you{firstName ? `, ${firstName}` : ""}. Your signature has been recorded.
+        <p className="text-gray-700 max-w-[440px] mx-auto mb-6">
+          {wasSupporter
+            ? `Thank you${firstName ? `, ${firstName}` : ""}. You cannot sign the requisition without holding Celtic plc shares, but your support is recorded and we will keep you posted.`
+            : `Thank you${firstName ? `, ${firstName}` : ""}. Your signature has been recorded.`}
         </p>
         <Link
           href="/membership"
@@ -162,71 +198,27 @@ export default function ResolutionForm() {
       noValidate
       className="max-w-[560px] mx-auto bg-white rounded-2xl p-8 shadow-lg border border-gray-200"
     >
-      {/* Honeypot */}
       <input type="text" name="website" style={{ display: "none" }} tabIndex={-1} autoComplete="off" aria-hidden="true" />
 
-      {/* Inline error / duplicate message */}
       {(state === "error" || state === "duplicate") && errorMsg && (
         <div ref={errorRef} className="mb-5 px-4 py-3.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-[0.88rem]">
           {errorMsg}
         </div>
       )}
 
-      {/* 1. Full name */}
-      <div className="mb-5">
-        <label htmlFor="fullName" className={labelClass}>
-          Full name <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="fullName" name="fullName" type="text" required
-          value={prefillName} onChange={(e) => setPrefillName(e.target.value)}
-          placeholder="e.g. James McPherson"
-          className={inputClass}
-        />
-      </div>
-
-      {/* 2. Email */}
-      <div className="mb-5">
-        <label htmlFor="email" className={labelClass}>
-          Email address <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="email" name="email" type="email" required
-          value={prefillEmail} onChange={(e) => setPrefillEmail(e.target.value)}
-          placeholder="your@email.com"
-          className={inputClass}
-        />
-      </div>
-
-      {/* 3. Postal address */}
-      <div className="mb-5">
-        <label htmlFor="postalAddress" className={labelClass}>
-          Postal address <span className="text-red-500">*</span>
-        </label>
-        <p className="text-[0.78rem] text-gray-500 mb-1.5">
-          Include full address and postcode. Required for a valid AGM requisition.
-        </p>
-        <textarea
-          id="postalAddress" name="postalAddress" required rows={3}
-          placeholder={"12 Example Street\nGlasgow\nG1 1AA"}
-          className={`${inputClass} resize-y`}
-        />
-      </div>
-
-      {/* 4. Are you a shareholder? */}
+      {/* 1. Shareholder question, asked first because it decides the path */}
       <div className="mb-5">
         <p className={labelClass}>
-          Are you a Celtic plc shareholder? <span className="text-red-500">*</span>
+          Do you hold shares in Celtic plc? <span className="text-red-500">*</span>
         </p>
         <div className="flex gap-6">
           {(["Yes", "No"] as const).map((opt) => (
             <label key={opt} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
               <input
-                type="radio" name="isShareholder" value={opt}
-                className={radioClass}
+                type="radio" name="isShareholder" value={opt} className={radioClass}
                 onChange={() => {
                   setIsShareholder(opt === "Yes");
-                  if (opt === "No") setShareholderType("");
+                  if (opt === "No") { setHowHeld(""); setPlatform(""); }
                 }}
               />
               {opt}
@@ -235,137 +227,207 @@ export default function ResolutionForm() {
         </div>
       </div>
 
-      {/* 5. How do you hold shares? (conditional) */}
-      {isShareholder && (
-        <div className="mb-5 pl-4 border-l-2 border-csl-light">
-          <p className={labelClass}>
-            How do you hold your shares? <span className="text-red-500">*</span>
-          </p>
-          <div className="flex flex-col gap-3">
-            <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
-              <input
-                type="radio" name="shareholderType" value="direct"
-                className={`${radioClass} mt-0.5`}
-                onChange={() => setShareholderType("direct")}
-              />
-              <span>Directly on the Celtic share register (Computershare)</span>
-            </label>
-            <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
-              <input
-                type="radio" name="shareholderType" value="nominee"
-                className={`${radioClass} mt-0.5`}
-                onChange={() => setShareholderType("nominee")}
-              />
-              <span>Through a nominee, broker, ISA, SIPP or platform</span>
-            </label>
-          </div>
+      {isShareholder === false && (
+        <div className="mb-5 px-4 py-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-[0.85rem] leading-relaxed">
+          Only Celtic plc shareholders can support this requisition, so we cannot record a signature
+          from you. You can still register your support below, and joining CSL is the most direct way
+          to back the campaign.
         </div>
       )}
 
-      {/* 6. Computershare SRN (conditional) */}
-      {isShareholder && shareholderType === "direct" && (
-        <div className="mb-5 pl-4 border-l-2 border-csl-light">
-          <label htmlFor="computershareSrn" className={labelClass}>
-            Computershare Shareholder Reference Number (SRN)
-          </label>
-          <p className="text-[0.78rem] text-gray-500 mb-1.5">
-            This is on your share certificate or Computershare correspondence. Leave blank if you don&apos;t have it to hand.
-          </p>
-          <input
-            id="computershareSrn" name="computershareSrn" type="text"
-            placeholder="e.g. C0001234567"
-            className={inputClass}
-          />
-        </div>
-      )}
-
-      {/* 7. Nominee platform (conditional) */}
-      {isShareholder && shareholderType === "nominee" && (
-        <div className="mb-5 pl-4 border-l-2 border-csl-light">
-          <label htmlFor="nomineePlatform" className={labelClass}>
-            Platform or broker name
-          </label>
-          <input
-            id="nomineePlatform" name="nomineePlatform" type="text"
-            placeholder="e.g. Hargreaves Lansdown, AJ Bell, ii"
-            className={inputClass}
-          />
-        </div>
-      )}
-
-      {/* 8. Approximate shares (all shareholders) */}
-      {isShareholder && (
-        <div className="mb-5 pl-4 border-l-2 border-csl-light">
-          <label htmlFor="approximateShares" className={labelClass}>
-            Approximate number of shares held
-          </label>
-          <input
-            id="approximateShares" name="approximateShares" type="number"
-            min="1" placeholder="e.g. 500"
-            className={inputClass}
-          />
-        </div>
-      )}
-
-      {/* 9. CSL member? */}
+      {/* 2. Name and email, both paths */}
       <div className="mb-5">
-        <p className={labelClass}>
-          Are you a CSL member? <span className="text-red-500">*</span>
-        </p>
-        <p className="text-[0.78rem] text-gray-500 mb-1.5">
-          For information only. We will verify automatically.
-        </p>
-        <div className="flex gap-6">
-          {(["Yes", "No"] as const).map((opt) => (
-            <label key={opt} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-              <input
-                type="radio" name="isMember" value={opt}
-                className={radioClass}
-                onChange={() => setIsMember(opt === "Yes")}
-              />
-              {opt}
-            </label>
-          ))}
-        </div>
-      </div>
-
-      {/* 10. Declaration */}
-      <div className="mb-5 p-4 bg-gray-50 rounded-lg border border-gray-200">
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={declaration}
-            onChange={(e) => setDeclaration(e.target.checked)}
-            className="mt-0.5 w-4 h-4 accent-csl-dark shrink-0"
-          />
-          <span className="text-[0.82rem] text-gray-700 leading-snug">
-            I support Celtic Supporters Limited requisitioning a resolution at the next Celtic plc Annual General Meeting. If I am a shareholder, I confirm I hold shares in Celtic plc. I understand CSL will use my details to submit and verify this requisition.{" "}
-            <span className="text-red-500">*</span>
-          </span>
-        </label>
-      </div>
-
-      {/* 11. Typed signature */}
-      <div className="mb-5">
-        <label htmlFor="typedSignature" className={labelClass}>
-          Type your full name as your electronic signature <span className="text-red-500">*</span>
+        <label htmlFor="fullName" className={labelClass}>
+          Full name <span className="text-red-500">*</span>
         </label>
         <input
-          id="typedSignature" name="typedSignature" type="text" required
-          placeholder="Your full name"
-          className={`${inputClass} italic`}
+          id="fullName" name="fullName" type="text" required
+          value={prefillName} onChange={(e) => setPrefillName(e.target.value)}
+          placeholder="e.g. James McPherson" className={inputClass}
         />
       </div>
 
-      {/* 12. Today's date (read-only) */}
-      <div className="mb-6">
-        <p className={labelClass}>Date</p>
-        <p className="text-[0.92rem] text-gray-600 px-3.5 py-2.5 bg-gray-50 rounded-lg border border-gray-200">
-          {today}
-        </p>
+      <div className="mb-5">
+        <label htmlFor="email" className={labelClass}>
+          Email address <span className="text-red-500">*</span>
+        </label>
+        <input
+          id="email" name="email" type="email" required
+          value={prefillEmail} onChange={(e) => setPrefillEmail(e.target.value)}
+          placeholder="your@email.com" className={inputClass}
+        />
       </div>
 
-      {/* Turnstile */}
+      {isShareholder === true && (
+        <>
+          {/* 3. Address, four discrete fields for register reconciliation */}
+          <div className="mb-5">
+            <p className={labelClass}>
+              Registered address <span className="text-red-500">*</span>
+            </p>
+            <p className={hintClass}>
+              As held on the Celtic share register or by your platform. We use this to match your
+              holding before lodging the requisition.
+            </p>
+            <input
+              id="addressLine1" name="addressLine1" type="text" required
+              placeholder="Address line 1" className={`${inputClass} mb-2`}
+            />
+            <input
+              id="addressLine2" name="addressLine2" type="text"
+              placeholder="Address line 2 (optional)" className={`${inputClass} mb-2`}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <input id="addressTown" name="addressTown" type="text" required placeholder="Town or city" className={inputClass} />
+              <input id="addressPostcode" name="addressPostcode" type="text" required placeholder="Postcode" className={inputClass} />
+            </div>
+          </div>
+
+          {/* 4. How held */}
+          <div className="mb-5">
+            <p className={labelClass}>
+              How do you hold your shares? <span className="text-red-500">*</span>
+            </p>
+            <div className="flex flex-col gap-3">
+              <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
+                <input type="radio" name="howHeld" value="direct" className={`${radioClass} mt-0.5`} onChange={() => setHowHeld("direct")} />
+                <span>Directly on the Celtic share register (Computershare)</span>
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
+                <input type="radio" name="howHeld" value="nominee" className={`${radioClass} mt-0.5`} onChange={() => setHowHeld("nominee")} />
+                <span>Through a nominee, broker, ISA, SIPP or platform</span>
+              </label>
+            </div>
+          </div>
+
+          {howHeld === "direct" && (
+            <div className={branchClass}>
+              <label htmlFor="computershareSrn" className={labelClass}>
+                Computershare Shareholder Reference Number (SRN) <span className="text-red-500">*</span>
+              </label>
+              <p className={hintClass}>
+                On your share certificate or any Computershare correspondence. We need this to match
+                you to the share register, so a signature without it cannot be counted.
+              </p>
+              <input id="computershareSrn" name="computershareSrn" type="text" required placeholder="e.g. C0001234567" className={inputClass} />
+            </div>
+          )}
+
+          {howHeld === "nominee" && (
+            <div className={branchClass}>
+              <label htmlFor="nomineePlatform" className={labelClass}>
+                Platform or broker <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="nomineePlatform" name="nomineePlatform" required className={inputClass}
+                value={platform} onChange={(e) => setPlatform(e.target.value)}
+              >
+                <option value="">-- Select --</option>
+                {nomineePlatforms.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+              {platform === "Other" && (
+                <input
+                  id="nomineePlatformOther" name="nomineePlatformOther" type="text" required
+                  placeholder="Name of platform or broker" className={`${inputClass} mt-2`}
+                />
+              )}
+            </div>
+          )}
+
+          {/* 5. Holding detail */}
+          <div className="mb-5">
+            <label htmlFor="shareClass" className={labelClass}>
+              Share class <span className="text-red-500">*</span>
+            </label>
+            <div className="flex flex-col gap-2.5">
+              {[
+                { v: "ORD", l: "Ordinary shares (ORD)" },
+                { v: "CCP", l: "Convertible Cumulative Preference shares (CCP)" },
+                { v: "BOTH", l: "Both" },
+              ].map(({ v, l }) => (
+                <label key={v} className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
+                  <input type="radio" name="shareClass" value={v} required className={`${radioClass} mt-0.5`} />
+                  <span>{l}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="yearOfPurchase" className={labelClass}>Year of purchase</label>
+              <select id="yearOfPurchase" name="yearOfPurchase" className={inputClass} defaultValue="">
+                <option value="">-- Select --</option>
+                {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="sharesHeld" className={labelClass}>Approximate shares held</label>
+              <select id="sharesHeld" name="sharesHeld" className={inputClass} defaultValue="">
+                <option value="">-- Select --</option>
+                {shareBands.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* 6. Eligibility, discrete tick */}
+          <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={eligibility} onChange={(e) => setEligibility(e.target.checked)} className="mt-0.5 w-4 h-4 accent-csl-dark shrink-0" />
+              <span className="text-[0.82rem] text-gray-700 leading-snug">
+                I am a registered holder of, or hold through a nominee, shares in Celtic plc.{" "}
+                <span className="text-red-500">*</span>
+              </span>
+            </label>
+          </div>
+
+          {/* 7. Resolution support, discrete tick. Package 3 renders the wording
+              above this tick; until then the page does not offer signing. */}
+          <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={supported} onChange={(e) => setSupported(e.target.checked)} className="mt-0.5 w-4 h-4 accent-csl-dark shrink-0" />
+              <span className="text-[0.82rem] text-gray-700 leading-snug">
+                I support this resolution being put to the AGM. <span className="text-red-500">*</span>
+              </span>
+            </label>
+          </div>
+        </>
+      )}
+
+      {/* 8. Consent, both paths */}
+      {isShareholder !== null && (
+        <div className="mb-5 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 w-4 h-4 accent-csl-dark shrink-0" />
+            <span className="text-[0.82rem] text-gray-700 leading-snug">
+              I consent to Celtic Supporters Limited storing and processing my personal data for this
+              requisition, in accordance with the{" "}
+              <Link href="/privacy" className="text-csl-dark underline">Privacy Policy</Link>.{" "}
+              <span className="text-red-500">*</span>
+            </span>
+          </label>
+        </div>
+      )}
+
+      {/* 9. Signature, shareholders only */}
+      {isShareholder === true && (
+        <>
+          <div className="mb-5">
+            <label htmlFor="signatureName" className={labelClass}>
+              Type your full name as your electronic signature <span className="text-red-500">*</span>
+            </label>
+            <input id="signatureName" name="signatureName" type="text" required placeholder="Your full name" className={`${inputClass} italic`} />
+          </div>
+
+          <div className="mb-6">
+            <p className={labelClass}>Date</p>
+            <p className="text-[0.92rem] text-gray-600 px-3.5 py-2.5 bg-gray-50 rounded-lg border border-gray-200">
+              {today}
+            </p>
+          </div>
+        </>
+      )}
+
       <div className="mb-4 flex justify-center">
         <Turnstile
           ref={turnstileRef}
@@ -373,21 +435,24 @@ export default function ResolutionForm() {
           onSuccess={(token) => { setTurnstileToken(token); setTurnstileError(""); }}
         />
       </div>
-      {turnstileError && (
-        <p className="mb-4 text-[0.8rem] text-red-600 text-center">{turnstileError}</p>
-      )}
+      {turnstileError && <p className="mb-4 text-[0.8rem] text-red-600 text-center">{turnstileError}</p>}
 
       <button
         type="submit"
-        disabled={state === "submitting"}
+        disabled={state === "submitting" || isShareholder === null}
         className="w-full flex justify-center items-center py-3.5 rounded-lg text-base font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
       >
-        {state === "submitting" ? "Recording signature..." : "Add my signature"}
+        {state === "submitting"
+          ? "Submitting..."
+          : isShareholder === false
+          ? "Register my support"
+          : "Add my signature"}
       </button>
 
-      {/* Privacy notice */}
       <p className="text-center text-[0.78rem] text-gray-400 mt-4 leading-relaxed">
-        Celtic Supporters Limited is registered with the ICO (ZB985030). Your details will be used to submit and verify this requisition and for related campaign communications. They will not be passed to third parties. To request deletion, contact{" "}
+        Celtic Supporters Limited is registered with the ICO (ZB985030). Your details will be used to
+        submit and verify this requisition and for related campaign communications. They will not be
+        passed to third parties. To request deletion, contact{" "}
         <a href="mailto:info@celticsupporters.net" className="underline">info@celticsupporters.net</a>.
         {" "}
         <Link href="/privacy" className="underline">Full privacy policy.</Link>
