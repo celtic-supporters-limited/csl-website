@@ -99,6 +99,10 @@ async function signIn(page: Page, email: string, password: string) {
     page.waitForResponse((r) => r.url().includes("/auth/v1/token") && r.status() === 200, { timeout: 15_000 }),
     page.click('button[type="submit"]'),
   ]);
+  // Wait for the post-login redirect to settle before firing any
+  // page.request.* calls - the session cookie is not guaranteed to be
+  // attached until the client has actually navigated to /member-portal.
+  await page.waitForURL(/\/member-portal/, { timeout: 20_000 });
 }
 
 let ipCounter = 40;
@@ -172,6 +176,9 @@ test("declaration_text, consent_text and supporting_statement cannot be updated,
 
   for (const [column, patch] of attempts) {
     const { error } = await db().from("agm_resolution_versions").update(patch).eq("id", id);
+    // Printed for the session report - Gary asked for the four actual
+    // messages, not just a pass/fail.
+    console.log(`IMMUTABILITY [${column}]:`, error?.message);
     expect(error, `${column} should be immutable`).not.toBeNull();
     expect(error?.message).toMatch(new RegExp(`${column} is immutable`));
   }
@@ -300,6 +307,9 @@ test("making a different version current does not alter an existing signature's 
 
     const { data: signatureAfter } = await db()
       .from("agm_signatures").select("resolution_version_id").eq("email", email).single();
+    // Printed for the session report - this is the test that distinguishes a
+    // version history from a guarantee.
+    console.log("TEST 4 RESULT: versionA =", versionA, "| versionB (now current) =", versionB, "| signature.resolution_version_id after activating B =", signatureAfter.resolution_version_id);
     expect(signatureAfter.resolution_version_id).toBe(versionA);
     expect(signatureAfter.resolution_version_id).not.toBe(versionB);
   } finally {
@@ -363,14 +373,17 @@ test("supporting statement renders when set and is absent when null", async ({ p
     await page.goto("/resolution", { waitUntil: "domcontentloaded" });
     await page.getByRole("radio", { name: "Yes" }).first().check();
     let body = await page.locator("body").innerText();
-    expect(body).toContain("Supporting Statement");
+    // Case-insensitive: the heading has an `uppercase` CSS class, and
+    // innerText() reflects the rendered (CSS-transformed) text, not the JSX
+    // literal, so the literal-case string never matches here.
+    expect(body).toMatch(/supporting statement/i);
     expect(body).toContain("UNIQUE-STATEMENT-TEXT-12345");
 
     await setCurrentDirect(withoutStatement);
     await page.goto("/resolution", { waitUntil: "domcontentloaded" });
     await page.getByRole("radio", { name: "Yes" }).first().check();
     body = await page.locator("body").innerText();
-    expect(body).not.toContain("Supporting Statement");
+    expect(body).not.toMatch(/supporting statement/i);
   } finally {
     await setConfig("resolution_open", "false");
   }
@@ -439,6 +452,9 @@ test("no edit action exists on the version management page", async ({ page }) =>
   await expect(page.getByRole("button", { name: /^edit$/i })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /^edit$/i })).toHaveCount(0);
 
-  const body = await page.locator("body").innerText();
-  expect(body).not.toMatch(/\bEdit\b/);
+  // Scoped to the table, not the whole page: the portal shell's own sidebar
+  // has an unrelated "Edit Profile" link, which a page-wide check would
+  // wrongly flag.
+  const tableText = await page.locator("table").innerText();
+  expect(tableText).not.toMatch(/\bEdit\b/);
 });
