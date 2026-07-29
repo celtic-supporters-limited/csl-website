@@ -338,10 +338,13 @@ test("public page renders the current version's resolution, declaration and cons
     // The resolution/declaration/consent block only renders once the
     // shareholder branch is chosen.
     await page.getByRole("radio", { name: "Yes" }).first().check();
-    const body = await page.locator("body").innerText();
-    expect(body).toContain(`RESOLUTION-${marker}`);
-    expect(body).toContain(`DECLARATION-${marker}`);
-    expect(body).toContain(`CONSENT-${marker}`);
+    // Scoped to the form, not the whole page: markers are unique so a
+    // page-wide match could not have false-positived, but there is no reason
+    // to read wider than the element the content actually renders into.
+    const formText = await page.locator("form").innerText();
+    expect(formText).toContain(`RESOLUTION-${marker}`);
+    expect(formText).toContain(`DECLARATION-${marker}`);
+    expect(formText).toContain(`CONSENT-${marker}`);
   } finally {
     await setConfig("resolution_open", "false");
   }
@@ -372,18 +375,19 @@ test("supporting statement renders when set and is absent when null", async ({ p
     await setCurrentDirect(withStatement);
     await page.goto("/resolution", { waitUntil: "domcontentloaded" });
     await page.getByRole("radio", { name: "Yes" }).first().check();
-    let body = await page.locator("body").innerText();
+    // Scoped to the form, not the whole page - same reasoning as test 5.
+    let formText = await page.locator("form").innerText();
     // Case-insensitive: the heading has an `uppercase` CSS class, and
     // innerText() reflects the rendered (CSS-transformed) text, not the JSX
     // literal, so the literal-case string never matches here.
-    expect(body).toMatch(/supporting statement/i);
-    expect(body).toContain("UNIQUE-STATEMENT-TEXT-12345");
+    expect(formText).toMatch(/supporting statement/i);
+    expect(formText).toContain("UNIQUE-STATEMENT-TEXT-12345");
 
     await setCurrentDirect(withoutStatement);
     await page.goto("/resolution", { waitUntil: "domcontentloaded" });
     await page.getByRole("radio", { name: "Yes" }).first().check();
-    body = await page.locator("body").innerText();
-    expect(body).not.toMatch(/supporting statement/i);
+    formText = await page.locator("form").innerText();
+    expect(formText).not.toMatch(/supporting statement/i);
   } finally {
     await setConfig("resolution_open", "false");
   }
@@ -432,7 +436,12 @@ test("admin version list shows the correct signature count", async ({ page, requ
 
     const row = page.locator("tr", { hasText: `P3 count probe` });
     await expect(row.first()).toBeVisible();
-    await expect(row.first()).toContainText("1");
+    // Scoped to the Signatures cell specifically, not the whole row: the
+    // row's own label embeds a Date.now() timestamp, which always contains a
+    // literal "1" somewhere, so a whole-row toContainText("1") would pass
+    // regardless of what the count actually said. Column order is Label, AGM,
+    // Created, By, State, Signatures, Action - Signatures is index 5.
+    await expect(row.first().locator("td").nth(5)).toHaveText("1");
   } finally {
     await cleanupSignature(email);
     await setConfig("resolution_open", "false");

@@ -44,54 +44,32 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
-type SectionTone = {
-  badgeBg: string;
-  badgeText: string;
-  cardBg: string;
-  cardBorder: string;
-  labelText: string;
-};
-
-const RESOLUTION_TONE: SectionTone = {
-  badgeBg: "bg-csl-light", badgeText: "text-csl-dark",
-  cardBg: "bg-csl-light/60", cardBorder: "border-csl-dark/20", labelText: "text-csl-dark",
-};
-const STATEMENT_TONE: SectionTone = {
-  badgeBg: "bg-blue-100", badgeText: "text-blue-800",
-  cardBg: "bg-blue-50", cardBorder: "border-blue-200", labelText: "text-blue-800",
-};
-const DECLARATION_TONE: SectionTone = {
-  badgeBg: "bg-amber-100", badgeText: "text-amber-800",
-  cardBg: "bg-amber-50", cardBorder: "border-amber-200", labelText: "text-amber-800",
-};
-const CONSENT_TONE: SectionTone = {
-  badgeBg: "bg-purple-100", badgeText: "text-purple-800",
-  cardBg: "bg-purple-50", cardBorder: "border-purple-200", labelText: "text-purple-800",
-};
-
 /**
  * One of the four texts, styled as its own card so it reads as a distinct
- * section rather than blending into the ones either side of it - each gets
- * its own colour identity, held constant everywhere this appears.
+ * section rather than blending into the ones either side of it.
+ *
+ * One neutral treatment for all four, deliberately. Colour-coding them was
+ * tried and dropped: amber already means "not open" on this same screen, in
+ * the signing state notice and on the gate toggles, so giving Declaration an
+ * amber card made colour carry two meanings at once. The icon and the label
+ * text are what tell the four sections apart, not their colour.
  */
 function ContentSection({
   icon,
   label,
   text,
-  tone,
 }: {
   icon: React.ReactNode;
   label: string;
   text: string;
-  tone: SectionTone;
 }) {
   return (
-    <div className={`rounded-lg border p-3.5 ${tone.cardBg} ${tone.cardBorder}`}>
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3.5">
       <div className="flex items-center gap-2 mb-2">
-        <span className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${tone.badgeBg} ${tone.badgeText}`} aria-hidden="true">
+        <span className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-csl-light text-csl-dark" aria-hidden="true">
           {icon}
         </span>
-        <p className={`text-[0.68rem] font-bold uppercase tracking-wider ${tone.labelText}`}>{label}</p>
+        <p className="text-[0.68rem] font-bold uppercase tracking-wider text-csl-dark">{label}</p>
       </div>
       <p className="text-[0.82rem] text-gray-800 leading-relaxed whitespace-pre-line">{text}</p>
     </div>
@@ -109,7 +87,6 @@ function VersionContent({ version }: { version: VersionRow }) {
   return (
     <div className="space-y-2.5">
       <ContentSection
-        tone={RESOLUTION_TONE}
         label="Resolution"
         text={version.body}
         icon={
@@ -121,7 +98,6 @@ function VersionContent({ version }: { version: VersionRow }) {
       />
       {version.supporting_statement && (
         <ContentSection
-          tone={STATEMENT_TONE}
           label="Supporting Statement"
           text={version.supporting_statement}
           icon={
@@ -132,7 +108,6 @@ function VersionContent({ version }: { version: VersionRow }) {
         />
       )}
       <ContentSection
-        tone={DECLARATION_TONE}
         label="Declaration"
         text={version.declaration_text}
         icon={
@@ -143,7 +118,6 @@ function VersionContent({ version }: { version: VersionRow }) {
         }
       />
       <ContentSection
-        tone={CONSENT_TONE}
         label="Consent"
         text={version.consent_text}
         icon={
