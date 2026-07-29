@@ -18,12 +18,15 @@ const PASSWORD = process.env.TEST_USER_PASSWORD ?? "";
 const EXPECTED = [
   "Member Support",
   "Operational Status",
-  "AGM Resolution Progress",
+  "AGM Resolution",
 ];
 const STALE = [
   "Member Events",
   "Operations",
-  "Resolution",
+  // Pre-redesign labels, both retired when the two AGM admin pages merged
+  // into one - see docs/agm/CSL_AGM_AdminRedesign_ClaudeCode_Prompt.md.
+  "AGM Resolution Progress",
+  "AGM Resolution Versions",
 ];
 
 async function login(page: Page) {

@@ -49,7 +49,10 @@ function db() {
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 }
 
-const TEST_VERSION_LABEL = "Automated test version";
+// Prefixed so a row left behind by an interrupted run is identifiable on the
+// admin Versions page, same convention as tests/agm-p3-resolution-content.spec.ts
+// and tests/site-gates.spec.ts.
+const TEST_VERSION_LABEL = "[TEST] Automated test version";
 let testVersionId = "";
 let previousGateValue: string | null = null;
 let previousCurrentVersionId: string | null = null;
@@ -125,13 +128,17 @@ async function signIn(page: Page, email: string, password: string) {
   await page.waitForURL(/\/member-portal/, { timeout: 20_000 });
 }
 
-/** Reads a stat card's value by its label. The value <p> is the label <p>'s
- * immediately preceding sibling - see the stat card markup in
- * ResolutionAdminClient.tsx. */
-async function readStatValue(page: Page, label: string): Promise<number> {
-  const labelEl = page.getByText(label, { exact: true });
-  const valueText = await labelEl.locator("xpath=preceding-sibling::p[1]").innerText();
-  return Number(valueText.replace(/,/g, ""));
+/** Reads the direct registered shareholder count from the admin redesign's
+ * single combined line ("N of 100 direct registered shareholders") - see
+ * ResolutionAdminClient.tsx. There is no longer a separate "Complete
+ * signatures" figure to read; that KPI card was deleted in the redesign
+ * (docs/agm/CSL_AGM_AdminRedesign_ClaudeCode_Prompt.md section 4), so this
+ * test only tracks the one number that still exists. */
+async function readDirectCount(page: Page): Promise<number> {
+  const text = await page.getByText(/of [\d,]+ direct registered shareholders/i).innerText();
+  const match = text.match(/^([\d,]+) of/);
+  if (!match) throw new Error(`Could not parse direct count from "${text}"`);
+  return Number(match[1].replace(/,/g, ""));
 }
 
 test.describe.configure({ mode: "serial" });
@@ -481,12 +488,16 @@ test("pre_rebuild rows do not count toward the target, per the rendered admin pa
     // count that depends on whatever else is on staging.
     await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
     await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
-    const directBefore = await readStatValue(page, "Direct registered shareholders");
-    const completeBefore = await readStatValue(page, "Complete signatures");
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+    const directBefore = await readDirectCount(page);
 
     expect((await sign(request, validBody(completeEmail))).status()).toBe(200);
 
-    // Insert a pre_rebuild row directly: the API never produces one.
+    // Insert a pre_rebuild row directly: the API never produces one. Carries
+    // an SRN deliberately, so the row's own gap is the wording-version
+    // binding it predates, not a missing SRN - see rowStatus() in
+    // ResolutionAdminClient.tsx, which checks SRN first and would otherwise
+    // report the wrong reason.
     const { error } = await db().from("agm_signatures").insert({
       full_name: "Preserved Row",
       email: preEmail,
@@ -504,19 +515,23 @@ test("pre_rebuild rows do not count toward the target, per the rendered admin pa
     await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
 
     // Both rows are direct-registered, but only the complete one may count.
-    // This reads the app's own filter, via the rendered page, rather than
+    // This reads the app's own count, via the rendered page, rather than
     // re-deriving the filter in the test and asserting on the test's own
-    // arithmetic - it fails if the app's counting logic changes.
-    expect(await readStatValue(page, "Direct registered shareholders")).toBe(directBefore + 1);
-    expect(await readStatValue(page, "Complete signatures")).toBe(completeBefore + 1);
+    // arithmetic - it fails if the app's counting logic changes. There is no
+    // separate "complete signatures" figure any more - that KPI card was
+    // deleted in the admin redesign - so direct count is the only number
+    // this test can still track.
+    expect(await readDirectCount(page)).toBe(directBefore + 1);
 
-    // The amber banner names the pre_rebuild row.
+    // The amber banner names the pre_rebuild row by count.
     await expect(page.getByText(/record.*need completion/i).first()).toBeVisible();
 
-    // Each row's own badge is distinct: the preserved row reads "Needs
-    // completion", the fresh one reads "Complete".
+    // Each row's own Status cell is specific to what is actually wrong with
+    // it, not a generic "needs completion" - the preserved row has an SRN,
+    // so what is wrong is that it predates the wording binding and the
+    // person has to sign again; the fresh row is simply complete.
     const preRow = page.locator("tr", { hasText: preEmail });
-    await expect(preRow.getByText("Needs completion")).toBeVisible();
+    await expect(preRow.getByText("Needs to re-sign")).toBeVisible();
 
     const completeRow = page.locator("tr", { hasText: completeEmail });
     await expect(completeRow.getByText("Complete", { exact: true })).toBeVisible();

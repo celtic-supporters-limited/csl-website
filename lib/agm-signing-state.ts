@@ -48,23 +48,28 @@ export async function getResolutionSigningState(): Promise<ResolutionSigningStat
 
   const canSign = gateOpen && hasCurrentVersion && !wordingIsPlaceholder;
 
+  // "Shareholders", never "members" or "people": many signatories are not CSL
+  // members, and the point of this line is who is actually signing. "Final",
+  // never "placeholder": this headline is read by two volunteers who are not
+  // technical, and neither word means anything to them that "final" does not
+  // say more plainly.
   let headline: string;
   let blockedReason: string | null = null;
 
   if (canSign) {
-    headline = `Signing: OPEN. Members can sign against "${currentVersionLabel}".`;
+    headline = `Signing: OPEN. Shareholders are signing "${currentVersionLabel}".`;
   } else if (!gateOpen && wordingIsPlaceholder) {
-    headline = "Signing: CLOSED. Gate is closed and the wording is still a placeholder.";
+    headline = "Signing: CLOSED. Gate is closed and the wording has not been finalised.";
   } else if (!gateOpen) {
     headline = "Signing: CLOSED. Gate is closed.";
   } else if (!hasCurrentVersion) {
     headline =
-      "Signing: CLOSED. No resolution version is current. Opening the gate will not enable signing until one is.";
-    blockedReason = "no resolution version is current";
+      "Signing: CLOSED. No wording has been saved yet. Opening the gate will not enable signing until it is.";
+    blockedReason = "no wording has been saved yet";
   } else {
     headline =
-      "Signing: CLOSED. The resolution wording is a placeholder. Opening the gate will not enable signing until a real version is current.";
-    blockedReason = "the resolution wording is still a placeholder";
+      "Signing: CLOSED. The wording has not been finalised. Opening the gate will not enable signing until it is marked final.";
+    blockedReason = "the wording has not been finalised";
   }
 
   return {

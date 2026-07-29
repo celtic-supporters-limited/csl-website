@@ -170,8 +170,7 @@ export default function PortalShell({ user, member, children }: Props) {
                         { href: "/member-portal/admin/cases",         label: "Cases"         },
                         { href: "/member-portal/admin/reporting",     label: "Reporting"     },
                         { href: "/member-portal/admin/operations",    label: "Operational Status"       },
-                        { href: "/member-portal/admin/resolution",    label: "AGM Resolution Progress"  },
-                        { href: "/member-portal/admin/resolution/versions", label: "AGM Resolution Versions" },
+                        { href: "/member-portal/admin/resolution",    label: "AGM Resolution"  },
                         { href: "/member-portal/admin/documents/new", label: "Add Document"  },
                       ].map((item) => (
                         <Link
@@ -229,8 +228,7 @@ export default function PortalShell({ user, member, children }: Props) {
                         { href: "/member-portal/admin/cases",         icon: "&#128269;", label: "Cases"          },
                         { href: "/member-portal/admin/reporting",     icon: "&#128202;", label: "Reporting"      },
                         { href: "/member-portal/admin/operations",    icon: "&#9881;",   label: "Operational Status"      },
-                        { href: "/member-portal/admin/resolution",    icon: "&#128393;", label: "AGM Resolution Progress" },
-                        { href: "/member-portal/admin/resolution/versions", icon: "&#128220;", label: "AGM Resolution Versions" },
+                        { href: "/member-portal/admin/resolution",    icon: "&#128393;", label: "AGM Resolution" },
                         { href: "/member-portal/admin/documents/new", icon: "&#128196;", label: "Add Document"   },
                       ].map((item) => (
                         <li key={item.href}>
@@ -269,8 +267,15 @@ export default function PortalShell({ user, member, children }: Props) {
               </div>
             </aside>
 
-            {/* Main content */}
-            <div>{children}</div>
+            {/* Main content. min-w-0 overrides the grid item's default
+                min-width: auto, which otherwise lets the signature table's
+                min-content width (driven by whitespace-nowrap on every
+                column) force this 1fr track wider than its container -
+                measured at 154px of page overflow at 1508px client width
+                before this fix. See
+                docs/agm/CSL_AGM_AdminPages_SimplificationAudit_ClaudeCode_Prompt.md
+                section 6. */}
+            <div className="min-w-0">{children}</div>
           </div>
         </div>
       </section>

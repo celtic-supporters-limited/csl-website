@@ -520,10 +520,21 @@ export default function ResolutionForm({
           : "Add my signature"}
       </button>
 
+      {/* This sentence is the one place this page states what happens to a
+          person's data beyond CSL. It must match the path: a signature is a
+          section 338 request, which by law discloses name and address to
+          Celtic plc - the consentText above already says so. A supporter is
+          not making that request, so nothing of theirs goes onward. The two
+          sentences are written independently so neither can drift into
+          covering the other path by accident. While no path is chosen yet,
+          neither claim is shown. */}
       <p className="text-center text-[0.78rem] text-gray-400 mt-4 leading-relaxed">
-        Celtic Supporters Limited is registered with the ICO (ZB985030). Your details will be used to
-        submit and verify this requisition and for related campaign communications. They will not be
-        passed to third parties. To request deletion, contact{" "}
+        Celtic Supporters Limited is registered with the ICO (ZB985030).{" "}
+        {isShareholder === true &&
+          "As required for a section 338 request, your name and address will be provided to Celtic plc as part of this requisition."}
+        {isShareholder === false &&
+          "Your details are used to register your support for this campaign and are not passed to third parties."}
+        {" "}To request deletion, contact{" "}
         <a href="mailto:info@celticsupporters.net" className="underline">info@celticsupporters.net</a>.
         {" "}
         <Link href="/privacy" className="underline">Full privacy policy.</Link>

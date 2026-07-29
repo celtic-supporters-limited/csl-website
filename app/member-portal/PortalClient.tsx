@@ -2272,8 +2272,7 @@ export default function PortalClient({
                         { href: "/member-portal/admin/cases",         label: "Cases"                   },
                         { href: "/member-portal/admin/reporting",     label: "Reporting"               },
                         { href: "/member-portal/admin/operations",    label: "Operational Status"      },
-                        { href: "/member-portal/admin/resolution",    label: "AGM Resolution Progress" },
-                        { href: "/member-portal/admin/resolution/versions", label: "AGM Resolution Versions" },
+                        { href: "/member-portal/admin/resolution",    label: "AGM Resolution"          },
                         { href: "/member-portal/admin/documents/new", label: "Add Document"            },
                       ].map((item) => (
                         <Link
@@ -2345,8 +2344,7 @@ export default function PortalClient({
                         { href: "/member-portal/admin/cases",         icon: "&#128269;", label: "Cases"                   },
                         { href: "/member-portal/admin/reporting",     icon: "&#128202;", label: "Reporting"               },
                         { href: "/member-portal/admin/operations",    icon: "&#9881;",   label: "Operational Status"      },
-                        { href: "/member-portal/admin/resolution",    icon: "&#9998;",   label: "AGM Resolution Progress" },
-                        { href: "/member-portal/admin/resolution/versions", icon: "&#128220;", label: "AGM Resolution Versions" },
+                        { href: "/member-portal/admin/resolution",    icon: "&#9998;",   label: "AGM Resolution"          },
                         { href: "/member-portal/admin/documents/new", icon: "&#128196;", label: "Add Document"            },
                       ].map((item) => (
                         <li key={item.href}>
