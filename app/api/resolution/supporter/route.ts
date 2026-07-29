@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   let body: {
     // Honeypot. See the matching note in app/api/resolution/sign/route.ts.
-    website?: string;
+    hpField?: string;
     fullName?: string;
     email?: string;
     consentGiven?: boolean;
@@ -60,7 +60,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  if (body.website) {
+  if (body.hpField) {
+    console.error(
+      `[resolution/supporter] honeypot triggered: email=${body.email ?? "(none)"} at=${new Date().toISOString()}`
+    );
     return NextResponse.json({ ok: true, firstName: "" });
   }
 

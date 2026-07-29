@@ -449,21 +449,33 @@ test("admin version list shows the correct signature count", async ({ page, requ
 });
 
 // ---------------------------------------------------------------------------
-// 9. No edit affordance anywhere in the admin UI
+// 9. No edit affordance for the four immutable content fields
 // ---------------------------------------------------------------------------
+//
+// This test used to assert there was no "Edit" anywhere on the page at all.
+// That contract changed deliberately in the AGM Package 3 amendment: an
+// amendment session added an inline "Edit label" control and a "Duplicate and
+// edit" action, both intentional, so a bare "no text containing Edit" check
+// would now fail for the wrong reason. What must still hold, and is what this
+// test checks now, is that the signed content itself - body, declaration,
+// consent, supporting statement - offers no way to change it in place. The
+// label being editable is asserted as a positive, not treated as an exception
+// to work around.
 
-test("no edit action exists on the version management page", async ({ page }) => {
+test("content fields have no in-place edit affordance; only the label does", async ({ page }) => {
   test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, "TEST_USER_EMAIL / TEST_USER_PASSWORD not set");
 
   await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
   await page.goto("/member-portal/admin/resolution/versions", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("button", { name: /^edit$/i })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /^edit$/i })).toHaveCount(0);
+  // Nothing starts expanded or open, so there should be no textarea anywhere
+  // yet.
+  await expect(page.locator("textarea")).toHaveCount(0);
 
-  // Scoped to the table, not the whole page: the portal shell's own sidebar
-  // has an unrelated "Edit Profile" link, which a page-wide check would
-  // wrongly flag.
-  const tableText = await page.locator("table").innerText();
-  expect(tableText).not.toMatch(/\bEdit\b/);
+  // Expanding a row's read-only content view must not introduce one either.
+  await page.getByRole("button", { name: "Version text" }).first().click();
+  await expect(page.locator("textarea")).toHaveCount(0);
+
+  // The label, by contrast, is intentionally editable inline.
+  await expect(page.getByRole("button", { name: "Edit label" }).first()).toBeVisible();
 });

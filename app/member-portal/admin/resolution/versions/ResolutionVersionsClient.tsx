@@ -44,6 +44,14 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path d="M11 2l3 3-8 8H3v-3l8-8z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /**
  * One of the four texts, styled as its own card so it reads as a distinct
  * section rather than blending into the ones either side of it.
@@ -81,7 +89,10 @@ const iconProps = { viewBox: "0 0 20 20", fill: "none", stroke: "currentColor", 
 /**
  * The four texts of a version, read-only. Shared between the row expansion
  * and the activation confirmation, so the two never drift out of sync with
- * each other or with what the public page actually renders.
+ * each other or with what the public page actually renders. This component
+ * renders plain text nodes only, never an input or textarea - that absence is
+ * what makes the immutability of body/declaration_text/consent_text/
+ * supporting_statement visible in the UI, not just enforced in the database.
  */
 function VersionContent({ version }: { version: VersionRow }) {
   return (
@@ -215,9 +226,190 @@ function ActivateAction({ version }: { version: VersionRow }) {
   );
 }
 
-function CreateVersionForm() {
+/**
+ * Delete a version. The database already refuses this for any version with
+ * a signature against it (ON DELETE RESTRICT on
+ * agm_signatures.resolution_version_id), so the zero-signatures half of the
+ * eligibility check merely exposes something already safe. The not-current
+ * half is not database-enforced - is_current is a plain column, not an FK -
+ * so it is checked here and again server-side.
+ */
+function DeleteAction({ version }: { version: VersionRow }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const eligible = !version.is_current && version.signatureCount === 0;
+
+  if (!eligible) {
+    const reason = version.is_current
+      ? "Cannot delete the current version."
+      : "Has signatures against it - cannot be deleted.";
+    return (
+      <span className="text-[0.75rem] text-gray-300 cursor-not-allowed select-none" title={reason}>
+        Delete
+      </span>
+    );
+  }
+
+  async function del() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/resolution-versions/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: version.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Something went wrong. Try again.");
+        setLoading(false);
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Network error. Try again.");
+      setLoading(false);
+    }
+  }
+
+  if (!confirming) {
+    return (
+      <button onClick={() => setConfirming(true)} className="text-[0.75rem] text-red-600 hover:underline font-medium">
+        Delete
+      </button>
+    );
+  }
+
+  return (
+    <div className="text-[0.75rem] bg-red-50 border border-red-200 rounded-lg p-3 space-y-3 max-w-xs">
+      <p className="text-red-900 leading-snug">
+        Delete <strong>&quot;{version.version_label}&quot;</strong>? It has no signatures against it,
+        but this cannot be undone.
+      </p>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={del}
+          disabled={loading}
+          className="font-semibold text-red-700 hover:underline disabled:opacity-60"
+        >
+          {loading ? "Deleting..." : "Yes, delete"}
+        </button>
+        <button
+          onClick={() => setConfirming(false)}
+          disabled={loading}
+          className="text-red-500 hover:underline disabled:opacity-60"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Inline edit for version_label only. Every other field on a version is
+ * immutable at the database level and has no edit control anywhere in this
+ * file - this is the one exception, because a label is metadata nobody
+ * signs, not evidence of what a signatory saw.
+ */
+function LabelCell({ version }: { version: VersionRow }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(version.version_label);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setError("Label cannot be empty.");
+      return;
+    }
+    if (trimmed === version.version_label) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/resolution-versions/relabel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: version.id, versionLabel: trimmed }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Something went wrong. Try again.");
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
+      setEditing(false);
+      router.refresh();
+    } catch {
+      setError("Network error. Try again.");
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-1.5 group">
+        <p className="font-medium text-gray-900">{version.version_label}</p>
+        <button
+          onClick={() => { setValue(version.version_label); setError(""); setEditing(true); }}
+          className="text-gray-300 hover:text-csl-dark transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+          aria-label="Edit label"
+          title="Edit label"
+        >
+          <PencilIcon />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5 min-w-[200px]">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={saving}
+        autoFocus
+        className="w-full px-2 py-1 text-[0.85rem] border border-gray-300 rounded focus:outline-none focus:border-csl-dark"
+      />
+      <div className="flex items-center gap-3 text-[0.72rem]">
+        <button onClick={save} disabled={saving} className="text-csl-dark font-semibold hover:underline disabled:opacity-60">
+          {saving ? "Saving..." : "Save"}
+        </button>
+        <button
+          onClick={() => { setEditing(false); setError(""); }}
+          disabled={saving}
+          className="text-gray-500 hover:underline disabled:opacity-60"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-red-600 text-[0.72rem]">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Create a new version, blank or pre-filled from an existing one.
+ *
+ * source is null for a from-scratch version and a VersionRow when opened via
+ * "Duplicate and edit" - either way this always creates a new row; there is
+ * no path from here to an update. Keyed by the parent on source?.id so
+ * switching between "Create version" and "Duplicate and edit" on a different
+ * row remounts this component and its uncontrolled defaultValues reset
+ * correctly instead of carrying over stale text.
+ */
+function VersionForm({ source, onClose }: { source: VersionRow | null; onClose: () => void }) {
+  const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -248,24 +440,13 @@ function CreateVersionForm() {
         setSubmitting(false);
         return;
       }
-      setOpen(false);
       setSubmitting(false);
+      onClose();
       router.refresh();
     } catch {
       setError("Network error. Try again.");
       setSubmitting(false);
     }
-  }
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="px-4 py-2 text-sm font-semibold rounded-lg bg-csl-dark text-white hover:bg-csl-mid transition-colors"
-      >
-        Create version
-      </button>
-    );
   }
 
   return (
@@ -274,10 +455,16 @@ function CreateVersionForm() {
       className="bg-white border border-gray-200 rounded-xl p-5 space-y-4"
     >
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-gray-900 text-sm">Create a new version</h2>
+        <h2 className="font-semibold text-gray-900 text-sm">
+          {source ? (
+            <>Duplicate <span className="font-normal text-gray-500">&quot;{source.version_label}&quot;</span></>
+          ) : (
+            "Create a new version"
+          )}
+        </h2>
         <button
           type="button"
-          onClick={() => setOpen(false)}
+          onClick={onClose}
           className="text-[0.78rem] text-gray-500 hover:underline"
         >
           Cancel
@@ -286,11 +473,15 @@ function CreateVersionForm() {
 
       <p className="text-[0.78rem] text-gray-500 leading-relaxed">
         Creates a new version only. It does not become current - do that as a separate,
-        explicit step below once you are ready. There is no edit action anywhere, and the
-        database refuses an update if one is attempted: a signature has to be provably bound
-        to the exact text a person saw. If the wording could change under an existing version
-        after the fact, every signature already recorded against it would become unprovable.
-        Create a new version instead, and activate it when ready.
+        explicit step below once you are ready. There is no edit action anywhere for the
+        four texts below, and the database refuses an update if one is attempted: a
+        signature has to be provably bound to the exact text a person saw. If the wording
+        could change under an existing version after the fact, every signature already
+        recorded against it would become unprovable.
+        {" "}
+        To change wording: duplicate the current version using the button on its row,
+        edit the copy, save it, then make it current. Old signatures keep pointing at the
+        old text - nothing about them changes.
       </p>
 
       {error && (
@@ -301,13 +492,20 @@ function CreateVersionForm() {
 
       <div>
         <label htmlFor="versionLabel" className={labelClass}>Version label</label>
-        <input id="versionLabel" name="versionLabel" type="text" required className={inputClass}
-          placeholder="e.g. Solicitor-approved wording, 1 August 2026" />
+        <input
+          id="versionLabel" name="versionLabel" type="text" required className={inputClass}
+          defaultValue={source ? `Copy of ${source.version_label}` : ""}
+          placeholder="e.g. Solicitor-approved wording, 1 August 2026"
+        />
+        <p className="text-[0.72rem] text-gray-400 mt-1">
+          The label can be edited later from the list. It is metadata, not part of the
+          signed content.
+        </p>
       </div>
 
       <div>
         <label htmlFor="body" className={labelClass}>Resolution text</label>
-        <textarea id="body" name="body" required rows={5} className={inputClass} />
+        <textarea id="body" name="body" required rows={5} className={inputClass} defaultValue={source?.body ?? ""} />
       </div>
 
       <div>
@@ -315,7 +513,10 @@ function CreateVersionForm() {
         <p className="text-[0.72rem] text-gray-400 mb-1">
           Shown next to the tick the signatory makes. Must be in the correct section 338 frame.
         </p>
-        <textarea id="declarationText" name="declarationText" required rows={3} className={inputClass} />
+        <textarea
+          id="declarationText" name="declarationText" required rows={3} className={inputClass}
+          defaultValue={source?.declaration_text ?? ""}
+        />
       </div>
 
       <div>
@@ -323,7 +524,10 @@ function CreateVersionForm() {
         <p className="text-[0.72rem] text-gray-400 mb-1">
           Requisition-specific. Must disclose that details are provided to Celtic plc.
         </p>
-        <textarea id="consentText" name="consentText" required rows={3} className={inputClass} />
+        <textarea
+          id="consentText" name="consentText" required rows={3} className={inputClass}
+          defaultValue={source?.consent_text ?? ""}
+        />
       </div>
 
       <div>
@@ -334,11 +538,17 @@ function CreateVersionForm() {
           Leave blank unless the section 314 statement has been decided. Blank means this
           section does not render at all on the public page.
         </p>
-        <textarea id="supportingStatement" name="supportingStatement" rows={3} className={inputClass} />
+        <textarea
+          id="supportingStatement" name="supportingStatement" rows={3} className={inputClass}
+          defaultValue={source?.supporting_statement ?? ""}
+        />
       </div>
 
       <label className="flex items-center gap-2 cursor-pointer text-[0.8rem] text-gray-700">
-        <input type="checkbox" name="isPlaceholder" className="w-4 h-4 accent-csl-dark" />
+        <input
+          type="checkbox" name="isPlaceholder" className="w-4 h-4 accent-csl-dark"
+          defaultChecked={source?.is_placeholder ?? false}
+        />
         This is a placeholder, not real content signing should ever be collected against
       </label>
 
@@ -362,7 +572,7 @@ function CreateVersionForm() {
  * as the accordion panels on the My Membership portal tab, so an admin who
  * already knows that pattern reads this one the same way.
  */
-function VersionTableRow({ version }: { version: VersionRow }) {
+function VersionTableRow({ version, onDuplicate }: { version: VersionRow; onDuplicate: (v: VersionRow) => void }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -373,7 +583,7 @@ function VersionTableRow({ version }: { version: VersionRow }) {
         }`}
       >
         <td className="px-4 py-3 max-w-xs">
-          <p className="font-medium text-gray-900">{version.version_label}</p>
+          <LabelCell version={version} />
         </td>
         <td className="px-4 py-3 whitespace-nowrap">
           <span className="inline-flex px-2 py-0.5 rounded-full text-[0.72rem] font-semibold bg-csl-light text-csl-dark">
@@ -402,7 +612,16 @@ function VersionTableRow({ version }: { version: VersionRow }) {
           {version.signatureCount.toLocaleString("en-GB")}
         </td>
         <td className="px-4 py-3">
-          <ActivateAction version={version} />
+          <div className="flex flex-col gap-1.5 items-start">
+            <ActivateAction version={version} />
+            <button
+              onClick={() => onDuplicate(version)}
+              className="text-[0.78rem] text-gray-600 hover:text-csl-dark hover:underline font-medium"
+            >
+              Duplicate and edit
+            </button>
+            <DeleteAction version={version} />
+          </div>
         </td>
       </tr>
       <tr
@@ -432,13 +651,32 @@ function VersionTableRow({ version }: { version: VersionRow }) {
   );
 }
 
+type FormState = { open: false } | { open: true; source: VersionRow | null };
+
 export default function ResolutionVersionsClient({ versions }: { versions: VersionRow[] }) {
+  const [form, setForm] = useState<FormState>({ open: false });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-xl font-bold text-gray-900">AGM Resolution Versions</h1>
-        <CreateVersionForm />
+        {!form.open && (
+          <button
+            onClick={() => setForm({ open: true, source: null })}
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-csl-dark text-white hover:bg-csl-mid transition-colors"
+          >
+            Create version
+          </button>
+        )}
       </div>
+
+      {form.open && (
+        <VersionForm
+          key={form.source?.id ?? "new"}
+          source={form.source}
+          onClose={() => setForm({ open: false })}
+        />
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
@@ -463,7 +701,11 @@ export default function ResolutionVersionsClient({ versions }: { versions: Versi
                 </tr>
               )}
               {versions.map((v) => (
-                <VersionTableRow key={v.id} version={v} />
+                <VersionTableRow
+                  key={v.id}
+                  version={v}
+                  onDuplicate={(source) => setForm({ open: true, source })}
+                />
               ))}
             </tbody>
           </table>

@@ -131,7 +131,7 @@ export default function ResolutionForm({
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
 
-    if (fd.get("website")) { setState("success"); return; }
+    if (fd.get("hp_field")) { setState("success"); return; }
     if (!turnstileToken) {
       setTurnstileError("Security check not completed. Please wait a moment.");
       return;
@@ -150,7 +150,7 @@ export default function ResolutionForm({
         // early above if this is filled. Sent anyway so the server checks it
         // too, since a direct POST bypassing this component skips the check
         // above entirely.
-        website: fd.get("website"),
+        hpField: fd.get("hp_field"),
         fullName: fd.get("fullName"),
         email: fd.get("email"),
         consentGiven: consent,
@@ -161,7 +161,7 @@ export default function ResolutionForm({
 
     await post("/api/resolution/sign", {
       // See the note on the supporter payload above.
-      website:              fd.get("website"),
+      hpField:              fd.get("hp_field"),
       fullName:             fd.get("fullName"),
       addressLine1:         fd.get("addressLine1"),
       addressLine2:         fd.get("addressLine2"),
@@ -216,7 +216,12 @@ export default function ResolutionForm({
       noValidate
       className="max-w-[560px] mx-auto bg-white rounded-2xl p-8 shadow-lg border border-gray-200"
     >
-      <input type="text" name="website" style={{ display: "none" }} tabIndex={-1} autoComplete="off" aria-hidden="true" />
+      {/* Honeypot. Named away from any recognised autofill category (email,
+          name, address, url, company...) on purpose - a field named "website"
+          is exactly what a browser or password manager autofills unprompted,
+          which would silently cost a real signature: the client fakes success
+          the moment this has a value, indistinguishable from a genuine one. */}
+      <input type="text" name="hp_field" style={{ display: "none" }} tabIndex={-1} autoComplete="off" aria-hidden="true" />
 
       {(state === "error" || state === "duplicate") && errorMsg && (
         <div ref={errorRef} className="mb-5 px-4 py-3.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-[0.88rem]">

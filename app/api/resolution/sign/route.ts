@@ -21,11 +21,13 @@ const SHARE_CLASSES = ["ORD", "CCP", "BOTH"] as const;
 
 type Body = {
   // Honeypot. Real users never populate this - it is display:none in the
-  // form. The client already fakes success and never calls this route when
-  // it sees this field filled, but that check is client-side only: a direct
-  // POST bypassing the browser skips it entirely unless the server checks
-  // too, which it now does.
-  website?: string;
+  // form and named away from any recognised autofill category, precisely so
+  // a browser or password manager cannot fill it unprompted. The client
+  // already fakes success and never calls this route when it sees this field
+  // filled, but that check is client-side only: a direct POST bypassing the
+  // browser skips it entirely unless the server checks too, which it now
+  // does.
+  hpField?: string;
   fullName?: string;
   addressLine1?: string;
   addressLine2?: string;
@@ -87,8 +89,15 @@ export async function POST(req: NextRequest) {
   // Checked before anything else reveals system state. A filled honeypot gets
   // exactly the same success shape a real submission gets, with nothing
   // written - a bot that got this far by posting directly must learn nothing
-  // from the response that distinguishes "caught" from "succeeded".
-  if (body.website) {
+  // from the response that distinguishes "caught" from "succeeded". The
+  // response to the caller stays silent, but the rejection itself is logged
+  // with the email and a timestamp: a field named for autofill-safety, not
+  // for cleverness, can still occasionally catch a genuine person, and that
+  // has to be visible within days, not discovered by a shareholder complaint.
+  if (body.hpField) {
+    console.error(
+      `[resolution/sign] honeypot triggered: email=${body.email ?? "(none)"} at=${new Date().toISOString()}`
+    );
     return NextResponse.json({ ok: true, firstName: "" });
   }
 
