@@ -98,18 +98,27 @@ function nextIp() {
   return `10.9.0.${ipCounter++}`;
 }
 
+// Refreshed to the field shape POST /api/resolution/sign has read since
+// Package 2 - postalAddress, isShareholder, shareholderType,
+// approximateShares, typedSignature and declarationAccepted have not existed
+// on that route for two packages. This file went unnoticed because "test
+// only what the change touches" was read as "the files that changed", not
+// "the contract that changed" - a schema or API change touches every test
+// that exercises it, whether or not that test's file was opened.
 function validBody(email: string) {
   return {
     fullName: "Gate Test Signatory",
     email,
-    postalAddress: "12 Example Street\nGlasgow\nG1 1AA",
-    isShareholder: true,
-    shareholderType: "direct",
+    addressLine1: "12 Example Street",
+    addressTown: "Glasgow",
+    addressPostcode: "G1 1AA",
+    howHeld: "direct",
     computershareSrn: "C0001234567",
-    approximateShares: 500,
-    isMember: false,
-    typedSignature: "Gate Test Signatory",
-    declarationAccepted: true,
+    shareClass: "ORD",
+    eligibilityConfirmed: true,
+    resolutionSupported: true,
+    consentGiven: true,
+    signatureName: "Gate Test Signatory",
     turnstileToken: "test-token",
   };
 }
@@ -165,7 +174,10 @@ test.describe("Requisition gate closed", () => {
 
     // Explanatory content still present - this must not be a 404.
     await expect(page.locator("h1")).toContainText(/Support the CSL Resolution/i);
-    await expect(page.getByText("Who should sign")).toBeVisible();
+    // "Who should sign" became "Who can sign" in Package 2, when non-
+    // shareholders were rejected outright rather than merely encouraged not
+    // to sign - same staleness class as validBody() above.
+    await expect(page.getByText("Who can sign")).toBeVisible();
 
     // Holding message shown, form absent.
     await expect(page.getByText(/Signing is not open yet|will open for signature/i).first()).toBeVisible();
@@ -209,17 +221,61 @@ test.describe("Requisition gate closed", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Requisition gate open", () => {
+  // Package 2 added a second lock: signing also requires the current
+  // resolution version to be non-placeholder. Without setting that up here,
+  // every test below only passes by coincidence of whatever version staging
+  // happens to have current at the time - which is exactly the kind of
+  // silent dependency this refresh is meant to remove. Whatever was current
+  // before this describe ran is restored afterwards, since staging may hold
+  // a real draft under review, not necessarily the placeholder.
+  let previousCurrentVersionId: string | null = null;
+  let gateTestVersionId: string | null = null;
+
   test.beforeAll(async () => {
+    const { data: current } = await adminDb()
+      .from("agm_resolution_versions").select("id").eq("is_current", true).maybeSingle();
+    previousCurrentVersionId = current?.id ?? null;
+
+    const { data, error } = await adminDb()
+      .from("agm_resolution_versions")
+      .insert({
+        version_label: "site-gates.spec.ts gate-open test version",
+        body: "Gate test resolution body - not real content.",
+        declaration_text: "Gate test declaration text.",
+        consent_text: "Gate test consent text.",
+        is_placeholder: false,
+        is_current: false,
+        created_by: "site-gates.spec.ts",
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(`gate-open test version insert: ${error.message}`);
+    gateTestVersionId = data.id;
+
+    await adminDb().from("agm_resolution_versions").update({ is_current: false }).eq("is_current", true);
+    await adminDb().from("agm_resolution_versions").update({ is_current: true }).eq("id", gateTestVersionId);
+
     await setGate(true);
+  });
+
+  test.afterAll(async () => {
+    if (previousCurrentVersionId) {
+      await adminDb().from("agm_resolution_versions").update({ is_current: false }).eq("is_current", true);
+      await adminDb().from("agm_resolution_versions").update({ is_current: true }).eq("id", previousCurrentVersionId);
+    }
   });
 
   test("page renders the signing form", async ({ page }) => {
     await page.goto("/resolution", { waitUntil: "domcontentloaded" });
     await page.waitForSelector("#fullName", { timeout: 20_000 });
-
     await expect(page.locator("#email")).toBeVisible();
-    await expect(page.locator("#postalAddress")).toBeVisible();
-    await expect(page.locator("#typedSignature")).toBeVisible();
+
+    // Address, SRN and signature fields only render once the shareholder
+    // branch is chosen - they did not always live behind this radio, but
+    // they have since Package 2.
+    await page.getByRole("radio", { name: "Yes" }).first().check();
+    await expect(page.locator("#addressLine1")).toBeVisible();
+    await expect(page.locator("#signatureName")).toBeVisible();
     await expect(page.getByText(/Direct registered shareholder signatures/i).first()).toBeVisible();
   });
 
@@ -245,13 +301,21 @@ test.describe("Requisition gate open", () => {
   });
 
   test("validation still applies when open", async ({ request }) => {
+    // signatureName is the last field validated in the route, after address,
+    // how-held, SRN, share class and all three ticks. Blanking a field this
+    // far down the chain means every field ahead of it in the payload had to
+    // be individually correct for the request to reach this check at all -
+    // if any earlier field name were stale or mismatched, a different error
+    // would fire first and this assertion would fail, surfacing the mismatch
+    // instead of hiding it. Blanking fullName only proved the first check
+    // fires, which is a much weaker guarantee.
     const res = await postSign(request, {
       ...validBody(`gate-open-invalid-${Date.now()}@example.com`),
-      fullName: "",
+      signatureName: "",
     });
     expect(res.status()).toBe(400);
     const body = (await res.json()) as { error: string };
-    expect(body.error).toMatch(/full name is required/i);
+    expect(body.error).toMatch(/electronic signature is required/i);
   });
 });
 

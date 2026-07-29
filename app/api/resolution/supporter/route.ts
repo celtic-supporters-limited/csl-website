@@ -47,6 +47,8 @@ export async function POST(req: NextRequest) {
   }
 
   let body: {
+    // Honeypot. See the matching note in app/api/resolution/sign/route.ts.
+    website?: string;
     fullName?: string;
     email?: string;
     consentGiven?: boolean;
@@ -56,6 +58,10 @@ export async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  if (body.website) {
+    return NextResponse.json({ ok: true, firstName: "" });
   }
 
   if (!body.turnstileToken) {
@@ -79,6 +85,10 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+  } else {
+    console.error(
+      "[resolution/supporter] TURNSTILE_SECRET_KEY is not set - Turnstile verification was skipped entirely for this submission."
+    );
   }
 
   const fullName = body.fullName?.trim();

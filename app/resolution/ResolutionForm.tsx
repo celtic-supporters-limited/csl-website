@@ -146,6 +146,11 @@ export default function ResolutionForm({
         return;
       }
       await post("/api/resolution/supporter", {
+        // Always empty for a real submission - the client already returns
+        // early above if this is filled. Sent anyway so the server checks it
+        // too, since a direct POST bypassing this component skips the check
+        // above entirely.
+        website: fd.get("website"),
         fullName: fd.get("fullName"),
         email: fd.get("email"),
         consentGiven: consent,
@@ -155,6 +160,8 @@ export default function ResolutionForm({
     }
 
     await post("/api/resolution/sign", {
+      // See the note on the supporter payload above.
+      website:              fd.get("website"),
       fullName:             fd.get("fullName"),
       addressLine1:         fd.get("addressLine1"),
       addressLine2:         fd.get("addressLine2"),

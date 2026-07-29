@@ -20,6 +20,12 @@ const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const SHARE_CLASSES = ["ORD", "CCP", "BOTH"] as const;
 
 type Body = {
+  // Honeypot. Real users never populate this - it is display:none in the
+  // form. The client already fakes success and never calls this route when
+  // it sees this field filled, but that check is client-side only: a direct
+  // POST bypassing the browser skips it entirely unless the server checks
+  // too, which it now does.
+  website?: string;
   fullName?: string;
   addressLine1?: string;
   addressLine2?: string;
@@ -77,6 +83,15 @@ export async function POST(req: NextRequest) {
     return bad("Invalid request body.");
   }
 
+  // ── 2b. Honeypot ───────────────────────────────────────────────────────────
+  // Checked before anything else reveals system state. A filled honeypot gets
+  // exactly the same success shape a real submission gets, with nothing
+  // written - a bot that got this far by posting directly must learn nothing
+  // from the response that distinguishes "caught" from "succeeded".
+  if (body.website) {
+    return NextResponse.json({ ok: true, firstName: "" });
+  }
+
   // ── 3. Turnstile ───────────────────────────────────────────────────────────
   if (!body.turnstileToken) return bad("Bot detection token missing.");
 
@@ -94,6 +109,13 @@ export async function POST(req: NextRequest) {
     if (!verifyData.success) {
       return bad("Security check failed. Please refresh and try again.");
     }
+  } else {
+    // Silently skipping verification is exactly how bot protection gets
+    // disabled with no one noticing. This must be loud in server logs even
+    // though the request is allowed to proceed.
+    console.error(
+      "[resolution/sign] TURNSTILE_SECRET_KEY is not set - Turnstile verification was skipped entirely for this submission."
+    );
   }
 
   const supabase = getSupabase();
@@ -200,10 +222,17 @@ export async function POST(req: NextRequest) {
   // ── 6. Duplicate ───────────────────────────────────────────────────────────
   // Email remains the identity basis. Audit Finding 13 notes this is weak, but
   // changing it is a question for the solicitor, not this package.
+  //
+  // Scoped to the current meeting: the same email signing for a later AGM is
+  // not a duplicate, it is a second, distinct instrument. Read once and
+  // reused for the insert below, rather than reading it twice.
+  const meetingRef = await getCurrentMeetingRef();
+
   const { data: existing } = await supabase
     .from("agm_signatures")
     .select("id")
     .eq("email", email)
+    .eq("meeting_ref", meetingRef)
     .maybeSingle();
 
   if (existing) {
@@ -263,10 +292,11 @@ export async function POST(req: NextRequest) {
     capture_status:         "complete",
     shareholder_tag:        shareholderTag,
     member_tag:             memberRow ? "member" : "non-member",
-    // Read live rather than left to the column default, so that changing
-    // current_meeting_ref alone is enough for a future AGM - a code change is
-    // not required for new rows to follow it.
-    meeting_ref:            await getCurrentMeetingRef(),
+    // Same value the duplicate check above used, read once. Read live rather
+    // than left to the column default, so that changing current_meeting_ref
+    // alone is enough for a future AGM - a code change is not required for
+    // new rows to follow it.
+    meeting_ref:            meetingRef,
   });
 
   if (dbError) {
