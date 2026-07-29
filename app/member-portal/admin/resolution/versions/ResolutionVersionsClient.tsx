@@ -27,12 +27,44 @@ function fmtDate(iso: string) {
 const inputClass =
   "w-full px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-[0.85rem] font-[inherit] transition-colors duration-200 focus:outline-none focus:border-csl-dark focus:ring-2 focus:ring-csl-dark/10";
 const labelClass = "block text-[0.8rem] font-semibold text-gray-800 mb-1";
+const contentHeadingClass = "text-[0.68rem] font-semibold uppercase tracking-wide text-gray-500 mb-1";
+const contentTextClass = "text-[0.82rem] text-gray-800 leading-relaxed whitespace-pre-line";
 
 /**
- * Activate a version. The confirmation names the version and states plainly
- * what activating it does - this is the one action in this page that can
- * release the second lock, and the only place that fact is surfaced before it
- * happens.
+ * The four texts of a version, read-only. Shared between the row expansion
+ * and the activation confirmation, so the two never drift out of sync with
+ * each other or with what the public page actually renders.
+ */
+function VersionContent({ version }: { version: VersionRow }) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className={contentHeadingClass}>Resolution</p>
+        <p className={contentTextClass}>{version.body}</p>
+      </div>
+      {version.supporting_statement && (
+        <div>
+          <p className={contentHeadingClass}>Supporting Statement</p>
+          <p className={contentTextClass}>{version.supporting_statement}</p>
+        </div>
+      )}
+      <div>
+        <p className={contentHeadingClass}>Declaration</p>
+        <p className={contentTextClass}>{version.declaration_text}</p>
+      </div>
+      <div>
+        <p className={contentHeadingClass}>Consent</p>
+        <p className={contentTextClass}>{version.consent_text}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Activate a version. The confirmation shows the version's full content
+ * before offering the action, not just its label - this is the one action on
+ * this page that can release the second lock, and it must not be possible to
+ * activate a version without having had its text in front of you.
  */
 function ActivateAction({ version }: { version: VersionRow }) {
   const router = useRouter();
@@ -78,13 +110,18 @@ function ActivateAction({ version }: { version: VersionRow }) {
   }
 
   return (
-    <div className="text-[0.75rem] bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2 max-w-xs">
+    <div className="text-[0.75rem] bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-3 max-w-xl">
       <p className="text-amber-900 leading-snug">
         Make <strong>&quot;{version.version_label}&quot;</strong> the current version.{" "}
         {version.is_placeholder
           ? "It is a placeholder, so signing stays blocked even if the gate is open."
           : "If the requisition gate is also open, signing becomes possible immediately."}
       </p>
+
+      <div className="bg-white border border-amber-200 rounded-lg p-3 max-h-72 overflow-y-auto">
+        <VersionContent version={version} />
+      </div>
+
       <div className="flex items-center gap-3">
         <button
           onClick={activate}
@@ -241,6 +278,62 @@ function CreateVersionForm() {
   );
 }
 
+/**
+ * One version's table row, plus its expandable read-only content row. Local
+ * state per row rather than a lifted set of expanded ids, since rows do not
+ * need to coordinate with each other.
+ */
+function VersionTableRow({ version }: { version: VersionRow }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <>
+      <tr className="border-b border-gray-100 last:border-0 align-top hover:bg-gray-50">
+        <td className="px-4 py-3 max-w-xs">
+          <p className="font-medium text-gray-900">{version.version_label}</p>
+          <button
+            onClick={() => setExpanded((e) => !e)}
+            className="text-[0.75rem] text-csl-dark hover:underline font-medium mt-0.5"
+          >
+            {expanded ? "Hide text" : "Read text"}
+          </button>
+        </td>
+        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(version.created_at)}</td>
+        <td className="px-4 py-3 text-gray-500 text-[0.8rem] whitespace-nowrap">{version.created_by ?? "-"}</td>
+        <td className="px-4 py-3 whitespace-nowrap">
+          <div className="flex flex-col gap-1">
+            {version.is_current && (
+              <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-[0.72rem] font-semibold bg-green-100 text-green-800">
+                Current
+              </span>
+            )}
+            {version.is_placeholder && (
+              <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-[0.72rem] font-semibold bg-gray-100 text-gray-600">
+                Placeholder
+              </span>
+            )}
+          </div>
+        </td>
+        {/* The important column: it is what makes the immutability real
+            to whoever is looking at this list. */}
+        <td className="px-4 py-3 text-right text-gray-900 font-semibold tabular-nums">
+          {version.signatureCount.toLocaleString("en-GB")}
+        </td>
+        <td className="px-4 py-3">
+          <ActivateAction version={version} />
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="border-b border-gray-100 last:border-0 bg-gray-50/60">
+          <td colSpan={6} className="px-4 py-4">
+            <VersionContent version={version} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 export default function ResolutionVersionsClient({ versions }: { versions: VersionRow[] }) {
   return (
     <div className="space-y-6">
@@ -271,33 +364,7 @@ export default function ResolutionVersionsClient({ versions }: { versions: Versi
                 </tr>
               )}
               {versions.map((v) => (
-                <tr key={v.id} className="border-b border-gray-100 last:border-0 align-top hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900 max-w-xs">{v.version_label}</td>
-                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(v.created_at)}</td>
-                  <td className="px-4 py-3 text-gray-500 text-[0.8rem] whitespace-nowrap">{v.created_by ?? "-"}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex flex-col gap-1">
-                      {v.is_current && (
-                        <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-[0.72rem] font-semibold bg-green-100 text-green-800">
-                          Current
-                        </span>
-                      )}
-                      {v.is_placeholder && (
-                        <span className="inline-flex w-fit px-2 py-0.5 rounded-full text-[0.72rem] font-semibold bg-gray-100 text-gray-600">
-                          Placeholder
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  {/* The important column: it is what makes the immutability real
-                      to whoever is looking at this list. */}
-                  <td className="px-4 py-3 text-right text-gray-900 font-semibold tabular-nums">
-                    {v.signatureCount.toLocaleString("en-GB")}
-                  </td>
-                  <td className="px-4 py-3">
-                    <ActivateAction version={v} />
-                  </td>
-                </tr>
+                <VersionTableRow key={v.id} version={v} />
               ))}
             </tbody>
           </table>
