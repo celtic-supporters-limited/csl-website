@@ -151,7 +151,11 @@ export default function ResolutionAdminClient({
     const a = document.createElement("a");
     a.href = url;
     a.download = `csl-resolution-signatures-${today}.csv`;
+    // Some browsers (and headless Chromium under automation) only fire the
+    // download for an anchor that is actually attached to the document.
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
 

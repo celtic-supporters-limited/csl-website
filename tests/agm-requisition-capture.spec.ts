@@ -34,11 +34,13 @@
  *   npx playwright test tests/agm-requisition-capture.spec.ts --workers=1
  */
 
-import { test, expect, type APIRequestContext } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ADMIN_EMAIL = process.env.TEST_USER_EMAIL;
+const ADMIN_PASSWORD = process.env.TEST_USER_PASSWORD;
 
 function db() {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
@@ -49,6 +51,8 @@ function db() {
 
 const TEST_VERSION_LABEL = "Automated test version";
 let testVersionId = "";
+let previousGateValue: string | null = null;
+let previousCurrentVersionId: string | null = null;
 
 async function setConfig(key: string, value: string) {
   const { error } = await db()
@@ -106,6 +110,30 @@ async function cleanup(email: string) {
   await db().from("agm_supporters").delete().eq("email", email);
 }
 
+async function signIn(page: Page, email: string, password: string) {
+  await page.goto("/login");
+  await page.waitForLoadState("networkidle", { timeout: 60_000 });
+  await page.fill("#email", email);
+  await page.fill("#password", password);
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes("/auth/v1/token") && r.status() === 200, { timeout: 15_000 }),
+    page.click('button[type="submit"]'),
+  ]);
+  // Wait for the redirect to settle before firing page.request.* calls - the
+  // session cookie is not reliably attached until the client has actually
+  // navigated to /member-portal.
+  await page.waitForURL(/\/member-portal/, { timeout: 20_000 });
+}
+
+/** Reads a stat card's value by its label. The value <p> is the label <p>'s
+ * immediately preceding sibling - see the stat card markup in
+ * ResolutionAdminClient.tsx. */
+async function readStatValue(page: Page, label: string): Promise<number> {
+  const labelEl = page.getByText(label, { exact: true });
+  const valueText = await labelEl.locator("xpath=preceding-sibling::p[1]").innerText();
+  return Number(valueText.replace(/,/g, ""));
+}
+
 test.describe.configure({ mode: "serial" });
 
 // Staging project ref. Not a secret: it is part of NEXT_PUBLIC_SUPABASE_URL and
@@ -127,6 +155,23 @@ test.beforeAll(async () => {
     );
   }
 
+  // Capture whatever staging had before this suite touches it, so afterAll can
+  // restore it rather than assuming a closed gate and a placeholder version -
+  // staging may be mid-review with the gate open and a draft current.
+  const { data: gateRow } = await db()
+    .from("site_config")
+    .select("value")
+    .eq("key", "resolution_open")
+    .maybeSingle();
+  previousGateValue = gateRow?.value ?? null;
+
+  const { data: currentVersion } = await db()
+    .from("agm_resolution_versions")
+    .select("id")
+    .eq("is_current", true)
+    .maybeSingle();
+  previousCurrentVersionId = currentVersion?.id ?? null;
+
   await setConfig("resolution_open", "true");
   await setConfig("agm_capture_signer_metadata", "false");
 
@@ -140,6 +185,12 @@ test.beforeAll(async () => {
         "and make the placeholder version current again.",
       version_label: TEST_VERSION_LABEL,
       is_placeholder: false,
+      // NOT NULL since Package 3. This suite predates that migration and
+      // never picked up the new columns - the same staleness class as the
+      // rest of this gap-fill session.
+      declaration_text:
+        "AUTOMATED TEST VERSION - NOT A DECLARATION. See body field.",
+      consent_text: "AUTOMATED TEST VERSION - NOT A CONSENT STATEMENT. See body field.",
       created_by: "playwright",
     })
     .select("id")
@@ -151,21 +202,27 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  // Restore the placeholder as current, then remove the test version. Order
-  // matters: a version with signatures against it cannot be deleted.
-  const { data: placeholder } = await db()
-    .from("agm_resolution_versions")
-    .select("id")
-    .eq("is_placeholder", true)
-    .maybeSingle();
+  // Restore whatever was current before this suite ran, then remove the test
+  // version. Order matters: a version with signatures against it cannot be
+  // deleted. Falls back to the placeholder only if nothing was captured
+  // (e.g. beforeAll itself failed before capture).
+  let restoreId = previousCurrentVersionId;
+  if (!restoreId) {
+    const { data: placeholder } = await db()
+      .from("agm_resolution_versions")
+      .select("id")
+      .eq("is_placeholder", true)
+      .maybeSingle();
+    restoreId = placeholder?.id ?? null;
+  }
+  if (restoreId) await setCurrentVersion(restoreId);
 
-  if (placeholder) await setCurrentVersion(placeholder.id);
   if (testVersionId) {
     await db().from("agm_signatures").delete().eq("resolution_version_id", testVersionId);
     await db().from("agm_resolution_versions").delete().eq("id", testVersionId);
   }
   await setConfig("agm_capture_signer_metadata", "false");
-  await setConfig("resolution_open", "false");
+  await setConfig("resolution_open", previousGateValue ?? "false");
 });
 
 // ---------------------------------------------------------------------------
@@ -279,6 +336,12 @@ test("supporter path requires consent", async ({ request }) => {
     headers: { "Content-Type": "application/json", "x-forwarded-for": nextIp() },
   });
   expect(res.status()).toBe(400);
+
+  // Every other validation test in this file confirms rejection means no row
+  // written. This one only checked the status code.
+  const { data: supporter } = await db()
+    .from("agm_supporters").select("id").eq("email", email).maybeSingle();
+  expect(supporter).toBeNull();
 });
 
 // ---------------------------------------------------------------------------
@@ -407,10 +470,20 @@ test("no signature can be collected while the placeholder is current", async ({ 
 // 11. pre_rebuild rows are excluded from the qualifying count
 // ---------------------------------------------------------------------------
 
-test("pre_rebuild rows do not count toward the target", async ({ request }) => {
+test("pre_rebuild rows do not count toward the target, per the rendered admin page", async ({ page, request }) => {
+  test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, "TEST_USER_EMAIL / TEST_USER_PASSWORD not set");
+
   const completeEmail = `p2-count-complete-${Date.now()}@example.com`;
   const preEmail      = `p2-count-pre-${Date.now()}@example.com`;
   try {
+    // Baseline from the actual rendered page, before either row exists, so
+    // the assertion is "went up by exactly one", not a hardcoded absolute
+    // count that depends on whatever else is on staging.
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
+    const directBefore = await readStatValue(page, "Direct registered shareholders");
+    const completeBefore = await readStatValue(page, "Complete signatures");
+
     expect((await sign(request, validBody(completeEmail))).status()).toBe(200);
 
     // Insert a pre_rebuild row directly: the API never produces one.
@@ -428,15 +501,122 @@ test("pre_rebuild rows do not count toward the target", async ({ request }) => {
     });
     expect(error).toBeNull();
 
-    const { data: rows } = await db()
-      .from("agm_signatures")
-      .select("shareholder_tag, capture_status")
-      .in("email", [completeEmail, preEmail]);
+    await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
 
-    const qualifying = (rows ?? []).filter(
-      (r) => r.shareholder_tag === "direct-registered" && r.capture_status === "complete"
-    );
-    expect(qualifying.length).toBe(1);
+    // Both rows are direct-registered, but only the complete one may count.
+    // This reads the app's own filter, via the rendered page, rather than
+    // re-deriving the filter in the test and asserting on the test's own
+    // arithmetic - it fails if the app's counting logic changes.
+    expect(await readStatValue(page, "Direct registered shareholders")).toBe(directBefore + 1);
+    expect(await readStatValue(page, "Complete signatures")).toBe(completeBefore + 1);
+
+    // The amber banner names the pre_rebuild row.
+    await expect(page.getByText(/record.*need completion/i).first()).toBeVisible();
+
+    // Each row's own badge is distinct: the preserved row reads "Needs
+    // completion", the fresh one reads "Complete".
+    const preRow = page.locator("tr", { hasText: preEmail });
+    await expect(preRow.getByText("Needs completion")).toBeVisible();
+
+    const completeRow = page.locator("tr", { hasText: completeEmail });
+    await expect(completeRow.getByText("Complete", { exact: true })).toBeVisible();
+  } finally {
+    await cleanup(completeEmail);
+    await cleanup(preEmail);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 12. CSV export - Package 2 spec item 11, never written until now.
+// ---------------------------------------------------------------------------
+
+test("CSV export contains every schema column and distinguishes pre_rebuild rows", async ({ page, request }) => {
+  test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, "TEST_USER_EMAIL / TEST_USER_PASSWORD not set");
+
+  const completeEmail = `p2-csv-complete-${Date.now()}@example.com`;
+  const preEmail      = `p2-csv-pre-${Date.now()}@example.com`;
+  try {
+    expect((await sign(request, validBody(completeEmail))).status()).toBe(200);
+
+    const { error } = await db().from("agm_signatures").insert({
+      full_name: "CSV Preserved Row",
+      email: preEmail,
+      how_held: "direct",
+      computershare_srn: "C0008888888",
+      consent_given: true,
+      signature_name: "CSV Preserved Row",
+      signed_at: new Date().toISOString(),
+      capture_status: "pre_rebuild",
+      shareholder_tag: "direct-registered",
+      member_tag: "member",
+    });
+    expect(error).toBeNull();
+
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+
+    // Capture the Blob passed to URL.createObjectURL instead of waiting for a
+    // real browser download: downloadCsv() builds the CSV entirely client-side
+    // via a Blob + a synthetic anchor click, and some Chromium builds (this
+    // sandbox included) never surface that as a "download" event even though
+    // the click and the Blob are completely real. Installed before navigation
+    // so it is in place before the page's own scripts run.
+    await page.addInitScript(() => {
+      const orig = URL.createObjectURL.bind(URL);
+      (window as unknown as { __capturedBlob?: Blob }).__capturedBlob = undefined;
+      URL.createObjectURL = (obj: Blob) => {
+        (window as unknown as { __capturedBlob?: Blob }).__capturedBlob = obj;
+        return orig(obj);
+      };
+    });
+
+    await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
+    // domcontentloaded fires before this client component has hydrated, so a
+    // click straight away can land on a button with no React handler attached
+    // yet. Every other test in this file only reads already-rendered text and
+    // never needed to wait for hydration; this is the first one that clicks
+    // something.
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+    await page.getByRole("button", { name: "Export CSV" }).click();
+
+    const csv = await page.evaluate(async () => {
+      const blob = (window as unknown as { __capturedBlob?: Blob }).__capturedBlob;
+      if (!blob) throw new Error("Export CSV did not create a Blob via URL.createObjectURL");
+      return blob.text();
+    });
+
+    const lines = csv.split("\r\n").filter(Boolean);
+    const [headerLine, ...dataLines] = lines;
+    const headers = headerLine.split(",");
+
+    // Every column ResolutionAdminClient.tsx's downloadCsv() emits, in order.
+    // Package 2 spec item 11 asked for this list; this is the first time it
+    // has been asserted against.
+    expect(headers).toEqual([
+      "id", "capture_status", "created_at", "signed_at", "full_name", "email",
+      "address_line_1", "address_line_2", "address_town", "address_postcode",
+      "how_held", "computershare_srn", "nominee_platform", "nominee_platform_other",
+      "year_of_purchase", "shares_held", "share_class", "eligibility_confirmed",
+      "resolution_supported", "consent_given", "privacy_policy_version",
+      "resolution_version_id", "resolution_version_label", "signature_name",
+      "signer_ip", "signer_user_agent", "shareholder_tag", "member_tag",
+    ]);
+
+    const emailIdx = headers.indexOf("email");
+    const captureStatusIdx = headers.indexOf("capture_status");
+
+    // Plain split, not an RFC 4180 parser: none of the values in this test
+    // contain a comma or a quote, so it is not needed here.
+    const rows = dataLines.map((line) => line.split(","));
+    const preRow = rows.find((cols) => cols[emailIdx] === preEmail);
+    const completeRow = rows.find((cols) => cols[emailIdx] === completeEmail);
+
+    expect(preRow).toBeTruthy();
+    expect(completeRow).toBeTruthy();
+    // Scoped to the capture_status column specifically, not a whole-row
+    // substring check, so this cannot pass because some other column
+    // happened to contain the word.
+    expect(preRow![captureStatusIdx]).toBe("pre_rebuild");
+    expect(completeRow![captureStatusIdx]).toBe("complete");
   } finally {
     await cleanup(completeEmail);
     await cleanup(preEmail);

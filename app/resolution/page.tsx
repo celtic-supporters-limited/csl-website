@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
-import { getConfigList, isGateOpen } from "@/lib/site-gates";
+import { getConfigList, getCurrentMeetingRef, isGateOpen } from "@/lib/site-gates";
 import { Container } from "@/components/Container";
 import ResolutionForm from "./ResolutionForm";
 
@@ -15,15 +15,22 @@ export const dynamic = "force-dynamic";
 
 export default async function ResolutionPage() {
   const supabase = getSupabase();
+  const currentMeetingRef = await getCurrentMeetingRef();
 
   const [signingOpen, signaturesRes, configRes, versionRes, platforms, years, bands] =
     await Promise.all([
       isGateOpen("resolution_open"),
-      supabase.from("agm_signatures").select("shareholder_tag, capture_status"),
+      // Scoped to the active meeting: with one meeting this excludes nothing,
+      // but next year it stops a second AGM's signatures inflating this one's
+      // count. See lib/site-gates.ts getCurrentMeetingRef().
+      supabase
+        .from("agm_signatures")
+        .select("shareholder_tag, capture_status")
+        .eq("meeting_ref", currentMeetingRef),
       supabase.from("site_config").select("key, value").in("key", ["resolution_target"]),
       supabase
         .from("agm_resolution_versions")
-        .select("id, is_placeholder")
+        .select("id, version_label, body, declaration_text, consent_text, supporting_statement, is_placeholder")
         .eq("is_current", true)
         .maybeSingle(),
       getConfigList("agm_nominee_platforms"),
@@ -120,7 +127,7 @@ export default async function ResolutionPage() {
                 </div>
               </div>
 
-              {/* Signature counter — only while signing is live */}
+              {/* Signature counter - only while signing is live */}
               {canSign && (
                 <div className="bg-white rounded-xl border border-gray-200 p-6">
                   <div className="flex items-baseline justify-between mb-2">
@@ -152,6 +159,10 @@ export default async function ResolutionPage() {
                     nomineePlatforms={platforms}
                     yearOptions={years}
                     shareBands={bands}
+                    resolutionBody={versionRes.data!.body}
+                    declarationText={versionRes.data!.declaration_text}
+                    consentText={versionRes.data!.consent_text}
+                    supportingStatement={versionRes.data!.supporting_statement}
                   />
                 </Suspense>
               ) : (

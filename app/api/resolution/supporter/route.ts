@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
-import { AGM_GATE_CLOSED_ERROR, getConfigValue, isGateOpen } from "@/lib/site-gates";
+import {
+  AGM_GATE_CLOSED_ERROR,
+  getConfigValue,
+  getCurrentMeetingRef,
+  isGateOpen,
+} from "@/lib/site-gates";
 
 /**
  * Supporter path for people who are not Celtic plc shareholders.
@@ -42,6 +47,8 @@ export async function POST(req: NextRequest) {
   }
 
   let body: {
+    // Honeypot. See the matching note in app/api/resolution/sign/route.ts.
+    hpField?: string;
     fullName?: string;
     email?: string;
     consentGiven?: boolean;
@@ -51,6 +58,13 @@ export async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  if (body.hpField) {
+    console.error(
+      `[resolution/supporter] honeypot triggered: email=${body.email ?? "(none)"} at=${new Date().toISOString()}`
+    );
+    return NextResponse.json({ ok: true, firstName: "" });
   }
 
   if (!body.turnstileToken) {
@@ -74,6 +88,10 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+  } else {
+    console.error(
+      "[resolution/supporter] TURNSTILE_SECRET_KEY is not set - Turnstile verification was skipped entirely for this submission."
+    );
   }
 
   const fullName = body.fullName?.trim();
@@ -102,6 +120,9 @@ export async function POST(req: NextRequest) {
     full_name: fullName,
     email,
     consent_given: body.consentGiven,
+    // Read live rather than left to the column default. See the same note in
+    // app/api/resolution/sign/route.ts.
+    meeting_ref: await getCurrentMeetingRef(),
     privacy_policy_version: privacyPolicyVersion,
   });
 

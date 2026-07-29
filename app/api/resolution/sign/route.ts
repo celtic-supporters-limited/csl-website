@@ -5,13 +5,14 @@ import {
   AGM_GATE_CLOSED_ERROR,
   getConfigList,
   getConfigValue,
+  getCurrentMeetingRef,
   isConfigFlagOn,
   isGateOpen,
 } from "@/lib/site-gates";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// In-memory rate limiter — resets on cold starts; best-effort deterrent only.
+// In-memory rate limiter - resets on cold starts; best-effort deterrent only.
 const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
 const RATE_LIMIT = 3;
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -19,6 +20,14 @@ const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const SHARE_CLASSES = ["ORD", "CCP", "BOTH"] as const;
 
 type Body = {
+  // Honeypot. Real users never populate this - it is display:none in the
+  // form and named away from any recognised autofill category, precisely so
+  // a browser or password manager cannot fill it unprompted. The client
+  // already fakes success and never calls this route when it sees this field
+  // filled, but that check is client-side only: a direct POST bypassing the
+  // browser skips it entirely unless the server checks too, which it now
+  // does.
+  hpField?: string;
   fullName?: string;
   addressLine1?: string;
   addressLine2?: string;
@@ -76,6 +85,22 @@ export async function POST(req: NextRequest) {
     return bad("Invalid request body.");
   }
 
+  // ── 2b. Honeypot ───────────────────────────────────────────────────────────
+  // Checked before anything else reveals system state. A filled honeypot gets
+  // exactly the same success shape a real submission gets, with nothing
+  // written - a bot that got this far by posting directly must learn nothing
+  // from the response that distinguishes "caught" from "succeeded". The
+  // response to the caller stays silent, but the rejection itself is logged
+  // with the email and a timestamp: a field named for autofill-safety, not
+  // for cleverness, can still occasionally catch a genuine person, and that
+  // has to be visible within days, not discovered by a shareholder complaint.
+  if (body.hpField) {
+    console.error(
+      `[resolution/sign] honeypot triggered: email=${body.email ?? "(none)"} at=${new Date().toISOString()}`
+    );
+    return NextResponse.json({ ok: true, firstName: "" });
+  }
+
   // ── 3. Turnstile ───────────────────────────────────────────────────────────
   if (!body.turnstileToken) return bad("Bot detection token missing.");
 
@@ -93,6 +118,13 @@ export async function POST(req: NextRequest) {
     if (!verifyData.success) {
       return bad("Security check failed. Please refresh and try again.");
     }
+  } else {
+    // Silently skipping verification is exactly how bot protection gets
+    // disabled with no one noticing. This must be loud in server logs even
+    // though the request is allowed to proceed.
+    console.error(
+      "[resolution/sign] TURNSTILE_SECRET_KEY is not set - Turnstile verification was skipped entirely for this submission."
+    );
   }
 
   const supabase = getSupabase();
@@ -199,10 +231,17 @@ export async function POST(req: NextRequest) {
   // ── 6. Duplicate ───────────────────────────────────────────────────────────
   // Email remains the identity basis. Audit Finding 13 notes this is weak, but
   // changing it is a question for the solicitor, not this package.
+  //
+  // Scoped to the current meeting: the same email signing for a later AGM is
+  // not a duplicate, it is a second, distinct instrument. Read once and
+  // reused for the insert below, rather than reading it twice.
+  const meetingRef = await getCurrentMeetingRef();
+
   const { data: existing } = await supabase
     .from("agm_signatures")
     .select("id")
     .eq("email", email)
+    .eq("meeting_ref", meetingRef)
     .maybeSingle();
 
   if (existing) {
@@ -262,6 +301,11 @@ export async function POST(req: NextRequest) {
     capture_status:         "complete",
     shareholder_tag:        shareholderTag,
     member_tag:             memberRow ? "member" : "non-member",
+    // Same value the duplicate check above used, read once. Read live rather
+    // than left to the column default, so that changing current_meeting_ref
+    // alone is enough for a future AGM - a code change is not required for
+    // new rows to follow it.
+    meeting_ref:            meetingRef,
   });
 
   if (dbError) {

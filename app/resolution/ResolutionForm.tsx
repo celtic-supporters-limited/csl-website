@@ -19,10 +19,21 @@ export default function ResolutionForm({
   nomineePlatforms,
   yearOptions,
   shareBands,
+  resolutionBody,
+  declarationText,
+  consentText,
+  supportingStatement,
 }: {
   nomineePlatforms: string[];
   yearOptions: string[];
   shareBands: string[];
+  /** The current resolution version's content. Only rendered when signing is
+   * actually possible, so these are always populated by the time they reach
+   * this component - see the completeness CHECK on agm_resolution_versions. */
+  resolutionBody: string;
+  declarationText: string;
+  consentText: string;
+  supportingStatement: string | null;
 }) {
   const [state, setState] = useState<FormState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -120,7 +131,7 @@ export default function ResolutionForm({
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
 
-    if (fd.get("website")) { setState("success"); return; }
+    if (fd.get("hp_field")) { setState("success"); return; }
     if (!turnstileToken) {
       setTurnstileError("Security check not completed. Please wait a moment.");
       return;
@@ -135,6 +146,11 @@ export default function ResolutionForm({
         return;
       }
       await post("/api/resolution/supporter", {
+        // Always empty for a real submission - the client already returns
+        // early above if this is filled. Sent anyway so the server checks it
+        // too, since a direct POST bypassing this component skips the check
+        // above entirely.
+        hpField: fd.get("hp_field"),
         fullName: fd.get("fullName"),
         email: fd.get("email"),
         consentGiven: consent,
@@ -144,6 +160,8 @@ export default function ResolutionForm({
     }
 
     await post("/api/resolution/sign", {
+      // See the note on the supporter payload above.
+      hpField:              fd.get("hp_field"),
       fullName:             fd.get("fullName"),
       addressLine1:         fd.get("addressLine1"),
       addressLine2:         fd.get("addressLine2"),
@@ -198,7 +216,12 @@ export default function ResolutionForm({
       noValidate
       className="max-w-[560px] mx-auto bg-white rounded-2xl p-8 shadow-lg border border-gray-200"
     >
-      <input type="text" name="website" style={{ display: "none" }} tabIndex={-1} autoComplete="off" aria-hidden="true" />
+      {/* Honeypot. Named away from any recognised autofill category (email,
+          name, address, url, company...) on purpose - a field named "website"
+          is exactly what a browser or password manager autofills unprompted,
+          which would silently cost a real signature: the client fakes success
+          the moment this has a value, indistinguishable from a genuine one. */}
+      <input type="text" name="hp_field" style={{ display: "none" }} tabIndex={-1} autoComplete="off" aria-hidden="true" />
 
       {(state === "error" || state === "duplicate") && errorMsg && (
         <div ref={errorRef} className="mb-5 px-4 py-3.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-[0.88rem]">
@@ -381,27 +404,75 @@ export default function ResolutionForm({
             </label>
           </div>
 
-          {/* 7. Resolution support, discrete tick. Package 3 renders the wording
-              above this tick; until then the page does not offer signing. */}
+          {/* 7. The resolution being requisitioned, in full. The signatory must
+              see the exact text before agreeing to it - not truncated, not
+              linked out to a PDF. */}
+          <div className="mb-5 p-5 bg-gray-50 rounded-lg border border-gray-200">
+            <p className="text-[0.72rem] font-semibold uppercase tracking-wide text-csl-dark mb-2">
+              The Resolution
+            </p>
+            <p className="text-[0.88rem] text-gray-800 leading-relaxed whitespace-pre-line">
+              {resolutionBody}
+            </p>
+          </div>
+
+          {/* Section 314 supporting statement. Only rendered, with its own
+              heading, when one has been set on the current version - if null,
+              this section does not exist, not an empty heading. */}
+          {supportingStatement && (
+            <div className="mb-5 p-5 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-[0.72rem] font-semibold uppercase tracking-wide text-blue-800 mb-2">
+                Supporting Statement
+              </p>
+              <p className="text-[0.82rem] text-blue-900 leading-relaxed whitespace-pre-line">
+                {supportingStatement}
+              </p>
+              <p className="text-[0.72rem] text-blue-700 mt-2">
+                This statement will be circulated with the resolution.
+              </p>
+            </div>
+          )}
+
+          {/* 8. Declaration, discrete tick. Wording comes from the current
+              resolution version, not hardcoded, so a signature is bound to the
+              exact declaration the signatory saw, the same as the resolution
+              text above it. */}
           <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={supported} onChange={(e) => setSupported(e.target.checked)} className="mt-0.5 w-4 h-4 accent-csl-dark shrink-0" />
               <span className="text-[0.82rem] text-gray-700 leading-snug">
-                I support this resolution being put to the AGM. <span className="text-red-500">*</span>
+                {declarationText} <span className="text-red-500">*</span>
+              </span>
+            </label>
+          </div>
+
+          {/* 9. Consent, shareholder path. Requisition-specific: it discloses
+              that details are provided to Celtic plc, which is true only for a
+              signatory, never for a supporter. Sourced from the version and
+              kept in its own block, deliberately not shared with the supporter
+              consent below, so the two can never be mistaken for one sentence. */}
+          <div className="mb-5 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 w-4 h-4 accent-csl-dark shrink-0" />
+              <span className="text-[0.82rem] text-gray-700 leading-snug">
+                {consentText} <span className="text-red-500">*</span>
               </span>
             </label>
           </div>
         </>
       )}
 
-      {/* 8. Consent, both paths */}
-      {isShareholder !== null && (
+      {/* Consent, supporter path. A supporter is registering interest, not
+          making a statutory request, so this is static and never versioned,
+          and it must never say details are provided to Celtic plc - that is
+          only true on the shareholder path above. */}
+      {isShareholder === false && (
         <div className="mb-5 p-4 bg-gray-50 rounded-lg border border-gray-200">
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 w-4 h-4 accent-csl-dark shrink-0" />
             <span className="text-[0.82rem] text-gray-700 leading-snug">
-              I consent to Celtic Supporters Limited storing and processing my personal data for this
-              requisition, in accordance with the{" "}
+              I consent to Celtic Supporters Limited storing and processing my personal data to
+              register my support for this campaign, in accordance with the{" "}
               <Link href="/privacy" className="text-csl-dark underline">Privacy Policy</Link>.{" "}
               <span className="text-red-500">*</span>
             </span>
