@@ -309,6 +309,76 @@ when ready, not a migration.
 
 ---
 
+## Package 5a - make every record editable, add the change log
+
+Implements brief section 2c (added at brief v1.5), which reverses the position taken in Packages
+2 and 3: nothing in this programme is immutable, everything is editable, and the requirement was
+never immutability, it was provability.
+
+**Why the immutability trigger went in (Packages 2 and 3), for whoever reads this next.** The
+trigger on `agm_resolution_versions` (`agm_resolution_versions_no_edit`, added in Package 2,
+extended in Package 3 to cover `declaration_text`/`consent_text`/`supporting_statement`/
+`meeting_ref`) blocked every column update except `is_current`. The reasoning at the time: a
+signature references a specific wording, and if that wording could be edited after signing, CSL
+could no longer prove what a signatory actually agreed to. Locking the row at the database level
+was the mechanism chosen to guarantee that.
+
+**Why it came out.** In practice the lock did not protect the record, it relocated the correction.
+CSL is run by two non-technical volunteers; when a mistake needed fixing, the fix happened in the
+Supabase table editor by whoever held dashboard access, with no record it happened, no note of the
+previous value, and no way to tell afterwards. The lock's only real effect was to push corrections
+into the one channel with no audit trail at all. It also had a cost the original design did not
+weigh: a mistyped shareholder reference on a signed record was permanently uncorrectable from the
+interface, and against Package 8's reconciliation and the 100-signature target, that is a real
+loss of otherwise-valid signatures.
+
+**What replaces it.** Two mechanisms, together, deliver the same provability without a lock:
+
+1. `agm_change_log` - an append-only table (every edit and every status change, on every AGM
+   record type, logged with old value, new value, who, when, why). Enforced append-only by
+   revoking UPDATE and DELETE privilege from every role including `service_role`, not by a
+   trigger - a trigger that blocks a write is exactly the pattern being removed, so the log itself
+   cannot use one.
+2. Four snapshot columns on `agm_signatures` (`resolution_snapshot`, `declaration_snapshot`,
+   `consent_snapshot`, `supporting_statement_snapshot`), copying what the signatory actually saw
+   at the moment of signing directly onto their own row - the same idea `agm_proxies.
+   declaration_snapshot` already used from Package 5. "What did this person sign in September" is
+   now a lookup on their own row, unaffected by any later edit to the live wording, rather than a
+   reconstruction from the trigger's absence.
+
+`DROP TRIGGER agm_resolution_versions_no_edit` and `DROP FUNCTION
+agm_resolution_versions_immutable()` in `sql/agm-p5a-editable-records.sql`. No replacement trigger
+was added to that table or any other - the standing rule going forward is that a trigger which
+prevents a change, rather than recording one, is a sign the design has gone wrong, not a tool to
+reach for.
+
+**Status scheme.** `active` / `withdrawn` / `voided` added to `agm_signatures`, `agm_supporters`,
+and folded from `agm_proxies`' existing `active`/`revoked` (revoked -> withdrawn, keeping the
+"Revoke" vocabulary in the admin UI). `shareholder_cases` gained a separate `agm_record_status`
+column rather than overloading its existing `status` column, which already means something
+different (New/In Progress/Resolved case-handling workflow, shared with Share Tracing enquiries).
+No hard delete exists on any AGM record type before or after this package - status change was
+already the pattern for `agm_proxies` revocation; it is now the pattern everywhere.
+
+**Interface.** Both admin pages (`/member-portal/admin/resolution`, `/member-portal/admin/proxy`)
+gained a per-record "Edit" action (`components/AgmRecordEditor.tsx`) opening every editable field
+with a required reason and, where the edit changes what someone signed or was named as, a warning
+naming the count or the person before it can be saved. A collapsed "Show change history" sits at
+the foot of each edit panel, fetched on expand from `/api/admin/agm-change-log`. Status changes are
+a separate, simpler confirm-with-reason action (`AgmStatusAction`), except `agm_proxies`'
+withdrawn transition, which keeps its existing bespoke `RevokeAction`/`/api/proxy/revoke` UI and
+copy while writing through the same underlying log-then-update helper (`lib/agm-change-log.ts`)
+every other status change uses.
+
+The existing `WordingForm` ("Change wording" on the resolution admin page) now edits the current
+`agm_resolution_versions` row in place through the same generic edit API, rather than creating a
+new row and activating it - the log is what makes that safe now, not the trigger. The separate
+create-and-activate routes (`/api/admin/resolution-versions`, `/api/admin/resolution-versions/
+activate`) are unchanged and still work; they are simply no longer what the redesigned "Change
+wording" button calls, and remain available for a genuinely new AGM cycle rather than a correction.
+
+---
+
 ## Deferred items, tracked across packages
 
 - **Admin preview route.** Rendering a version as the public page would

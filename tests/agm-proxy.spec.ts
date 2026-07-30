@@ -459,7 +459,9 @@ test("the appointments export has the documented column list, and a revoked appo
     const revokedAtIdx = headers.indexOf("revoked_at");
     const dataRow = lines.slice(1).map(parseCsvLine).find((cols) => cols[idIdx] === created.id);
     expect(dataRow).toBeTruthy();
-    expect(dataRow![statusIdx]).toBe("revoked");
+    // Package 5a folds the proxy-specific "revoked" value into the shared
+    // active/withdrawn/voided scheme - see sql/agm-p5a-editable-records.sql.
+    expect(dataRow![statusIdx]).toBe("withdrawn");
     expect(dataRow![revokedAtIdx]).not.toBe("");
   } finally {
     await cleanupProxy(email);

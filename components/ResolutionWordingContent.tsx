@@ -1,15 +1,15 @@
 /**
  * The four texts of one saved wording, read-only. Used by the current wording
  * panel on app/member-portal/admin/resolution/ResolutionAdminClient.tsx, so it
- * never drifts out of sync with what the public page actually renders.
- * Renders plain text nodes only, never an input or textarea - that absence is
- * what makes the immutability of body/declaration_text/consent_text/
- * supporting_statement visible in the UI, not just enforced in the database.
+ * never drifts out of sync with what the public page actually renders. This
+ * is the display view; editing happens through AgmRecordEditor, opened by
+ * "Change wording" on that same page, per brief section 2c - nothing here is
+ * locked any more, this component simply has no inputs of its own.
  *
- * There is no history view of this component any more. A superseded wording
- * still exists as a row - the table, the foreign key and the immutability
- * trigger are unchanged - it simply has no interface. One resolution, one
- * wording, one target: a history list served no action a volunteer takes.
+ * There is no history view of this component. A superseded wording still
+ * exists as a row - the table and the foreign key are unchanged - it simply
+ * has no interface. One resolution, one wording, one target: a history list
+ * served no action a volunteer takes.
  */
 
 export type WordingRow = {

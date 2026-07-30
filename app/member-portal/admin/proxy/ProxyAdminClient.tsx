@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { APPOINTEE_LABEL } from "@/lib/agm-appointee";
 import { isProxyDeclarationReady } from "@/lib/site-gates";
+import { AgmRecordEditor, AgmStatusAction, type AgmField } from "@/components/AgmRecordEditor";
 
 export type Appointment = {
   id: string;
@@ -44,6 +45,7 @@ export type InterestRow = {
   consent_given: boolean | null;
   privacy_policy_version: string | null;
   suspected_bot: boolean;
+  agm_record_status: string;
   created_at: string;
 };
 
@@ -162,8 +164,11 @@ function RevokeAction({ appointment }: { appointment: Appointment }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  if (appointment.status === "revoked") {
+  if (appointment.status === "withdrawn") {
     return <span className="text-[0.75rem] text-gray-400">Revoked {fmtDate(appointment.revoked_at!)}</span>;
+  }
+  if (appointment.status === "voided") {
+    return <span className="text-[0.75rem] text-gray-400">Voided</span>;
   }
 
   async function revoke() {
@@ -242,18 +247,25 @@ export default function ProxyAdminClient({
   const [showFullText, setShowFullText] = useState(false);
   const [appointmentsExpanded, setAppointmentsExpanded] = useState(false);
   const [interestExpanded, setInterestExpanded] = useState(false);
+  const [editingAppointmentId, setEditingAppointmentId] = useState<string | null>(null);
+  const [editingInterestId, setEditingInterestId] = useState<string | null>(null);
 
-  // Countable: not a suspected-bot row, not revoked. Section 5a is explicit
-  // that a revocation excludes the row from every count; store-and-flag is
-  // explicit that a suspected-bot row does too.
-  const countable = appointments.filter((a) => !a.suspected_bot && a.status !== "revoked");
+  // Countable: not a suspected-bot row, active. Section 5a is explicit that
+  // a non-active row (withdrawn or voided) excludes the row from every
+  // count; store-and-flag is explicit that a suspected-bot row does too.
+  const countable = appointments.filter((a) => !a.suspected_bot && a.status === "active");
   const directCount = countable.filter((a) => a.how_held === "direct").length;
   const nomineeCount = countable.filter((a) => a.how_held === "nominee").length;
-  const revokedCount = appointments.filter((a) => a.status === "revoked" && !a.suspected_bot).length;
+  const revokedCount = appointments.filter((a) => a.status === "withdrawn" && !a.suspected_bot).length;
+  const voidedCount = appointments.filter((a) => a.status === "voided" && !a.suspected_bot).length;
   const totalCount = countable.length;
 
   const heldClause = `${directCount} direct-held, ${nomineeCount} nominee-held`;
-  const qualifierLine = revokedCount > 0 ? `${heldClause} · ${revokedCount} revoked` : heldClause;
+  const statusNotes = [
+    revokedCount > 0 ? `${revokedCount} revoked` : null,
+    voidedCount > 0 ? `${voidedCount} voided` : null,
+  ].filter(Boolean);
+  const qualifierLine = statusNotes.length > 0 ? `${heldClause} · ${statusNotes.join(", ")}` : heldClause;
 
   // Plain sentences, not raw config values - no volunteer should ever see
   // "proxy_mode", "interest" or "appointment" as a bare internal label.
@@ -316,13 +328,15 @@ export default function ProxyAdminClient({
 
   // Excludes suspected-bot rows, matching Registered Support's audit-trail
   // philosophy on the resolution page and the appointments count/export
-  // above - a flagged row is not counted or exported until released.
-  const interestCountable = registeredInterest.filter((r) => !r.suspected_bot);
+  // above - a flagged row is not counted or exported until released. Also
+  // excludes withdrawn/voided rows from the count, per brief section 2c -
+  // they stay in the export (see downloadInterestCsv), marked not omitted.
+  const interestCountable = registeredInterest.filter((r) => !r.suspected_bot && r.agm_record_status === "active");
 
   // Separate file, deliberately - an intention is not an appointment, and
   // this list must never be mistaken for the register above it.
   function downloadInterestCsv() {
-    const rows = interestCountable.map((r) => ({
+    const rows = registeredInterest.filter((r) => !r.suspected_bot).map((r) => ({
       id:                     r.id,
       created_at:             r.created_at,
       contact_name:           r.contact_name,
@@ -332,6 +346,9 @@ export default function ProxyAdminClient({
       enquiry_source:         r.enquiry_source ?? "",
       consent_given:          r.consent_given ?? "",
       privacy_policy_version: r.privacy_policy_version ?? "",
+      // Not omitted for withdrawn/voided rows, per brief section 2c - marked
+      // in the export rather than disappearing from it.
+      status:                 r.agm_record_status,
     }));
     const csv = toCsv(rows as unknown as Record<string, unknown>[]);
     const today = new Date().toISOString().split("T")[0];
@@ -421,12 +438,13 @@ export default function ProxyAdminClient({
           <div className="border-t border-gray-100 overflow-x-auto">
             <table className="w-full text-sm table-fixed">
               <colgroup>
-                <col style={{ width: "11%" }} />
-                <col style={{ width: "18%" }} />
-                <col style={{ width: "24%" }} />
                 <col style={{ width: "10%" }} />
-                <col style={{ width: "15%" }} />
-                <col style={{ width: "22%" }} />
+                <col style={{ width: "16%" }} />
+                <col style={{ width: "21%" }} />
+                <col style={{ width: "9%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "14%" }} />
               </colgroup>
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
@@ -436,21 +454,40 @@ export default function ProxyAdminClient({
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Held</th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">SRN</th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Status</th>
+                  <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {appointments.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">
+                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400 text-sm">
                       No appointments yet.
                     </td>
                   </tr>
                 )}
-                {appointments.map((a) => (
+                {appointments.map((a) => {
+                  const fields: AgmField[] = [
+                    { key: "full_name", label: "Full name", type: "text", value: a.full_name },
+                    { key: "email", label: "Email", type: "text", value: a.email },
+                    { key: "address_line_1", label: "Address line 1", type: "text", value: a.address_line_1 },
+                    { key: "address_line_2", label: "Address line 2", type: "text", value: a.address_line_2 },
+                    { key: "address_town", label: "Town", type: "text", value: a.address_town },
+                    { key: "address_postcode", label: "Postcode", type: "text", value: a.address_postcode },
+                    { key: "how_held", label: "How held (direct/nominee)", type: "text", value: a.how_held },
+                    { key: "computershare_srn", label: "Computershare SRN", type: "text", value: a.computershare_srn },
+                    { key: "nominee_platform", label: "Nominee platform", type: "text", value: a.nominee_platform },
+                    { key: "nominee_platform_other", label: "Nominee platform (other)", type: "text", value: a.nominee_platform_other },
+                    { key: "shares_held", label: "Shares held", type: "text", value: a.shares_held },
+                    { key: "share_class", label: "Share class", type: "text", value: a.share_class },
+                    { key: "appointee_name", label: "Appointee", type: "text", value: a.appointee_name },
+                    { key: "signature_name", label: "Signature name", type: "text", value: a.signature_name },
+                    { key: "signed_at", label: "Signed at", type: "text", value: a.signed_at },
+                  ];
+                  return (
+                  <Fragment key={a.id}>
                   <tr
-                    key={a.id}
                     className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${
-                      a.suspected_bot ? "bg-red-50/40" : a.status === "revoked" ? "bg-gray-50" : ""
+                      a.suspected_bot ? "bg-red-50/40" : a.status === "withdrawn" ? "bg-gray-50" : ""
                     }`}
                   >
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(a.created_at)}</td>
@@ -468,12 +505,48 @@ export default function ProxyAdminClient({
                             <SuspectedBotActions id={a.id} table="agm_proxies" />
                           </>
                         ) : (
-                          <RevokeAction appointment={a} />
+                          <>
+                            <RevokeAction appointment={a} />
+                            {a.status === "active" && (
+                              <AgmStatusAction
+                                table="agm_proxies"
+                                id={a.id}
+                                currentStatus={a.status}
+                                personLabel={a.full_name}
+                                actions={["voided"]}
+                              />
+                            )}
+                          </>
                         )}
                       </div>
                     </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => setEditingAppointmentId(editingAppointmentId === a.id ? null : a.id)}
+                        className="text-[0.75rem] text-csl-dark hover:underline font-medium"
+                      >
+                        {editingAppointmentId === a.id ? "Close" : "Edit"}
+                      </button>
+                    </td>
                   </tr>
-                ))}
+                  {editingAppointmentId === a.id && (
+                    <tr className="border-b border-gray-100">
+                      <td colSpan={7} className="px-4 py-3 bg-gray-50">
+                        <AgmRecordEditor
+                          table="agm_proxies"
+                          id={a.id}
+                          fields={fields}
+                          warningText={`This edits ${a.full_name}'s appointment record. If the appointee name or signature no longer matches what they signed, the registrar may reject the appointment - re-signing may be needed.`}
+                          open={true}
+                          onClose={() => setEditingAppointmentId(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -516,19 +589,20 @@ export default function ProxyAdminClient({
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Name</th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500">Email</th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Status</th>
+                  <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {registeredInterest.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-10 text-center text-gray-400 text-sm">
+                    <td colSpan={5} className="px-4 py-10 text-center text-gray-400 text-sm">
                       No registered interest yet.
                     </td>
                   </tr>
                 )}
                 {registeredInterest.map((r) => (
+                  <Fragment key={r.id}>
                   <tr
-                    key={r.id}
                     className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${r.suspected_bot ? "bg-red-50/40" : ""}`}
                   >
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(r.created_at)}</td>
@@ -542,11 +616,47 @@ export default function ProxyAdminClient({
                           </span>
                           <SuspectedBotActions id={r.id} table="shareholder_cases" />
                         </div>
+                      ) : r.agm_record_status !== "active" ? (
+                        <span className="text-gray-400 text-[0.75rem] capitalize">{r.agm_record_status}</span>
                       ) : (
                         <span className="text-gray-400 text-[0.75rem]">-</span>
                       )}
                     </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex flex-col gap-1 items-start">
+                        <button
+                          type="button"
+                          onClick={() => setEditingInterestId(editingInterestId === r.id ? null : r.id)}
+                          className="text-[0.75rem] text-csl-dark hover:underline font-medium"
+                        >
+                          {editingInterestId === r.id ? "Close" : "Edit"}
+                        </button>
+                        {!r.suspected_bot && (
+                          <AgmStatusAction table="shareholder_cases" id={r.id} currentStatus={r.agm_record_status} personLabel={r.contact_name} />
+                        )}
+                      </div>
+                    </td>
                   </tr>
+                  {editingInterestId === r.id && (
+                    <tr className="border-b border-gray-100">
+                      <td colSpan={5} className="px-4 py-3 bg-gray-50">
+                        <AgmRecordEditor
+                          table="shareholder_cases"
+                          id={r.id}
+                          fields={[
+                            { key: "contact_name", label: "Name", type: "text", value: r.contact_name },
+                            { key: "email", label: "Email", type: "text", value: r.email },
+                            { key: "phone", label: "Phone", type: "text", value: r.phone },
+                            { key: "notes", label: "Notes", type: "textarea", value: r.notes },
+                            { key: "enquiry_source", label: "Source", type: "text", value: r.enquiry_source },
+                          ]}
+                          open={true}
+                          onClose={() => setEditingInterestId(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

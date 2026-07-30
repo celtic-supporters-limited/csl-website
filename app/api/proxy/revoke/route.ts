@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
+import { applyStatusChange } from "@/lib/agm-change-log";
 
 /**
  * Revokes a proxy appointment. A status change, not a delete - section 5a of
  * the Package 5 brief. A member can revoke a proxy before the meeting; that
  * is their right, and the record is retained so CSL can show a registrar
  * which appointments in a lodged block are no longer live.
+ *
+ * Package 5a folds the proxy-specific 'revoked' value into the shared
+ * active/withdrawn/voided scheme (brief section 2c) - a revocation is the
+ * person asking to be removed, which is exactly what 'withdrawn' means. This
+ * route keeps its own URL and "Revoke" vocabulary, and keeps writing
+ * revoked_at/revoked_reason as a side effect, but the status value itself
+ * and the change log entry now go through the same lib/agm-change-log.ts
+ * helper every other status change on any AGM record uses.
  *
  * One click, no workflow: the confirmation naming the person lives in the
  * client, this route only performs the flip once asked.
@@ -62,21 +71,22 @@ export async function POST(request: NextRequest) {
   if (fetchError || !proxy) {
     return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
   }
-  if (proxy.status === "revoked") {
+  if (proxy.status === "withdrawn") {
     return NextResponse.json({ error: "This appointment is already revoked." }, { status: 400 });
   }
 
-  const { error: updateError } = await db
-    .from("agm_proxies")
-    .update({
-      status: "revoked",
-      revoked_at: new Date().toISOString(),
-      revoked_reason: reason,
-    })
-    .eq("id", id);
+  const result = await applyStatusChange({
+    table: "agm_proxies",
+    id,
+    statusColumn: "status",
+    newStatus: "withdrawn",
+    changedBy: user.email ?? user.id,
+    reason,
+    extraUpdates: { revoked_at: new Date().toISOString(), revoked_reason: reason },
+  });
 
-  if (updateError) {
-    console.error("[proxy/revoke] update error:", updateError.message);
+  if (!result.ok) {
+    console.error("[proxy/revoke] update error:", result.error);
     return NextResponse.json({ error: "Database error" }, { status: 500 });
   }
 

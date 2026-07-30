@@ -40,7 +40,7 @@ export default async function ProxyAdminPage() {
     // actually works from for its first appointment-campaign email.
     supabase
       .from("shareholder_cases")
-      .select("id, contact_name, email, phone, notes, enquiry_source, consent_given, privacy_policy_version, suspected_bot, created_at")
+      .select("id, contact_name, email, phone, notes, enquiry_source, consent_given, privacy_policy_version, suspected_bot, agm_record_status, created_at")
       .eq("case_type", "Proxy Interest")
       .eq("meeting_ref", currentMeetingRef)
       .order("created_at", { ascending: false }),

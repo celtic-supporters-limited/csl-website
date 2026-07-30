@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabase();
     const { data: currentVersion } = await supabase
       .from("agm_resolution_versions")
-      .select("id")
+      .select("id, body, declaration_text, consent_text, supporting_statement")
       .eq("is_current", true)
       .maybeSingle();
     await supabase.from("agm_signatures").insert({
@@ -127,6 +127,11 @@ export async function POST(req: NextRequest) {
       member_tag:             "non-member",
       meeting_ref:            await getCurrentMeetingRef(),
       suspected_bot:          true,
+      status:                 "active",
+      resolution_snapshot:              currentVersion?.body ?? null,
+      declaration_snapshot:             currentVersion?.declaration_text ?? null,
+      consent_snapshot:                 currentVersion?.consent_text ?? null,
+      supporting_statement_snapshot:    currentVersion?.supporting_statement ?? null,
     });
     return NextResponse.json({ ok: true, firstName: "" });
   }
@@ -167,7 +172,7 @@ export async function POST(req: NextRequest) {
   // cannot be un-taken.
   const { data: version, error: versionError } = await supabase
     .from("agm_resolution_versions")
-    .select("id, is_placeholder")
+    .select("id, is_placeholder, body, declaration_text, consent_text, supporting_statement")
     .eq("is_current", true)
     .maybeSingle();
 
@@ -337,6 +342,15 @@ export async function POST(req: NextRequest) {
     // new rows to follow it.
     meeting_ref:            meetingRef,
     suspected_bot:          false,
+    status:                 "active",
+    // What this signatory actually saw, copied in at the moment of signing -
+    // brief section 2c/3.3. Survives any later edit to the wording: this is
+    // a lookup on the signatory's own row, not a reconstruction from the
+    // change log. Written once here, never edited afterwards.
+    resolution_snapshot:              version.body,
+    declaration_snapshot:             version.declaration_text,
+    consent_snapshot:                 version.consent_text,
+    supporting_statement_snapshot:    version.supporting_statement,
   });
 
   if (dbError) {
