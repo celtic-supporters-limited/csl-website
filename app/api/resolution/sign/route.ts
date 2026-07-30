@@ -271,11 +271,13 @@ export async function POST(req: NextRequest) {
   // not a duplicate, it is a second, distinct instrument. Read once and
   // reused for the insert below, rather than reading it twice.
   //
-  // status = active only, matching the partial unique index added in
-  // sql/agm-p5a-followup-resign-after-void.sql (brief section 2c): a
-  // withdrawn or voided row must not block the same person from signing
-  // again, which is the entire point of voiding a pre_rebuild record rather
-  // than leaving it stuck.
+  // status = active and suspected_bot = false, matching the partial unique
+  // index (sql/agm-p5a-followup-resign-after-void.sql,
+  // sql/agm-p5a-followup3-suspected-bot-index.sql). Withdrawn/voided must
+  // not block a real re-sign (brief section 2c), and a suspected_bot row
+  // must not either - a bot submitting with a real person's email must
+  // never be able to occupy their slot and later reject their genuine
+  // signature as a duplicate.
   const meetingRef = await getCurrentMeetingRef();
 
   const { data: existing } = await supabase
@@ -284,6 +286,7 @@ export async function POST(req: NextRequest) {
     .eq("email", email)
     .eq("meeting_ref", meetingRef)
     .eq("status", "active")
+    .eq("suspected_bot", false)
     .maybeSingle();
 
   if (existing) {

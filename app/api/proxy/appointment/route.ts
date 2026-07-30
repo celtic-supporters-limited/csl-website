@@ -239,16 +239,19 @@ export async function POST(req: NextRequest) {
   // Scoped to the current meeting, matching agm_signatures - the same person
   // appointing a proxy for a later AGM is a new appointment, not a duplicate.
   //
-  // status = active only, matching the partial unique index added in
-  // sql/agm-p5a-followup2-supporters-proxies-resign.sql: a withdrawn or
-  // voided appointment must not block the same person from appointing
-  // again, the same fix already applied to agm_signatures.
+  // status = active and suspected_bot = false, matching the partial unique
+  // index (sql/agm-p5a-followup2-supporters-proxies-resign.sql,
+  // sql/agm-p5a-followup3-suspected-bot-index.sql): a withdrawn, voided or
+  // suspected_bot row must not block the same person from appointing
+  // again - a bot occupying a real person's email slot must never cause
+  // their genuine appointment to be rejected as a duplicate.
   const { data: existing } = await supabase
     .from("agm_proxies")
     .select("id")
     .eq("email", email)
     .eq("meeting_ref", meetingRef)
     .eq("status", "active")
+    .eq("suspected_bot", false)
     .maybeSingle();
 
   if (existing) {

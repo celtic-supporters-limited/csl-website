@@ -206,6 +206,10 @@ async function adminStatus(page: Page, body: Record<string, unknown>) {
   return page.request.post("/api/admin/agm-status", { data: body });
 }
 
+async function suspectedBotAction(page: Page, body: Record<string, unknown>) {
+  return page.request.post("/api/admin/suspected-bot", { data: body });
+}
+
 test.beforeEach(({}, testInfo) => {
   if (!ADMIN_EMAIL || !ADMIN_PASSWORD) testInfo.skip(true, "TEST_USER_EMAIL / TEST_USER_PASSWORD not set");
 });
@@ -932,5 +936,91 @@ test("voiding a supporter record frees its email for a fresh registration", asyn
   } finally {
     await db().from("agm_supporters").delete().eq("email", email);
     await setConfig("resolution_open", previousOpen.data?.value ?? "false");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Follow-up 6. A suspected_bot row must not occupy a real person's email
+// slot - REQUIRES sql/agm-p5a-followup3-suspected-bot-index.sql to have
+// been run.
+// ---------------------------------------------------------------------------
+
+test("a flagged signature does not block a later real submission with the same email", async ({ page }) => {
+  const email = `p5a-bot-blocks-${Date.now()}@example.com`;
+  const versionId = await insertTestVersion({ is_placeholder: false });
+  const previousOpen = await db().from("site_config").select("value").eq("key", "resolution_open").maybeSingle();
+
+  try {
+    const flaggedId = await insertTestSignature({ email, suspected_bot: true });
+
+    await db().from("agm_resolution_versions").update({ is_current: false }).eq("is_current", true);
+    await db().from("agm_resolution_versions").update({ is_current: true }).eq("id", versionId);
+    await setConfig("resolution_open", "true");
+
+    const res = await page.request.post("/api/resolution/sign", {
+      data: {
+        fullName: "P5a Real Signatory",
+        addressLine1: "1 Test Street",
+        addressTown: "Glasgow",
+        addressPostcode: "G1 1AA",
+        email,
+        howHeld: "direct",
+        computershareSrn: "C0009998887",
+        shareClass: "ORD",
+        eligibilityConfirmed: true,
+        resolutionSupported: true,
+        consentGiven: true,
+        signatureName: "P5a Real Signatory",
+        turnstileToken: "test-token",
+      },
+      headers: { "x-forwarded-for": "10.16.0.70" },
+    });
+    expect(res.status(), "a suspected_bot row must never cause a genuine signature to read as a duplicate").toBe(200);
+
+    const { data: rows } = await db().from("agm_signatures").select("id, suspected_bot, status").eq("email", email);
+    expect(rows?.length).toBe(2);
+    const realRow = rows!.find((r) => r.id !== flaggedId);
+    expect(realRow?.suspected_bot).toBe(false);
+    expect(realRow?.status).toBe("active");
+  } finally {
+    await db().from("agm_signatures").delete().eq("email", email);
+    await db().from("agm_resolution_versions").delete().eq("id", versionId);
+    await setConfig("resolution_open", previousOpen.data?.value ?? "false");
+  }
+});
+
+test("releasing a flagged signature is refused when an active unflagged record already holds the same email, naming the conflict", async ({ page }) => {
+  const email = `p5a-release-conflict-${Date.now()}@example.com`;
+
+  try {
+    const flaggedId = await insertTestSignature({ email, suspected_bot: true, full_name: "Flagged Row" });
+    const activeId = await insertTestSignature({ email, full_name: "Genuine Signatory" });
+
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    const res = await suspectedBotAction(page, { table: "agm_signatures", id: flaggedId, action: "release" });
+    expect(res.status()).toBe(409);
+    const data = await res.json();
+    expect(data.error).toContain("Genuine Signatory");
+    expect(data.error).toContain(activeId);
+
+    const { data: stillFlagged } = await db().from("agm_signatures").select("suspected_bot").eq("id", flaggedId).single();
+    expect(stillFlagged.suspected_bot, "the flag must not be cleared when release is refused").toBe(true);
+  } finally {
+    await db().from("agm_signatures").delete().eq("email", email);
+  }
+});
+
+test("releasing a flagged signature succeeds when nothing else holds the same email", async ({ page }) => {
+  const flaggedId = await insertTestSignature({ suspected_bot: true });
+
+  try {
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    const res = await suspectedBotAction(page, { table: "agm_signatures", id: flaggedId, action: "release" });
+    expect(res.status()).toBe(200);
+
+    const { data: row } = await db().from("agm_signatures").select("suspected_bot").eq("id", flaggedId).single();
+    expect(row.suspected_bot).toBe(false);
+  } finally {
+    await db().from("agm_signatures").delete().eq("id", flaggedId);
   }
 });
