@@ -19,6 +19,7 @@ const EXPECTED = [
   "Member Support",
   "Operational Status",
   "AGM Resolution",
+  "AGM Proxy",
 ];
 const STALE = [
   "Member Events",

@@ -124,6 +124,322 @@ distinguished by icon and label only, one neutral card treatment throughout.
 
 ---
 
+## Gap-fill session - stale tests, server-side honeypot, meeting-scoped uniqueness
+
+**Landed:** Refreshed `tests/site-gates.spec.ts`'s `validBody()` to the sign
+route's current field shape (it still sent Package 1 fields two packages
+after the route moved on - the concrete case that prompted the standing rule
+below). Strengthened "validation still applies when open" to blank
+`signatureName`, the last field checked, rather than `fullName`, the first -
+blanking the first field only proves the first check fires. Rewrote the
+pre-rebuild count test to read the actual rendered admin page rather than
+re-deriving the filter and asserting on its own arithmetic. Added the
+supporter-consent-rejection test's missing assertion that no row was written.
+Wrote the CSV export test Package 2 spec item 11 asked for and nobody had
+written. Implemented the server-side honeypot on both `/api/resolution/sign`
+and `/api/resolution/supporter` (previously checked client-side only, so a
+direct POST bypassed it entirely) and made a missing `TURNSTILE_SECRET_KEY`
+log loudly instead of silently skipping verification. Wrote
+`sql/agm-gap-fill-meeting-scoped-email.sql`, making signature/supporter email
+uniqueness composite with `meeting_ref` instead of a bare `UNIQUE(email)` -
+without it, nobody could ever sign again for a second AGM under the same
+email, which defeats the meeting-scoping added in Package 3.
+
+**Found and fixed within the session, not asked for:** the same test file's
+own `beforeAll` inserted resolution versions without `declaration_text`/
+`consent_text`, NOT NULL since Package 3 - the identical staleness class the
+session was about, discovered while verifying the named fixes rather than
+being one of them. Also fixed: stale `#postalAddress`/`#typedSignature`
+locators, and "Who should sign" copy that had become "Who can sign".
+
+**Verified:** 39/39 across all three AGM test files that existed at the time.
+The CSV test needed two non-obvious fixes: this sandbox's Chromium never
+fires a `download` event for Blob-URL downloads at all (confirmed with a
+minimal page with no app code involved), so the test captures the Blob via
+a `URL.createObjectURL` interception instead; and a click straight after
+`domcontentloaded` can land before React has hydrated the handler.
+
+**Deferred:** the composite-uniqueness SQL was written but not run this
+session. Confirmed run against both staging and production during the
+pre-Package-5 catch-up (see below) - both now enforce
+`UNIQUE(email, meeting_ref)`.
+
+---
+
+## Package 3 amendment - duplicate/edit/delete workflow, autofill-safe honeypot
+
+**Landed:** "Duplicate and edit" on the (then-separate) versions page,
+pre-filling the create form from an existing version so a wording amendment
+no longer means retyping four text blocks. Delete, enabled only for versions
+with zero signatures that are not current - the database's `ON DELETE
+RESTRICT` already made the zero-signatures half safe, this just exposed it;
+confirmation names the version. `version_label` made editable
+(`sql/agm-p3-amend-editable-label.sql`, dropping it from the immutability
+trigger) with an inline edit control - metadata nobody signs, unlike `body`/
+`declaration_text`/`consent_text`/`supporting_statement`/`is_placeholder`,
+which stayed immutable and unconditional. Honeypot field renamed from
+`website` (exactly what autofill and password managers target unprompted) to
+`hp_field`, with every rejection logged with email and timestamp instead of
+discarded silently.
+
+**Verified:** 39/39 across all three AGM files. The "no edit action exists"
+test's own premise had just become false by design (a "Duplicate and edit"
+button now existed) - rewritten to assert the four immutable content fields
+still have no in-place edit affordance, while the label control does.
+
+**Found and fixed within the session:** the relabel SQL script initially
+tried disabling and re-enabling the immutability trigger inline rather than
+depending on `agm-p3-amend-editable-label.sql` having been run first - wrong
+scope, since nothing else needed the trigger toggled. Corrected to a plain
+`UPDATE` that depends on the amendment script, with no working
+disable-the-trigger example left in the repository.
+
+**Deferred:** the label-editable SQL amendment was written and, per a later
+verification, was already applied to staging in this window but not
+confirmed on production until the pre-Package-5 catch-up.
+
+---
+
+## Admin redesign - one page, resolution instrument as the primary object
+
+**Landed:** Retired `/member-portal/admin/resolution/versions` and the
+version/make-current/duplicate/placeholder/activate vocabulary from the
+interface entirely, merging into one route. First pass: signing state,
+direct-registered count, supporters line, current wording behind a single
+"Change wording" save flow, six-column signature table with a specific
+per-row Status, a collapsed wording history. Fixed a real horizontal-overflow
+defect in the same window - `PortalShell.tsx`'s grid item had no `min-width:
+0`, so the table's `whitespace-nowrap` columns forced the content column
+wider than its track and made `overflow-x-auto` dead; the amber "excluded
+from the count toward 10" (should read "100") banner was the visible symptom.
+De-duplicated the admin sidebar entry (`AGM Resolution` appeared twice, once
+per page, in `PortalClient.tsx` and `PortalShell.tsx`) and fixed a consent-copy
+contradiction between the shareholder and supporter paths on `/resolution`.
+
+**Second pass, after a rejected mockup:** a first mockup (own interpretation)
+was rejected; a second, built directly from
+`docs/agm/CSL_AGM_AdminRedesign_ClaudeCode_Prompt.md`'s approved ASCII layout,
+was approved and built. Deleted the Wording History disclosure entirely (not
+merely collapsed - the doc's own prose and its delete-list briefly
+contradicted each other on this point; the delete list won). Heading now
+states the meeting (`AGM Resolution` / `{meetingRef}`), plain text for one
+meeting, a selector reserved for when a second exists but never bound to
+`current_meeting_ref` - switching the live meeting stays a deliberate
+no-interface config action. Banner rewritten to name the meeting, not the
+auto-generated document label, collapsed from four closed-state messages to
+exactly three (gate not open / no wording saved / wording not finalised -
+"gate closed and also not finalised" was never a fourth action a volunteer
+takes). Count became three lines: headline, what it measures, one quiet
+qualifier line joining the completion count and the supporter note with
+correct singular/plural agreement in both halves, no separate banner box.
+"THE REQUISITION" card: Final/Not final badge, single "Show full text" toggle
+for all four texts together. "Who has signed" became a collapsed disclosure
+with Export CSV beside the toggle. CSV filename gained the meeting reference
+(`csl-resolution-signatures-{meetingRef}-{date}.csv`). Corrected the draft
+wording's `declaration_text` to cite Companies Act 2006 sections 314 and 338
+together (was 338 alone), per Appendix 1 of
+`docs/agm/reference/ShareAction_UK_Guide_Shareholder_Resolutions_2019.md`
+(fetched, converted with `pdftotext -layout`, and committed as the primary
+reference per brief section 2b) - done as a new version via the app's own
+create-and-activate flow, never by mutating the existing row.
+
+**Verified:** 40/40 across all three files. Found and fixed while verifying:
+a version-label immutability test had gone stale in place - the amendment
+script above had already been run against staging, so the test's own
+assertion no longer matched reality; corrected to assert body immutable,
+label mutable. A completion-count assertion assumed a clean baseline of zero
+pre-rebuild rows, which staging does not have (a genuine preserved rehearsal
+row, not test debris) - rewritten as a before/after delta.
+
+**Deferred:** none new; see the shared list.
+
+---
+
+## Registered Support - supporters gain a name and email, not just a count
+
+**Landed:** Non-shareholders who register support were stored in
+`agm_supporters` with no way to see who they were anywhere in the app, only
+a count - a gap dating from Package 2, when they were moved out of
+`agm_signatures`. Mockup shown and approved (one correction: "Supporters" ->
+"Registered Support"). Added a second collapsed disclosure beneath "Who has
+signed", identical pattern, showing date/name/email with its own CSV export
+(`id`, `created_at`, `full_name`, `email`, `consent_given`,
+`privacy_policy_version`) - deliberately never merged into the signature
+export, which is the actual lodgement document and must contain only people
+who have signed.
+
+**Verified:** 41/41 across all three files. Adding a second "Export CSV"
+button made an existing test's bare role-name locator ambiguous (matched
+two buttons) - fixed by scoping to the specific button via its sibling
+relationship to the "Who has signed" toggle, the same class of test fix the
+brief's standing rule anticipates for any UI change that touches shared text.
+
+**Deferred:** none new; see the shared list.
+
+---
+
+## Pre-Package-5 catch-up - production schema behind staging
+
+**Landed:** No feature work. Gary attempted to run
+`sql/agm-gap-fill-meeting-scoped-email.sql` against production and it failed
+with `column "meeting_ref" does not exist` - production had never had
+`sql/agm-p3-resolution-content.sql` run against it, despite staging having
+had it for two packages. Diagnostic queries established production was
+otherwise fully and correctly through Package 2 (rename, schema, preserve
+all confirmed correct, including the two real preserved shareholder rows),
+just missing everything from Package 3 onward. Ran, in order:
+`agm-p3-resolution-content.sql`, `agm-p3-amend-editable-label.sql`,
+`agm-relabel-seed-placeholder.sql`, `agm-gap-fill-meeting-scoped-email.sql`
+(skipping `agm-p3-staging-cleanup.sql`, whose own header says never to run it
+on production).
+
+**Verified:** a single consolidated read-only query confirmed every expected
+outcome: the four new columns present, the current wording row shaped
+correctly (`created_by = "AGM P3 migration"`, confirming the old Package-2
+placeholder was deleted and replaced rather than mutated), the composite
+unique constraints in place on both tables, zero null `meeting_ref` values
+on the two preserved rows, `current_meeting_ref` present in `site_config`,
+and the immutability trigger's function body confirmed to exclude
+`version_label` specifically.
+
+**Deferred:** production's current wording is still the placeholder - the
+real Georgeson shareholder-tracing resolution content live on staging has
+not been authored on production yet. A content step via "Change wording"
+when ready, not a migration.
+
+---
+
+## Package 5a - make every record editable, add the change log
+
+Implements brief section 2c (added at brief v1.5), which reverses the position taken in Packages
+2 and 3: nothing in this programme is immutable, everything is editable, and the requirement was
+never immutability, it was provability.
+
+**Why the immutability trigger went in (Packages 2 and 3), for whoever reads this next.** The
+trigger on `agm_resolution_versions` (`agm_resolution_versions_no_edit`, added in Package 2,
+extended in Package 3 to cover `declaration_text`/`consent_text`/`supporting_statement`/
+`meeting_ref`) blocked every column update except `is_current`. The reasoning at the time: a
+signature references a specific wording, and if that wording could be edited after signing, CSL
+could no longer prove what a signatory actually agreed to. Locking the row at the database level
+was the mechanism chosen to guarantee that.
+
+**Why it came out.** In practice the lock did not protect the record, it relocated the correction.
+CSL is run by two non-technical volunteers; when a mistake needed fixing, the fix happened in the
+Supabase table editor by whoever held dashboard access, with no record it happened, no note of the
+previous value, and no way to tell afterwards. The lock's only real effect was to push corrections
+into the one channel with no audit trail at all. It also had a cost the original design did not
+weigh: a mistyped shareholder reference on a signed record was permanently uncorrectable from the
+interface, and against Package 8's reconciliation and the 100-signature target, that is a real
+loss of otherwise-valid signatures.
+
+**What replaces it.** Two mechanisms, together, deliver the same provability without a lock:
+
+1. `agm_change_log` - an append-only table (every edit and every status change, on every AGM
+   record type, logged with old value, new value, who, when, why). Enforced append-only by
+   revoking UPDATE and DELETE privilege from every role including `service_role`, not by a
+   trigger - a trigger that blocks a write is exactly the pattern being removed, so the log itself
+   cannot use one.
+2. Four snapshot columns on `agm_signatures` (`resolution_snapshot`, `declaration_snapshot`,
+   `consent_snapshot`, `supporting_statement_snapshot`), copying what the signatory actually saw
+   at the moment of signing directly onto their own row - the same idea `agm_proxies.
+   declaration_snapshot` already used from Package 5. "What did this person sign in September" is
+   now a lookup on their own row, unaffected by any later edit to the live wording, rather than a
+   reconstruction from the trigger's absence.
+
+`DROP TRIGGER agm_resolution_versions_no_edit` and `DROP FUNCTION
+agm_resolution_versions_immutable()` in `sql/agm-p5a-editable-records.sql`. No replacement trigger
+was added to that table or any other - the standing rule going forward is that a trigger which
+prevents a change, rather than recording one, is a sign the design has gone wrong, not a tool to
+reach for.
+
+**Status scheme.** `active` / `withdrawn` / `voided` added to `agm_signatures`, `agm_supporters`,
+and folded from `agm_proxies`' existing `active`/`revoked` (revoked -> withdrawn, keeping the
+"Revoke" vocabulary in the admin UI). `shareholder_cases` gained a separate `agm_record_status`
+column rather than overloading its existing `status` column, which already means something
+different (New/In Progress/Resolved case-handling workflow, shared with Share Tracing enquiries).
+No hard delete exists on any AGM record type before or after this package - status change was
+already the pattern for `agm_proxies` revocation; it is now the pattern everywhere.
+
+**Interface.** Both admin pages (`/member-portal/admin/resolution`, `/member-portal/admin/proxy`)
+gained a per-record "Edit" action (`components/AgmRecordEditor.tsx`) opening every editable field
+with a required reason and, where the edit changes what someone signed or was named as, a warning
+naming the count or the person before it can be saved. A collapsed "Show change history" sits at
+the foot of each edit panel, fetched on expand from `/api/admin/agm-change-log`. Status changes are
+a separate, simpler confirm-with-reason action (`AgmStatusAction`), except `agm_proxies`'
+withdrawn transition, which keeps its existing bespoke `RevokeAction`/`/api/proxy/revoke` UI and
+copy while writing through the same underlying log-then-update helper (`lib/agm-change-log.ts`)
+every other status change uses.
+
+The existing `WordingForm` ("Change wording" on the resolution admin page) now edits the current
+`agm_resolution_versions` row in place through the same generic edit API, rather than creating a
+new row and activating it - the log is what makes that safe now, not the trigger. The separate
+create-and-activate routes (`/api/admin/resolution-versions`, `/api/admin/resolution-versions/
+activate`) are unchanged and still work; they are simply no longer what the redesigned "Change
+wording" button calls, and remain available for a genuinely new AGM cycle rather than a correction.
+
+**One route, not two, for wording.** "Change wording" is the only volunteer-facing path to edit any
+of the four texts. `AgmRecordEditor` (the generic per-record edit view) is wired up only for
+signatures, supporters, appointments and interest rows - never for `agm_resolution_versions`.
+
+**Follow-up: derived tags and a legacy record that could not be resolved without SQL.**
+Two gaps found on review, both fixed in the same close-out:
+
+- `shareholder_tag` (and `member_tag`) are computed from `how_held` (and `email`) at sign time, not
+  independently meaningful. Making `how_held` editable without also recomputing `shareholder_tag`
+  meant a volunteer correcting nominee -> direct would leave the tag saying nominee - and the
+  headline count toward 100 filters on that tag, so the correction would silently not count.
+  `computeDerivedChanges()` in `lib/agm-change-log.ts` now recomputes and logs the derived field in
+  the same edit, whenever its source changes. The tags themselves stay excluded from
+  `EDITABLE_FIELDS` - editing the wrong end of the problem was rejected.
+- `capture_status` is now editable on `agm_signatures` (added to `EDITABLE_FIELDS`), so a
+  `pre_rebuild` record left over from before Package 2 no longer needs SQL to resolve. Voiding it
+  and letting the person sign fresh is the proven path (a legacy row has no `resolution_version_id`
+  and no snapshot, so marking it "complete" directly would be a label with no evidence behind it).
+  Voiding alone did not work at first: `agm_signatures` carried a plain `UNIQUE(email)` constraint
+  on staging - not only the composite `(email, meeting_ref)` `sql/agm-gap-fill-meeting-scoped-email
+  .sql` was meant to leave in its place, meaning that fix either never stuck or staging and
+  production have diverged on this point - so voiding a row did not free the email for a second
+  insert. `sql/agm-p5a-followup-resign-after-void.sql` finds and drops every UNIQUE constraint on
+  `agm_signatures` covering `email`, whatever its exact shape, and replaces them with one partial
+  index scoped to `WHERE status = 'active'`. `app/api/resolution/sign/route.ts`'s duplicate check
+  now matches (`.eq("status", "active")`), so a withdrawn or voided row no longer blocks a fresh
+  sign. Proved end to end in `tests/agm-p5a-editable-records.spec.ts` by voiding a `pre_rebuild` row
+  and then actually signing again through the public route with the same email.
+
+**Known limitation: `meeting_ref` is not editable.** Excluded from `EDITABLE_FIELDS` on every table
+deliberately - if a record ever lands against the wrong meeting, correcting it still needs SQL. Not
+built, because the failure mode (a record scoped to the wrong AGM) has not occurred and the fix
+would touch the same field every meeting-scoping decision in this programme depends on. Flagged
+here rather than silently left out.
+
+**Related, not fixed:** `agm_supporters` and `agm_proxies` carry the same `UNIQUE(email,
+meeting_ref)`-shaped constraint as `agm_signatures` did, with the same latent problem - withdrawing
+or voiding a row on either table does not free the email for a fresh submission, because neither
+constraint is scoped to `status = 'active'`. Only `agm_signatures` was fixed, because that is the
+one Gary raised (the pre_rebuild legacy record). The other two have not caused a real problem yet.
+
+**Follow-up: the proxy declaration is editable.** Gary's earlier acceptance of "leave it as config,
+document it in the runbook" (Package 5 close-out) predated brief section 2c and is withdrawn - the
+AGM Proxy admin page's "The Appointment" card gained a "Change wording" action
+(`DeclarationForm` in `ProxyAdminClient.tsx`), the same shape as `WordingForm` on the resolution
+page: one text field, one reason, one confirmation naming the count of active appointments whose
+own snapshot matches the current text. Saves through the dedicated `/api/admin/proxy-declaration`
+route - deliberately not folded into the generic `agm-edit` machinery, since `site_config`'s
+primary key is `key` rather than `id` and there is exactly one field this will ever touch.
+
+Logged through the same `agm_change_log` table as every other AGM edit, using
+`table_name = 'site_config'` and `record_id = 'proxy_declaration_text'`, so there remains one audit
+trail rather than a second one just for config. This required widening
+`agm_change_log.record_id` from `UUID` to `TEXT` (`sql/agm-p5a-proxy-declaration-editable.sql`) and
+adding `'site_config'` to its `table_name` CHECK constraint - both additive, neither affects any
+existing row.
+
+The TBD guard (`isProxyDeclarationReady()`) is not enforced by this save - a volunteer may
+deliberately park the declaration empty or starting with TBD, and the admin banner already reflects
+that state reactively from the same config value, so the save route does not duplicate the check.
+
+---
+
 ## Deferred items, tracked across packages
 
 - **Admin preview route.** Rendering a version as the public page would
@@ -150,3 +466,14 @@ distinguished by icon and label only, one neutral card treatment throughout.
   on the deployed Preview at that time (`tests/site-gates.spec.ts` covers
   both). Flagged for renewed verification before go-live; not re-confirmed
   since the hotfix session.
+- **Two Appendix 1 fields not captured for direct holders.** The amount paid
+  up on the shares, and an explicit "I do not hold these shares on behalf of
+  someone else" confirmation distinct from the existing eligibility tick.
+  Both are in ShareAction's registered-shareholder requisition form; logged
+  as open items awaiting the solicitor during the admin redesign session, not
+  added speculatively.
+- **Section 153(2) statement not captured for nominee/platform holders.**
+  Appendix 2's form for indirect investors asks for the registered
+  shareholder's name/address/account number and a statement they hold the
+  shares on the signatory's behalf; CSL's nominee path currently captures
+  none of it. Same status as above - solicitor question, not built.

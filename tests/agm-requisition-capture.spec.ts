@@ -414,25 +414,26 @@ test("signer metadata is captured only while the flag is on", async ({ request }
 });
 
 // ---------------------------------------------------------------------------
-// 9. Version immutability. The one that matters most.
-//
-// version_label is deliberately excluded from this test's immutability
-// assertion. The AGM admin redesign carved version_label out of the
-// immutability trigger (sql/agm-p3-amend-editable-label.sql, run against
-// staging) because it is metadata nobody signs, not evidence of what a
-// signatory saw - the redesign later deleted the inline label-edit interface
-// entirely, but the trigger amendment underneath it was not reverted, so a
-// label remains editable at the database level even with no UI to edit it
-// through. body is what a signature is evidence of and stays immutable and
-// unconditional, exactly as before.
+// 9. Version editability. REVERSED by Package 5a (brief section 2c): the
+// immutability trigger this test used to prove is deleted, so both body and
+// version_label are directly updatable now. Provability comes from
+// agm_change_log and the per-signature snapshot columns instead of a lock on
+// this row - see tests/agm-p5a-editable-records.spec.ts and
+// tests/agm-p3-resolution-content.spec.ts for those guarantees proved
+// directly. This test now proves the opposite of what it proved before, and
+// restores both values afterward since a raw update here does not go
+// through the application's logging path.
 // ---------------------------------------------------------------------------
 
-test("resolution version body cannot be edited; label can", async () => {
+test("resolution version body and label can both be edited directly (Package 5a removed the immutability trigger)", async () => {
+  const { data: before } = await db()
+    .from("agm_resolution_versions").select("body, version_label").eq("id", testVersionId).single();
+
   const { error: bodyErr } = await db()
     .from("agm_resolution_versions")
     .update({ body: "tampered" })
     .eq("id", testVersionId);
-  expect(bodyErr).not.toBeNull();
+  expect(bodyErr, "body should be editable now the trigger is gone").toBeNull();
 
   const { error: labelErr } = await db()
     .from("agm_resolution_versions")
@@ -440,17 +441,17 @@ test("resolution version body cannot be edited; label can", async () => {
     .eq("id", testVersionId);
   expect(labelErr).toBeNull();
 
-  // Restore, so later tests and reports in this file keep seeing the label
+  const { data: edited } = await db()
+    .from("agm_resolution_versions").select("body, version_label").eq("id", testVersionId).single();
+  expect(edited.body).toBe("tampered");
+  expect(edited.version_label).toBe("tampered");
+
+  // Restore, so later tests and reports in this file keep seeing the values
   // they expect.
   await db()
     .from("agm_resolution_versions")
-    .update({ version_label: TEST_VERSION_LABEL })
+    .update({ body: before.body, version_label: TEST_VERSION_LABEL })
     .eq("id", testVersionId);
-
-  const { data: unchanged } = await db()
-    .from("agm_resolution_versions").select("body, version_label").eq("id", testVersionId).single();
-  expect(unchanged.body).not.toBe("tampered");
-  expect(unchanged.version_label).toBe(TEST_VERSION_LABEL);
 });
 
 test("a version with signatures against it cannot be deleted", async ({ request }) => {
@@ -656,15 +657,19 @@ test("CSV export contains every schema column and distinguishes pre_rebuild rows
 
     // Every column ResolutionAdminClient.tsx's downloadCsv() emits, in order.
     // Package 2 spec item 11 asked for this list; this is the first time it
-    // has been asserted against.
+    // has been asserted against. status and the four _snapshot columns were
+    // added by Package 5a (brief section 2c) - status so a withdrawn/voided
+    // row is marked rather than omitted, the snapshots so the export always
+    // carries its own evidence of what each signatory actually saw.
     expect(headers).toEqual([
-      "id", "capture_status", "created_at", "signed_at", "full_name", "email",
+      "id", "capture_status", "status", "created_at", "signed_at", "full_name", "email",
       "address_line_1", "address_line_2", "address_town", "address_postcode",
       "how_held", "computershare_srn", "nominee_platform", "nominee_platform_other",
       "year_of_purchase", "shares_held", "share_class", "eligibility_confirmed",
       "resolution_supported", "consent_given", "privacy_policy_version",
       "resolution_version_id", "resolution_version_label", "signature_name",
       "signer_ip", "signer_user_agent", "shareholder_tag", "member_tag",
+      "resolution_snapshot", "declaration_snapshot", "consent_snapshot", "supporting_statement_snapshot",
     ]);
 
     const emailIdx = headers.indexOf("email");
@@ -741,10 +746,10 @@ test("a supporter appears in Registered Support and its export, never in the sig
     expect(supportersCsv).toContain(supporterEmail);
     expect(supportersCsv).toContain("Registered Support Check");
     // Exactly the columns Registered Support has data for - no shareholding
-    // fields exist to include.
+    // fields exist to include. status added by Package 5a.
     const supportersHeaders = supportersCsv.split("\r\n")[0].split(",");
     expect(supportersHeaders).toEqual([
-      "id", "created_at", "full_name", "email", "consent_given", "privacy_policy_version",
+      "id", "created_at", "full_name", "email", "status", "consent_given", "privacy_policy_version",
     ]);
 
     // The signature export - a separate download, a separate file - never

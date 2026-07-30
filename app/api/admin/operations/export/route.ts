@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import { getStripe } from "@/lib/stripe";
-import { getGates } from "@/lib/site-gates";
+import { getGates, getProxyMode } from "@/lib/site-gates";
 import { OperationsReportPdf } from "@/components/OperationsReportPdf";
 import type { OperationsReportData, TrafficLight, BackupRow } from "@/components/OperationsReportPdf";
 
@@ -53,6 +53,7 @@ export async function GET() {
     backupResult,
     stripeResult,
     gates,
+    proxyMode,
   ] = await Promise.all([
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", todayStart.toISOString()),
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", monthStart.toISOString()),
@@ -73,7 +74,8 @@ export async function GET() {
     })(),
     // Same uncached path the site enforces on, so the export cannot report a
     // gate state that differs from reality. See lib/site-gates.ts.
-    getGates("portal_open", "membership_open", "resolution_open", "proxy_open"),
+    getGates("portal_open", "membership_open", "resolution_open"),
+    getProxyMode(),
   ]);
 
   const todayCount  = emailsToday  ?? 0;
@@ -121,7 +123,7 @@ export async function GET() {
       portalOpen: gates.portal_open,
       membershipOpen: gates.membership_open,
       resolutionOpen: gates.resolution_open,
-      proxyOpen: gates.proxy_open,
+      proxyMode,
     },
   };
 

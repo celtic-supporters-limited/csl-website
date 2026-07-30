@@ -25,14 +25,19 @@ import { createClient } from "@supabase/supabase-js";
 // ---------------------------------------------------------------------------
 // Launch gate
 //
-// /proxy and POST /api/proxy are gated by the `proxy_open` key in site_config
-// (lib/site-gates.ts) and default closed. The pre-existing suite below exercises
-// the open path, so the gate is opened for the file and closed again after.
-// This doubles as the "open must not wrongly block" assertion: if the gate
-// regressed, every submission test in this file would fail.
+// This file covers the interest flow only - Package 5 replaced the binary
+// `proxy_open` key with a three-value `proxy_mode` (closed/interest/
+// appointment; see lib/site-gates.ts and
+// docs/agm/CSL_AGM_Package5_ProxyInstrument_ClaudeCode_Prompt.md section 3).
+// POST /api/proxy now only accepts submissions while proxy_mode is exactly
+// "interest" - the pre-existing suite below exercises that state, set for
+// the file and closed again after. This doubles as the "open must not
+// wrongly block" assertion: if the gate regressed, every submission test in
+// this file would fail. Full appointment-flow coverage is in
+// tests/agm-proxy.spec.ts.
 //
 // Gate state is global. This file must not run in parallel with anything else
-// touching `proxy_open`.
+// touching `proxy_mode`.
 // ---------------------------------------------------------------------------
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -47,25 +52,25 @@ function adminDb() {
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 }
 
-async function setProxyGate(open: boolean) {
+async function setProxyMode(mode: "closed" | "interest" | "appointment") {
   const { error } = await adminDb()
     .from("site_config")
     .upsert(
-      { key: "proxy_open", value: open ? "true" : "false", updated_at: new Date().toISOString() },
+      { key: "proxy_mode", value: mode, updated_at: new Date().toISOString() },
       { onConflict: "key" }
     );
-  if (error) throw new Error(`Failed to set proxy_open=${open}: ${error.message}`);
+  if (error) throw new Error(`Failed to set proxy_mode=${mode}: ${error.message}`);
 }
 
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
-  await setProxyGate(true);
+  await setProxyMode("interest");
 });
 
 test.afterAll(async () => {
-  // Always leave the gate closed, whatever happened above.
-  await setProxyGate(false);
+  // Always leave the mode closed, whatever happened above.
+  await setProxyMode("closed");
 });
 
 // ---------------------------------------------------------------------------
@@ -89,6 +94,8 @@ const VALID_PAYLOAD = {
   numShares: "500",
   yearPurchased: "1995",
   source: "Word of mouth",
+  // Was never sent at all before Package 5 (audit Finding 5) - required now.
+  consentGiven: true,
   turnstileToken: "test-token",
 };
 
@@ -150,7 +157,10 @@ test.describe("Proxy Assignment page — structure", () => {
 
   test("honeypot field is hidden", async ({ page }) => {
     await gotoProxy(page);
-    const honeypot = page.locator('input[name="website"]');
+    // Renamed from "website" in Package 5 - exactly what autofill and
+    // password managers target unprompted. See the matching resolution-form
+    // fix.
+    const honeypot = page.locator('input[name="hp_field"]');
     await expect(honeypot).toBeHidden();
   });
 
@@ -260,8 +270,11 @@ test.describe("Proxy Assignment form — successful submission", () => {
     await submitForm(page);
     await expect(page.locator("text=Proxy Intent Registered")).toBeVisible({ timeout: 10_000 });
     // Copy corrected in Package 1: the appointee is a named person, not CSL.
+    // Copy rewritten again in Package 5: registering interest is not an
+    // appointment, and there is no "official proxy form" sent to sign and
+    // return - CSL lodges the appointment directly once it is completed.
     await expect(
-      page.getByText(/We will send you the official proxy form/i)
+      page.getByText(/registering your intent to appoint/i)
     ).toBeVisible();
   });
 
@@ -337,6 +350,7 @@ test.describe("POST /api/proxy — server-side validation", () => {
     const res = await postProxy(request, {
       name: "James McPherson",
       email: "james.minimal@example.com",
+      consentGiven: true,
       turnstileToken: "test-token",
     }, nextIp());
     // Should reach DB insert — will succeed (200) or fail with 500 if DB unreachable,
@@ -401,7 +415,7 @@ test.describe("Proxy Assignment — honeypot", () => {
 
     // Reveal and fill the honeypot
     await page.evaluate(() => {
-      const hp = document.querySelector<HTMLInputElement>('input[name="website"]');
+      const hp = document.querySelector<HTMLInputElement>('input[name="hp_field"]');
       if (hp) {
         hp.style.display = "block";
         hp.value = "http://spam.example.com";
@@ -429,7 +443,7 @@ test.describe("Proxy Assignment — honeypot", () => {
 
 test.describe("Proxy Assignment — gate closed", () => {
   test.beforeAll(async () => {
-    await setProxyGate(false);
+    await setProxyMode("closed");
   });
 
   test("page renders explanation but no form", async ({ page }) => {
@@ -440,8 +454,11 @@ test.describe("Proxy Assignment — gate closed", () => {
     await expect(page.locator("h1")).toContainText(/Appoint Your/i);
     await expect(page.getByText(/What Is Proxy Voting/i).first()).toBeVisible();
 
-    // Holding message shown, form absent.
-    await expect(page.getByText(/Notice of the Annual General Meeting/i).first()).toBeVisible();
+    // Holding message shown, form absent. Copy rewritten in Package 5 for
+    // the three-mode page - was "Notice of the Annual General Meeting"
+    // spelled out, now "Notice of AGM" in the closed-state card specifically.
+    await expect(page.getByText("Not open yet")).toBeVisible();
+    await expect(page.getByText(/Notice of AGM/i).first()).toBeVisible();
     await expect(page.locator("#name")).toHaveCount(0);
     await expect(page.locator('button[type="submit"]')).toHaveCount(0);
 

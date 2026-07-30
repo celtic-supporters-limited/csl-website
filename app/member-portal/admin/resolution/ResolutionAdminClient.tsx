@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { WordingContent, type WordingRow } from "@/components/ResolutionWordingContent";
 import { SigningStateNotice } from "@/components/SigningStateNotice";
+import { AgmRecordEditor, AgmStatusAction, ChangeHistory, type AgmField } from "@/components/AgmRecordEditor";
 import type { ResolutionSigningState } from "@/lib/agm-signing-state";
 
 export type Signature = {
@@ -34,6 +35,12 @@ export type Signature = {
   shareholder_tag: string;
   member_tag: string;
   created_at: string;
+  suspected_bot: boolean;
+  status: string;
+  resolution_snapshot: string | null;
+  declaration_snapshot: string | null;
+  consent_snapshot: string | null;
+  supporting_statement_snapshot: string | null;
 };
 
 export type Supporter = {
@@ -43,6 +50,8 @@ export type Supporter = {
   consent_given: boolean;
   privacy_policy_version: string | null;
   created_at: string;
+  suspected_bot: boolean;
+  status: string;
 };
 
 type SortKey = "created_at" | "shareholder_tag";
@@ -78,6 +87,12 @@ function heldBadge(howHeld: string) {
  * person to sign again - so that is what the status says, not "completion".
  */
 function rowStatus(s: Signature): { label: string; needsAttention: boolean } {
+  if (s.suspected_bot) {
+    return { label: "Suspected bot", needsAttention: true };
+  }
+  if (s.status === "withdrawn" || s.status === "voided") {
+    return { label: s.status === "withdrawn" ? "Withdrawn" : "Voided", needsAttention: true };
+  }
   if (s.how_held === "direct" && !s.computershare_srn) {
     return { label: "Needs SRN", needsAttention: true };
   }
@@ -96,6 +111,67 @@ function ChevronIcon({ open }: { open: boolean }) {
     >
       <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+/**
+ * Release or purge a row flagged suspected_bot. Only rendered for flagged
+ * rows - the other half of store-and-flag, so a flag is something a
+ * volunteer can act on rather than a label nobody can do anything about.
+ * Release clears the flag (the row rejoins every count and export); purge
+ * deletes it outright.
+ */
+function SuspectedBotActions({ table, id }: { table: "agm_signatures" | "agm_supporters"; id: string }) {
+  const router = useRouter();
+  const [confirming, setConfirming] = useState<"release" | "purge" | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function act(action: "release" | "purge") {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/suspected-bot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table, id, action }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Something went wrong. Try again.");
+        setLoading(false);
+        setConfirming(null);
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Network error. Try again.");
+      setLoading(false);
+      setConfirming(null);
+    }
+  }
+
+  if (confirming) {
+    return (
+      <span className="text-[0.7rem]">
+        <button onClick={() => act(confirming)} disabled={loading} className="font-semibold text-csl-dark hover:underline disabled:opacity-60">
+          {loading ? "..." : "Confirm"}
+        </button>
+        {" / "}
+        <button onClick={() => setConfirming(null)} disabled={loading} className="text-gray-400 hover:underline disabled:opacity-60">
+          Cancel
+        </button>
+        {error && <span className="block text-red-600">{error}</span>}
+      </span>
+    );
+  }
+
+  return (
+    <span className="text-[0.7rem] whitespace-nowrap">
+      <button onClick={() => setConfirming("release")} className="text-csl-dark hover:underline">Release</button>
+      {" / "}
+      <button onClick={() => setConfirming("purge")} className="text-red-600 hover:underline">Purge</button>
+    </span>
   );
 }
 
@@ -119,17 +195,24 @@ const inputClass =
 const labelClass = "block text-[0.8rem] font-semibold text-gray-800 mb-1";
 
 /**
- * Edit the four texts and save. One button, one confirmation, one underlying
- * action: create a new wording row, then make it current - exactly what
- * "Make current" used to do as a second, separate step. The label is never
- * shown here because there is nothing to type: POST /api/admin/resolution-
- * versions generates it server-side.
+ * Edit the four texts in place and save. Package 5a: the immutability
+ * trigger on agm_resolution_versions is gone, so this now edits the current
+ * row directly through /api/admin/agm-edit rather than creating a new row
+ * and activating it - the log is what makes that safe, not a lock. Warning
+ * names the number of signatures against this exact wording, per brief
+ * section 3.2, since editing it changes what those people agreed to.
  */
 function WordingForm({
   current,
+  signedCount,
+  matchingCurrentTextCount,
   onClose,
 }: {
   current: WordingRow & { is_placeholder: boolean };
+  /** Every active signature bound to this row - affected by editing it, whether or not their own snapshot matches the live text. */
+  signedCount: number;
+  /** Of signedCount, how many saw exactly the text as it stands right now - the rest signed against an earlier edit of this same row. */
+  matchingCurrentTextCount: number;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -138,6 +221,7 @@ function WordingForm({
   const [consentText, setConsentText] = useState(current.consent_text);
   const [supportingStatement, setSupportingStatement] = useState(current.supporting_statement ?? "");
   const [isFinal, setIsFinal] = useState(!current.is_placeholder);
+  const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -146,37 +230,28 @@ function WordingForm({
     setSaving(true);
     setError("");
     try {
-      const createRes = await fetch("/api/admin/resolution-versions", {
+      const res = await fetch("/api/admin/agm-edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          body,
-          declarationText,
-          consentText,
-          supportingStatement: supportingStatement.trim() || null,
-          isPlaceholder: !isFinal,
+          table: "agm_resolution_versions",
+          id: current.id,
+          changes: {
+            body,
+            declaration_text: declarationText,
+            consent_text: consentText,
+            supporting_statement: supportingStatement.trim() || null,
+            is_placeholder: !isFinal,
+          },
+          reason: reason.trim(),
         }),
       });
-      if (!createRes.ok) {
-        const data = await createRes.json().catch(() => ({}));
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
         setError(data.error ?? "Something went wrong. Try again.");
         setSaving(false);
         return;
       }
-      const created = await createRes.json();
-
-      const activateRes = await fetch("/api/admin/resolution-versions/activate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: created.id }),
-      });
-      if (!activateRes.ok) {
-        const data = await activateRes.json().catch(() => ({}));
-        setError(data.error ?? "Saved, but could not make it current. Try again.");
-        setSaving(false);
-        return;
-      }
-
       onClose();
       router.refresh();
     } catch {
@@ -250,11 +325,20 @@ function WordingForm({
           This wording is final and signing may open
         </label>
 
+        <div>
+          <label htmlFor="wf-reason" className={labelClass}>Reason for this change</label>
+          <input
+            id="wf-reason" type="text" className={inputClass} disabled={confirming || saving}
+            value={reason} onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. solicitor's final wording arrived"
+          />
+        </div>
+
         {!confirming ? (
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            disabled={!body.trim() || !declarationText.trim() || !consentText.trim()}
+            disabled={!body.trim() || !declarationText.trim() || !consentText.trim() || !reason.trim()}
             className="px-4 py-2 text-sm font-semibold rounded-lg bg-csl-dark text-white hover:bg-csl-mid transition-colors disabled:opacity-60"
           >
             Save
@@ -262,7 +346,13 @@ function WordingForm({
         ) : (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 space-y-3">
             <p className="text-[0.85rem] text-amber-900 leading-snug">
-              This becomes what people sign from now on. Anyone who already signed keeps the old wording.
+              {signedCount > 0
+                ? `${signedCount} ${signedCount === 1 ? "person has" : "people have"} signed this wording${
+                    matchingCurrentTextCount < signedCount
+                      ? ` - ${matchingCurrentTextCount} against the current text, ${signedCount - matchingCurrentTextCount} against an earlier version`
+                      : ""
+                  }. Editing it changes what they agreed to. Anyone who already signed keeps their own snapshot of the wording as it was when they signed.`
+                : "This becomes what people sign from now on."}
             </p>
             <div className="flex items-center gap-3">
               <button
@@ -280,6 +370,8 @@ function WordingForm({
             </div>
           </div>
         )}
+
+        <ChangeHistory table="agm_resolution_versions" recordId={current.id} />
       </div>
     </div>
   );
@@ -309,15 +401,42 @@ export default function ResolutionAdminClient({
   const [editingWording, setEditingWording] = useState(false);
   const [signaturesExpanded, setSignaturesExpanded] = useState(false);
   const [supportersExpanded, setSupportersExpanded] = useState(false);
+  const [editingSignatureId, setEditingSignatureId] = useState<string | null>(null);
+  const [editingSupporterId, setEditingSupporterId] = useState<string | null>(null);
 
-  const supporterCount = supporters.length;
+  // Rows flagged suspected_bot, withdrawn or voided are excluded everywhere a
+  // count is derived - the headline figure, the supporter count, the
+  // qualifier line and both exports below - but stay visible in the tables
+  // themselves, badged, so a volunteer can actually review them. A flag or a
+  // status nothing filters on is worse than none at all.
+  const supporterCount = supporters.filter((s) => !s.suspected_bot && s.status === "active").length;
 
-  // Counting logic unchanged: only direct registered holders count toward
-  // the 100, and rows preserved from before Package 2 are excluded, because
-  // they were collected without a wording binding and cannot be relied on.
-  const complete = signatures.filter((s) => s.capture_status === "complete");
-  const preRebuild = signatures.filter((s) => s.capture_status === "pre_rebuild");
+  // Counting logic otherwise unchanged: only direct registered holders count
+  // toward the 100, rows preserved from before Package 2 are excluded because
+  // they were collected without a wording binding and cannot be relied on,
+  // and withdrawn/voided rows are excluded per brief section 2c.
+  const complete = signatures.filter((s) => s.capture_status === "complete" && !s.suspected_bot && s.status === "active");
+  const preRebuild = signatures.filter((s) => s.capture_status === "pre_rebuild" && !s.suspected_bot && s.status === "active");
   const directCount = complete.filter((s) => s.shareholder_tag === "direct-registered").length;
+
+  // The numbers named in the wording-edit warning, per brief section 3.2.
+  // signedCountForCurrentWording is everyone affected by editing this row -
+  // every active signature bound to it, whether or not their own snapshot
+  // matches the live text right now. Binding to resolution_version_id, not
+  // to a snapshot-text match, is what makes this the right count: someone
+  // bound to a different, non-current row is unaffected by editing this
+  // one, and someone bound to this row is affected by editing it even if an
+  // earlier edit already left their snapshot behind.
+  // matchingCurrentTextCount is the more precise breakdown Gary asked for -
+  // of the affected group, how many actually saw the text as it stands
+  // right now versus an earlier edit of this same row.
+  const activeSignaturesForCurrentWording = currentWording
+    ? signatures.filter((s) => s.resolution_version_id === currentWording.id && !s.suspected_bot && s.status === "active")
+    : [];
+  const signedCountForCurrentWording = activeSignaturesForCurrentWording.length;
+  const matchingCurrentTextCount = currentWording
+    ? activeSignaturesForCurrentWording.filter((s) => s.resolution_snapshot === currentWording.body).length
+    : 0;
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -337,9 +456,16 @@ export default function ResolutionAdminClient({
   // file leaves the system and lands in a solicitor's inbox, with no page
   // around it to say which meeting it is for.
   function downloadCsv() {
-    const rows = signatures.map((s) => ({
+    // Suspected-bot rows are excluded from this file entirely, not merely
+    // marked - it is the lodgement document, and it must contain only people
+    // who have actually signed.
+    const rows = signatures.filter((s) => !s.suspected_bot).map((s) => ({
       id:                     s.id,
       capture_status:         s.capture_status,
+      // Not omitted for withdrawn/voided rows - per brief section 2c, a
+      // non-active record stays in this export, marked, rather than
+      // disappearing from the document the solicitor reads.
+      status:                 s.status,
       created_at:             s.created_at,
       signed_at:              s.signed_at,
       full_name:              s.full_name,
@@ -367,6 +493,13 @@ export default function ResolutionAdminClient({
       signer_user_agent:      s.signer_user_agent ?? "",
       shareholder_tag:        s.shareholder_tag,
       member_tag:             s.member_tag,
+      // What this signatory actually saw, per brief section 3.3 - survives
+      // any later edit to the wording, so the export always carries its own
+      // evidence rather than a pointer to a row that might since have changed.
+      resolution_snapshot:              s.resolution_snapshot ?? "",
+      declaration_snapshot:             s.declaration_snapshot ?? "",
+      consent_snapshot:                 s.consent_snapshot ?? "",
+      supporting_statement_snapshot:    s.supporting_statement_snapshot ?? "",
     }));
     const csv = toCsv(rows as unknown as Record<string, unknown>[]);
     const today = new Date().toISOString().split("T")[0];
@@ -388,11 +521,12 @@ export default function ResolutionAdminClient({
   // cannot sign one; mixing the two populations in one file would misstate
   // who is actually requisitioning.
   function downloadSupportersCsv() {
-    const rows = supporters.map((s) => ({
+    const rows = supporters.filter((s) => !s.suspected_bot).map((s) => ({
       id:                     s.id,
       created_at:             s.created_at,
       full_name:              s.full_name,
       email:                  s.email,
+      status:                 s.status,
       consent_given:          s.consent_given,
       privacy_policy_version: s.privacy_policy_version ?? "",
     }));
@@ -477,7 +611,12 @@ export default function ResolutionAdminClient({
         </div>
 
         {editingWording && currentWording ? (
-          <WordingForm current={currentWording} onClose={() => setEditingWording(false)} />
+          <WordingForm
+            current={currentWording}
+            signedCount={signedCountForCurrentWording}
+            matchingCurrentTextCount={matchingCurrentTextCount}
+            onClose={() => setEditingWording(false)}
+          />
         ) : currentWording ? (
           <>
             <p className="px-4 pt-3 text-[0.82rem] text-gray-500">
@@ -534,12 +673,13 @@ export default function ResolutionAdminClient({
                 always in view without horizontal scroll. */}
             <table className="w-full text-sm table-fixed">
               <colgroup>
-                <col style={{ width: "11%" }} />
-                <col style={{ width: "19%" }} />
-                <col style={{ width: "26%" }} />
-                <col style={{ width: "11%" }} />
-                <col style={{ width: "16%" }} />
+                <col style={{ width: "10%" }} />
                 <col style={{ width: "17%" }} />
+                <col style={{ width: "24%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "14%" }} />
+                <col style={{ width: "15%" }} />
+                <col style={{ width: "10%" }} />
               </colgroup>
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
@@ -559,35 +699,87 @@ export default function ResolutionAdminClient({
                   </th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">SRN</th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Status</th>
+                  <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {sorted.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">
+                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400 text-sm">
                       No signatures yet.
                     </td>
                   </tr>
                 )}
                 {sorted.map((s) => {
                   const status = rowStatus(s);
+                  const fields: AgmField[] = [
+                    { key: "full_name", label: "Full name", type: "text", value: s.full_name },
+                    { key: "email", label: "Email", type: "text", value: s.email },
+                    { key: "address_line_1", label: "Address line 1", type: "text", value: s.address_line_1 },
+                    { key: "address_line_2", label: "Address line 2", type: "text", value: s.address_line_2 },
+                    { key: "address_town", label: "Town", type: "text", value: s.address_town },
+                    { key: "address_postcode", label: "Postcode", type: "text", value: s.address_postcode },
+                    { key: "how_held", label: "How held (direct/nominee)", type: "text", value: s.how_held },
+                    { key: "computershare_srn", label: "Computershare SRN", type: "text", value: s.computershare_srn },
+                    { key: "nominee_platform", label: "Nominee platform", type: "text", value: s.nominee_platform },
+                    { key: "nominee_platform_other", label: "Nominee platform (other)", type: "text", value: s.nominee_platform_other },
+                    { key: "shares_held", label: "Shares held", type: "text", value: s.shares_held },
+                    { key: "share_class", label: "Share class", type: "text", value: s.share_class },
+                    { key: "signature_name", label: "Signature name", type: "text", value: s.signature_name },
+                    { key: "signed_at", label: "Signed at", type: "text", value: s.signed_at },
+                  ];
                   return (
-                    <tr key={s.id} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${status.needsAttention ? "bg-amber-50/40" : ""}`}>
+                    <Fragment key={s.id}>
+                    <tr className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${status.needsAttention ? "bg-amber-50/40" : ""}`}>
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(s.created_at)}</td>
                       <td className="px-4 py-3 font-medium text-gray-900 truncate">{s.full_name}</td>
                       <td className="px-4 py-3 text-gray-600 truncate" title={s.email}>{s.email}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{heldBadge(s.how_held)}</td>
                       <td className="px-4 py-3 text-gray-500 text-[0.8rem] whitespace-nowrap truncate">{s.computershare_srn ?? "-"}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {status.needsAttention ? (
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-[0.75rem] font-semibold bg-amber-100 text-amber-800">
-                            {status.label}
-                          </span>
-                        ) : (
-                          <span className="text-[0.75rem] text-gray-400">Complete</span>
-                        )}
+                        <div className="flex flex-col gap-1 items-start">
+                          {status.needsAttention ? (
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded-full text-[0.75rem] font-semibold ${
+                                s.suspected_bot ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {status.label}
+                            </span>
+                          ) : (
+                            <span className="text-[0.75rem] text-gray-400">Complete</span>
+                          )}
+                          {s.suspected_bot && <SuspectedBotActions table="agm_signatures" id={s.id} />}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex flex-col gap-1 items-start">
+                          <button
+                            type="button"
+                            onClick={() => setEditingSignatureId(editingSignatureId === s.id ? null : s.id)}
+                            className="text-[0.75rem] text-csl-dark hover:underline font-medium"
+                          >
+                            {editingSignatureId === s.id ? "Close" : "Edit"}
+                          </button>
+                          <AgmStatusAction table="agm_signatures" id={s.id} currentStatus={s.status} personLabel={s.full_name} />
+                        </div>
                       </td>
                     </tr>
+                    {editingSignatureId === s.id && (
+                      <tr key={`${s.id}-edit`} className="border-b border-gray-100">
+                        <td colSpan={7} className="px-4 py-3 bg-gray-50">
+                          <AgmRecordEditor
+                            table="agm_signatures"
+                            id={s.id}
+                            fields={fields}
+                            warningText={`This edits ${s.full_name}'s signed record. Their own snapshot of the wording is unaffected, but the record itself may need re-signing if the correction is substantive.`}
+                            open={true}
+                            onClose={() => setEditingSignatureId(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -633,22 +825,70 @@ export default function ResolutionAdminClient({
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Date</th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Name</th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500">Email</th>
+                  <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Status</th>
+                  <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {supporters.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-4 py-10 text-center text-gray-400 text-sm">
+                    <td colSpan={5} className="px-4 py-10 text-center text-gray-400 text-sm">
                       No supporters yet.
                     </td>
                   </tr>
                 )}
                 {supporters.map((s) => (
-                  <tr key={s.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                  <Fragment key={s.id}>
+                  <tr className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${s.suspected_bot ? "bg-red-50/40" : ""}`}>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(s.created_at)}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">{s.full_name}</td>
                     <td className="px-4 py-3 text-gray-600">{s.email}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {s.suspected_bot ? (
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-[0.75rem] font-semibold bg-red-100 text-red-800">
+                            Suspected bot
+                          </span>
+                          <SuspectedBotActions table="agm_supporters" id={s.id} />
+                        </div>
+                      ) : s.status !== "active" ? (
+                        <span className="text-[0.75rem] text-gray-400 capitalize">{s.status}</span>
+                      ) : (
+                        <span className="text-[0.75rem] text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex flex-col gap-1 items-start">
+                        <button
+                          type="button"
+                          onClick={() => setEditingSupporterId(editingSupporterId === s.id ? null : s.id)}
+                          className="text-[0.75rem] text-csl-dark hover:underline font-medium"
+                        >
+                          {editingSupporterId === s.id ? "Close" : "Edit"}
+                        </button>
+                        {!s.suspected_bot && (
+                          <AgmStatusAction table="agm_supporters" id={s.id} currentStatus={s.status} personLabel={s.full_name} />
+                        )}
+                      </div>
+                    </td>
                   </tr>
+                  {editingSupporterId === s.id && (
+                    <tr key={`${s.id}-edit`} className="border-b border-gray-100">
+                      <td colSpan={5} className="px-4 py-3 bg-gray-50">
+                        <AgmRecordEditor
+                          table="agm_supporters"
+                          id={s.id}
+                          fields={[
+                            { key: "full_name", label: "Full name", type: "text", value: s.full_name },
+                            { key: "email", label: "Email", type: "text", value: s.email },
+                          ]}
+                          open={true}
+                          onClose={() => setEditingSupporterId(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

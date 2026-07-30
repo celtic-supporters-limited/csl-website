@@ -203,13 +203,19 @@ test.afterAll(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// 1. Immutability - four separate assertions. Unchanged by the redesign:
-//    this is the database trigger, not the interface.
+// 1. Immutability - REVERSED by Package 5a (brief section 2c). The trigger
+//    this test used to prove (agm_resolution_versions_no_edit) is deleted:
+//    nothing is immutable any more, provability comes from agm_change_log
+//    and the per-signature snapshot instead. This test now proves the
+//    opposite of what it proved before - the columns are directly
+//    updatable at the database level - and restores the original values
+//    afterward rather than deleting the row, since a raw update here does
+//    not go through the application's logging path.
 // ---------------------------------------------------------------------------
 
-test("declaration_text, consent_text and supporting_statement cannot be updated, neither can body", async () => {
+test("declaration_text, consent_text, supporting_statement and body can be updated directly (Package 5a removed the immutability trigger)", async () => {
   const id = await insertVersion({
-    version_label: "P3 immutability probe",
+    version_label: "P5a editability probe",
     body: "Body v1",
     declaration_text: "Declaration v1",
     consent_text: "Consent v1",
@@ -217,29 +223,24 @@ test("declaration_text, consent_text and supporting_statement cannot be updated,
   });
 
   try {
-    const attempts: [string, Record<string, string>][] = [
-      ["body", { body: "tampered" }],
-      ["declaration_text", { declaration_text: "tampered" }],
-      ["consent_text", { consent_text: "tampered" }],
-      ["supporting_statement", { supporting_statement: "tampered" }],
-    ];
-
-    for (const [column, patch] of attempts) {
-      const { error } = await db().from("agm_resolution_versions").update(patch).eq("id", id);
-      console.log(`IMMUTABILITY [${column}]:`, error?.message);
-      expect(error, `${column} should be immutable`).not.toBeNull();
-      expect(error?.message).toMatch(new RegExp(`${column} is immutable`));
+    const columns = ["body", "declaration_text", "consent_text", "supporting_statement"];
+    for (const column of columns) {
+      const { error } = await db()
+        .from("agm_resolution_versions")
+        .update({ [column]: "edited directly" })
+        .eq("id", id);
+      expect(error, `${column} should be editable now the trigger is gone`).toBeNull();
     }
 
-    const { data: unchanged } = await db()
+    const { data: edited } = await db()
       .from("agm_resolution_versions")
       .select("body, declaration_text, consent_text, supporting_statement")
       .eq("id", id)
       .single();
-    expect(unchanged.body).toBe("Body v1");
-    expect(unchanged.declaration_text).toBe("Declaration v1");
-    expect(unchanged.consent_text).toBe("Consent v1");
-    expect(unchanged.supporting_statement).toBe("Statement v1");
+    expect(edited.body).toBe("edited directly");
+    expect(edited.declaration_text).toBe("edited directly");
+    expect(edited.consent_text).toBe("edited directly");
+    expect(edited.supporting_statement).toBe("edited directly");
   } finally {
     await deleteVersion(id);
   }
@@ -327,14 +328,27 @@ test("creating a new wording via the admin route does not alter existing wording
 });
 
 // ---------------------------------------------------------------------------
-// 4. The one that matters most: saving new wording through the actual
-//    "Change wording" -> "Save" -> "Yes, save" flow a volunteer uses does not
-//    alter resolution_version_id on an existing signature. Previously this
-//    drove the create and activate API routes directly; now it drives the
-//    merged page, because that is the thing that changed.
+// 4. REVISED by Package 5a. "Change wording" -> "Save" -> "Yes, save" no
+//    longer creates a new row and activates it - the immutability trigger
+//    that made a new row necessary is gone, so it edits the current row in
+//    place through /api/admin/agm-edit instead. This is deliberately the
+//    ONE volunteer-facing route to change wording (see brief section 2c and
+//    the Package 5a close-out note): the old create-and-activate routes
+//    below are unchanged and still work, but nothing on this page calls them
+//    any more, and nothing should.
+//
+//    What "does not alter an existing signature's wording binding" means is
+//    therefore different now: resolution_version_id trivially stays the
+//    same, because there is no new row to point to. The real guarantee is
+//    the one Package 5a actually added - the signature's own snapshot
+//    columns keep showing what that person saw, even though the live
+//    wording row they reference has since been edited. See
+//    tests/agm-p5a-editable-records.spec.ts's "editing the live wording
+//    after a signature exists..." for the same guarantee proved directly;
+//    this test proves it end to end through the real "Change wording" UI.
 // ---------------------------------------------------------------------------
 
-test("saving new wording through the admin page does not alter an existing signature's wording binding", async ({ page, request }) => {
+test("saving new wording through the admin page edits the current row in place and leaves an existing signature's own snapshot unchanged", async ({ page, request }) => {
   test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, "TEST_USER_EMAIL / TEST_USER_PASSWORD not set");
 
   const versionA = await insertVersion({
@@ -349,13 +363,18 @@ test("saving new wording through the admin page does not alter an existing signa
 
   const email = `p3-versionid-${Date.now()}@example.com`;
   const marker = `P3SAVE${Date.now()}`;
-  let newId: string | null = null;
   try {
     expect((await sign(request, validSignBody(email))).status()).toBe(200);
 
     const { data: signatureBefore } = await db()
-      .from("agm_signatures").select("resolution_version_id").eq("email", email).single();
+      .from("agm_signatures")
+      .select("resolution_version_id, resolution_snapshot, declaration_snapshot, consent_snapshot")
+      .eq("email", email)
+      .single();
     expect(signatureBefore.resolution_version_id).toBe(versionA);
+    expect(signatureBefore.resolution_snapshot).toBe("Wording A body");
+    expect(signatureBefore.declaration_snapshot).toBe("Wording A declaration");
+    expect(signatureBefore.consent_snapshot).toBe("Wording A consent");
 
     // The gate does not need to stay open to edit wording.
     await setConfig("resolution_open", "false");
@@ -372,13 +391,14 @@ test("saving new wording through the admin page does not alter an existing signa
     await page.locator("#wf-body").fill(`RESOLUTION-${marker}`);
     await page.locator("#wf-declaration").fill(`DECLARATION-${marker}`);
     await page.locator("#wf-consent").fill(`CONSENT-${marker}`);
+    await page.locator("#wf-reason").fill("P3 test 4 - proving in-place edit leaves snapshot alone");
     // "This wording is final and signing may open" starts checked, since
     // wording A was saved as final - left as-is deliberately.
 
     await page.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.getByText(
-      "This becomes what people sign from now on. Anyone who already signed keeps the old wording."
-    )).toBeVisible();
+    // Package 5a's warning, naming the count - one signature exists against
+    // this exact wording.
+    await expect(page.getByText(/1 person has signed this wording/i)).toBeVisible();
     await page.getByRole("button", { name: "Yes, save" }).click();
 
     // The form calls onClose() then router.refresh() on success, which
@@ -386,23 +406,38 @@ test("saving new wording through the admin page does not alter an existing signa
     // rather than a fixed delay.
     await expect(page.getByRole("button", { name: "Change wording" })).toBeVisible({ timeout: 15_000 });
 
+    // Edited in place: still the same row, same id, no new row created. This
+    // is the point of Package 5a - there is one route to change wording, not
+    // a create-and-activate mechanism running alongside an edit mechanism.
     const { data: nowCurrent } = await db()
       .from("agm_resolution_versions").select("id, body").eq("is_current", true).single();
+    expect(nowCurrent.id).toBe(versionA);
     expect(nowCurrent.body).toBe(`RESOLUTION-${marker}`);
-    newId = nowCurrent.id;
-    expect(newId).not.toBe(versionA);
 
     const { data: signatureAfter } = await db()
-      .from("agm_signatures").select("resolution_version_id").eq("email", email).single();
+      .from("agm_signatures")
+      .select("resolution_version_id, resolution_snapshot, declaration_snapshot, consent_snapshot")
+      .eq("email", email)
+      .single();
     // Printed for the session report - this is the test that distinguishes a
-    // wording history from a guarantee.
-    console.log("TEST 4 RESULT: wording A =", versionA, "| new current (saved via the admin page) =", newId, "| signature.resolution_version_id after saving =", signatureAfter.resolution_version_id);
+    // live row from the evidence of what was actually signed.
+    console.log(
+      "TEST 4 RESULT: wording A =", versionA,
+      "| current row after edit =", nowCurrent.id,
+      "| signature.resolution_version_id after edit =", signatureAfter.resolution_version_id,
+      "| signature.resolution_snapshot after edit =", signatureAfter.resolution_snapshot
+    );
+    // The binding trivially still points at the same row - there is no other
+    // row to point at any more. The guarantee that matters is the snapshot:
+    // it must still read the original text, not the edit just made to the
+    // live row it references.
     expect(signatureAfter.resolution_version_id).toBe(versionA);
-    expect(signatureAfter.resolution_version_id).not.toBe(newId);
+    expect(signatureAfter.resolution_snapshot).toBe("Wording A body");
+    expect(signatureAfter.declaration_snapshot).toBe("Wording A declaration");
+    expect(signatureAfter.consent_snapshot).toBe("Wording A consent");
   } finally {
     await cleanupSignature(email);
     await deleteVersion(versionA);
-    if (newId) await deleteVersion(newId);
     await setConfig("resolution_open", "false");
   }
 });

@@ -3,7 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { findOrCreateZohoContact, createZohoCase } from "@/lib/zoho";
 import { sendProxyNotification } from "@/lib/resend";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
-import { AGM_GATE_CLOSED_ERROR, isGateOpen } from "@/lib/site-gates";
+import { getConfigValue, getCurrentMeetingRef, getProxyMode } from "@/lib/site-gates";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -12,13 +12,26 @@ const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
 const RATE_LIMIT = 5;
 const WINDOW_MS = 10 * 60 * 1000;
 
+/**
+ * Expression of interest only - Package 5 section 3. Writes to
+ * shareholder_cases, case_type "Proxy Interest", not an appointment and not
+ * agm_proxies. Once the page is in "appointment" mode this route is no
+ * longer the one the public form posts to - see
+ * app/api/proxy/appointment/route.ts - so it only accepts submissions while
+ * the mode is exactly "interest".
+ */
 export async function POST(req: NextRequest) {
   // ── 0. Launch gate ─────────────────────────────────────────────────────────
-  // Checked before rate limiting, validation and any database work. Hiding the
-  // form while leaving this endpoint open would let a replayed request submit.
-  if (!(await isGateOpen("proxy_open"))) {
+  const mode = await getProxyMode();
+  if (mode !== "interest") {
     return NextResponse.json(
-      { error: AGM_GATE_CLOSED_ERROR.proxy_open, closed: true },
+      {
+        error:
+          mode === "appointment"
+            ? "Proxy appointment is now open. Please use the full appointment form instead."
+            : "Proxy registration is not open yet. It opens once CSL is ready to start collecting interest ahead of the AGM.",
+        closed: true,
+      },
       { status: 403 }
     );
   }
@@ -40,16 +53,47 @@ export async function POST(req: NextRequest) {
     rateLimitMap.set(ip, { count: 1, windowStart: now });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let body: any;
+  let body: {
+    // Honeypot. Renamed from "website" - see the matching note on the
+    // resolution routes. Store-and-flag, not log-and-reject: this is the one
+    // proxy surface that stays permanently public, which makes it the
+    // likeliest place a real person is silently discarded by an autofilled
+    // hidden field. A suspected_bot row sitting in the admin table is a
+    // click away from being released; a log line is a reconstruction CSL
+    // may never see. See the close-out session note in sql/agm-p5-schema.sql.
+    hpField?: string;
+    name?: string;
+    email?: string;
+    numShares?: string;
+    yearPurchased?: string;
+    source?: string;
+    consentGiven?: boolean;
+    turnstileToken?: string;
+  };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+
   const { name, email, numShares, yearPurchased, source } = body;
-  const turnstileToken =
-    typeof body.turnstileToken === "string" ? body.turnstileToken : "";
+
+  if (body.hpField) {
+    await getSupabase().from("shareholder_cases").insert({
+      contact_name: name?.trim() || "(honeypot)",
+      email: email?.trim().toLowerCase() || `unknown-${Date.now()}@invalid`,
+      case_type: "Proxy Interest",
+      enquiry_source: source || null,
+      status: "New",
+      consent_given: body.consentGiven === true,
+      meeting_ref: await getCurrentMeetingRef(),
+      privacy_policy_version: await getConfigValue("privacy_policy_version"),
+      suspected_bot: true,
+    });
+    return NextResponse.json({ success: true });
+  }
+
+  const turnstileToken = typeof body.turnstileToken === "string" ? body.turnstileToken : "";
 
   // ── 2. Turnstile verification ──────────────────────────────────────────────
   if (!turnstileToken) {
@@ -79,6 +123,10 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+  } else {
+    console.error(
+      "[proxy] TURNSTILE_SECRET_KEY is not set - Turnstile verification was skipped entirely for this submission."
+    );
   }
 
   // ── 3. Field validation ────────────────────────────────────────────────────
@@ -91,6 +139,12 @@ export async function POST(req: NextRequest) {
   if (!EMAIL_RE.test(email)) {
     return NextResponse.json(
       { error: "Please provide a valid email address." },
+      { status: 400 }
+    );
+  }
+  if (body.consentGiven !== true) {
+    return NextResponse.json(
+      { error: "You must consent to your details being stored." },
       { status: 400 }
     );
   }
@@ -111,15 +165,28 @@ export async function POST(req: NextRequest) {
     .filter(Boolean)
     .join("\n");
 
+  const privacyPolicyVersion = await getConfigValue("privacy_policy_version");
+
   const { error: dbError } = await getSupabase()
     .from("shareholder_cases")
     .insert({
       contact_name: name.trim(),
       email: email.trim().toLowerCase(),
-      case_type: "Proxy Assignment",
+      // "Proxy Interest", not "Proxy Assignment" - Package 5 renames the case
+      // type so nobody mistakes this row for an appointment later. See
+      // sql/agm-p5-schema.sql for the one-off rename of existing rows.
+      case_type: "Proxy Interest",
       enquiry_source: source || null,
       notes: notes || null,
       status: "New",
+      // Stored as submitted - previously discarded entirely (audit Finding
+      // 5), so every prior row held personal data with no recorded consent.
+      consent_given: body.consentGiven,
+      // Read live, not left to a column default - an intention is specific
+      // to one meeting exactly as an appointment is.
+      meeting_ref: await getCurrentMeetingRef(),
+      privacy_policy_version: privacyPolicyVersion,
+      suspected_bot: false,
     });
 
   if (dbError) {
@@ -143,7 +210,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const contactId = await findOrCreateZohoContact(name.trim(), email.trim());
-    await createZohoCase(contactId, "Proxy Assignment", notes);
+    await createZohoCase(contactId, "Proxy Interest", notes);
   } catch (err) {
     console.error("[proxy] Zoho error:", err);
   }

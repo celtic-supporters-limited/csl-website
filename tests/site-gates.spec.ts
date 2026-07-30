@@ -5,7 +5,9 @@
  *   membership_open  /membership          + POST /api/checkout
  *   portal_open      /member-portal       (non-admin members only)
  *   resolution_open  /resolution          + POST /api/resolution/sign
- *   proxy_open       /proxy               + POST /api/proxy
+ *   proxy_mode       /proxy               + POST /api/proxy, /api/proxy/appointment
+ *                    (closed/interest/appointment - not a boolean gate, see
+ *                    the "Proxy gate" describe block)
  *
  * Two risks are covered per gate, and the second matters more than the first:
  *   - closed must actually block, at the API and not just the page
@@ -17,8 +19,9 @@
  * condition, so flipping it changed the database and nothing else.
  *
  * Gate state is global, so this file must not run in parallel with anything
- * else that touches these keys, notably tests/proxy-workflow.spec.ts which
- * opens proxy_open for its own suite. Run gate specs with --workers=1. Tests
+ * else that touches these keys, notably tests/proxy-workflow.spec.ts and
+ * tests/agm-proxy.spec.ts, both of which set proxy_mode for their own
+ * suites. Run gate specs with --workers=1. Tests
  * within a file run serially by default, which is what this relies on.
  * afterAll restores every gate so an interrupted run cannot leave one open.
  *
@@ -38,7 +41,17 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const PORTAL_EMAIL = process.env.TEST_GATE_PORTAL_GATE_EMAIL;
 const PORTAL_PASSWORD = process.env.TEST_GATE_PORTAL_GATE_PASSWORD;
 
-type GateKey = "membership_open" | "portal_open" | "resolution_open" | "proxy_open";
+type GateKey = "membership_open" | "portal_open" | "resolution_open";
+
+/** Generic string-valued config write, for proxy_mode (closed/interest/
+ * appointment) which is no longer a boolean gate - see the Package 5 note on
+ * the "Proxy gate" describe block below. */
+async function setConfig(key: string, value: string) {
+  const { error } = await adminDb()
+    .from("site_config")
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  if (error) throw new Error(`Failed to set ${key}=${value}: ${error.message}`);
+}
 
 function adminDb() {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
@@ -436,36 +449,71 @@ test.describe("Portal gate", () => {
 // ---------------------------------------------------------------------------
 // 5. Proxy gate
 //
-// The proxy suite in tests/proxy-workflow.spec.ts covers the open path in
-// depth. These two prove the gate itself, so all four gates are provable from
-// one file.
+// Package 5 replaced the binary proxy_open with a three-value proxy_mode
+// (closed/interest/appointment) - see docs/agm/CSL_AGM_Package5_ProxyInstrument_ClaudeCode_Prompt.md
+// section 3. Three states to prove instead of two, and the two proxy API
+// routes (interest, appointment) are mutually exclusive on mode: each must
+// reject while the other's mode is live, not only while closed. Full
+// appointment-submission workflow is covered in depth in
+// tests/agm-proxy.spec.ts; these prove the gate mechanics themselves, so
+// every runtime control is provable from this one file.
 // ---------------------------------------------------------------------------
 
 test.describe("Proxy gate", () => {
   test.afterAll(async () => {
-    await setSiteGate("proxy_open", false);
+    await setConfig("proxy_mode", "closed");
   });
 
-  test("closed: page hides the form and the API rejects", async ({ page, request }) => {
-    await setSiteGate("proxy_open", false);
+  test("closed: page shows the holding state, and both proxy routes reject", async ({ page, request }) => {
+    await setConfig("proxy_mode", "closed");
 
     await page.goto("/proxy", { waitUntil: "domcontentloaded" });
-    await expect(page.getByText(/Notice of the Annual General Meeting/i).first()).toBeVisible();
+    await expect(page.getByText("Not open yet")).toBeVisible();
     await expect(page.locator("#name")).toHaveCount(0);
+    await expect(page.locator("#fullName")).toHaveCount(0);
 
-    const res = await request.post("/api/proxy", {
-      data: { name: "Gate Test", email: `gate-${Date.now()}@example.com`, turnstileToken: "test-token" },
+    const interestRes = await request.post("/api/proxy", {
+      data: { name: "Gate Test", email: `gate-${Date.now()}@example.com`, consentGiven: true, turnstileToken: "test-token" },
       headers: { "Content-Type": "application/json", "x-forwarded-for": "10.7.3.1" },
     });
-    expect(res.status()).toBe(403);
-    const body = (await res.json()) as { closed?: boolean };
-    expect(body.closed).toBe(true);
+    expect(interestRes.status()).toBe(403);
+    expect(((await interestRes.json()) as { closed?: boolean }).closed).toBe(true);
+
+    const appointmentRes = await request.post("/api/proxy/appointment", {
+      data: { fullName: "Gate Test", email: `gate-${Date.now()}@example.com`, turnstileToken: "test-token" },
+      headers: { "Content-Type": "application/json", "x-forwarded-for": "10.7.3.2" },
+    });
+    expect(appointmentRes.status()).toBe(403);
+    expect(((await appointmentRes.json()) as { closed?: boolean }).closed).toBe(true);
   });
 
-  test("open: page renders the form", async ({ page }) => {
-    await setSiteGate("proxy_open", true);
+  test("interest: page renders the interest form, and the appointment route rejects", async ({ page, request }) => {
+    await setConfig("proxy_mode", "interest");
+
     await page.goto("/proxy", { waitUntil: "domcontentloaded" });
     await page.waitForSelector("#name", { timeout: 20_000 });
     await expect(page.locator("#email")).toBeVisible();
+    await expect(page.locator("#fullName")).toHaveCount(0);
+
+    const appointmentRes = await request.post("/api/proxy/appointment", {
+      data: { fullName: "Gate Test", email: `gate-${Date.now()}@example.com`, turnstileToken: "test-token" },
+      headers: { "Content-Type": "application/json", "x-forwarded-for": "10.7.3.3" },
+    });
+    expect(appointmentRes.status()).toBe(403);
+  });
+
+  test("appointment: page renders the appointment form, and the interest route rejects", async ({ page, request }) => {
+    await setConfig("proxy_mode", "appointment");
+
+    await page.goto("/proxy", { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#fullName", { timeout: 20_000 });
+    await expect(page.locator("#email")).toBeVisible();
+    await expect(page.locator("#name")).toHaveCount(0);
+
+    const interestRes = await request.post("/api/proxy", {
+      data: { name: "Gate Test", email: `gate-${Date.now()}@example.com`, consentGiven: true, turnstileToken: "test-token" },
+      headers: { "Content-Type": "application/json", "x-forwarded-for": "10.7.3.4" },
+    });
+    expect(interestRes.status()).toBe(403);
   });
 });

@@ -1,6 +1,6 @@
 # CSL AGM Programme - Claude Code Working Brief
 
-**Version: 1.4**
+**Version: 1.5**
 **Date:** 30 July 2026
 **Author:** Gary Phinn, Volunteer IT Lead
 **Read this at the start of every package session.** Every package prompt assumes it.
@@ -17,6 +17,11 @@ touches; do not poll `vercel ls` in a loop.
 **Changes in 1.2, all from Package 2:** every SQL Editor table needs an explicit GRANT; rehearse
 the exact production sequence, not an approximation of it; suspect your own code before blaming
 the infrastructure.
+
+**Changes in 1.5, and this one reverses an earlier principle:** nothing in this system is
+immutable. Everything is editable, everywhere. Provability is delivered by an append-only edit log
+rather than by locking fields. See section 2c, which supersedes anything earlier in this document
+that says otherwise.
 
 **Changes in 1.4:** a primary reference document added at section 2b. Consult it whenever an open
 question touches the instrument, the threshold, who counts, or the form of words. Do not invent
@@ -145,6 +150,72 @@ Related process reference, not committed: ShareAction's live co-filing platform 
 `https://resolutions.shareaction.org/faq` documents the same process end to end, including expected
 timescales and failure modes. Useful for how the process is explained to a shareholder. Its
 description of the law is loose, so do not take wording from it.
+
+---
+
+## 2c. Nothing is immutable. Everything is editable
+
+**This supersedes every earlier instruction in this programme about locking fields, immutability
+triggers and single-shot records.** Where an earlier package specified immutability, it was wrong,
+and it is being unwound.
+
+### The instruction
+
+Every record and every field in this system must be editable from the admin interface by a
+volunteer. No field is locked. No record is single-shot. No action is one-way.
+
+### Why, because the reasoning matters more than the rule
+
+CSL is run by two volunteers, neither technical, working evenings around day jobs. Things will be
+mistyped. Shareholders will email to say their reference number is wrong, their address has
+changed, or they want their name taken off.
+
+Locking fields does not prevent those corrections. It relocates them. The correction still happens,
+in the Supabase table editor, by whoever holds dashboard access, with no record that it happened,
+no note of what the value used to be, and no way to tell afterwards. **The lock did not protect the
+record. It moved the edit into the one channel with no audit trail at all.**
+
+An admin edit with a log is more defensible than no edit, not less.
+
+It also costs signatures. Package 8 reconciles against Celtic's share register, and a mistyped
+reference is a person who fails verification for no good reason. Against a target of 100, losing
+people to typos nobody was permitted to fix is not a defensible trade.
+
+### What replaces immutability
+
+The requirement was never immutability. It was **provability**: being able to show what a person
+actually agreed to, months later, to someone hostile. Immutability was one way to deliver that. An
+append-only edit log is another, and it is the one that lets volunteers do their job.
+
+Three mechanisms, together:
+
+1. **An append-only edit log.** Every change records the record, the field, the old value, the new
+   value, who and when. Written server side, never by the client. The log itself is the only thing
+   in the system that cannot be altered, and that is what makes everything else safe to change.
+2. **Status, never deletion.** Records become `withdrawn` or `voided`. They leave the counts, they
+   are marked rather than omitted in exports, and they remain visible. You must always be able to
+   show what happened.
+3. **Warn loudly where the consequence is real.** Editing wording that people have already signed
+   is permitted, and the interface must say so before it happens, naming the number affected: "47
+   people have signed this wording. Editing it changes what they agreed to." Warn, do not block.
+
+### What this does not mean
+
+It does not mean the evidential position has been abandoned. If asked in October what a hundred
+people signed, CSL must still be able to answer precisely, and the log is how. A change without a
+log entry is the only thing that is actually forbidden.
+
+It does not mean edits are casual. Confirmations name the person or the count affected, and every
+change carries a reason.
+
+### Unwinding what exists
+
+`agm_resolution_versions` currently carries a database trigger blocking updates to the wording
+fields. That trigger is to be removed and replaced by the log and the warning. Do not add
+equivalent triggers to any new table.
+
+Related: `CSL_AGM_Package5a_RecordCorrection_ClaudeCode_Prompt.md` implements this across all record
+types.
 
 ---
 
@@ -327,7 +398,8 @@ package prompt appears to contradict this document, say so rather than guessing 
 
 ## 6. What good looks like
 
-The three things in this programme that cannot be fixed after the fact:
+**Revised at 1.5.** Nothing here cannot be fixed, per section 2c. These are the three places where
+a mistake is expensive to fix, so they warrant care at the point of change rather than a lock.
 
 - **The proxy appointee must be locked to a named natural person, server side.** It must never be
   blank, null, defaulted to the Chairman of the meeting, or substituted by the user. Celtic's own
@@ -342,10 +414,12 @@ The three things in this programme that cannot be fixed after the fact:
   version binding proves what someone agreed to; the frame determines whether what they agreed to
   is a request at all.
 
-Everything else in this programme is recoverable. Those three are not. When a package touches any
-of them, slow down.
+All three are recoverable. The first two by correcting the record and logging it, the third by
+voiding the affected signatures and re-collecting. What makes them expensive is the number of people
+involved, not the technology. When a package touches any of them, warn clearly at the point of
+change and record what happened.
 
-**The window in which mistakes are free closes when signing opens, not when the answers arrive.**
-While no signatures exist, changing wording or adding a column costs minutes. Once signatures
-exist, the same change means people agreed to something different and any schema work is a
-migration against real records. Build now, deliberately, while it is cheap.
+**The window in which mistakes are cheap closes when signing opens, not when the answers arrive.**
+While no signatures exist, changing wording costs minutes. Once four hundred exist, the same change
+means four hundred people agreed to something different and someone has to email them. Build
+deliberately while it is cheap, and warn loudly once it is not.

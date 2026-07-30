@@ -42,7 +42,7 @@ export default async function ResolutionAdminPage() {
     // people are, which the previous count-only query could never answer.
     supabase
       .from("agm_supporters")
-      .select("id, full_name, email, consent_given, privacy_policy_version, created_at")
+      .select("id, full_name, email, consent_given, privacy_policy_version, created_at, suspected_bot, status")
       .eq("meeting_ref", currentMeetingRef)
       .order("created_at", { ascending: false }),
     // Only the current wording is fetched. Superseded wordings still exist as
