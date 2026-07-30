@@ -377,6 +377,67 @@ create-and-activate routes (`/api/admin/resolution-versions`, `/api/admin/resolu
 activate`) are unchanged and still work; they are simply no longer what the redesigned "Change
 wording" button calls, and remain available for a genuinely new AGM cycle rather than a correction.
 
+**One route, not two, for wording.** "Change wording" is the only volunteer-facing path to edit any
+of the four texts. `AgmRecordEditor` (the generic per-record edit view) is wired up only for
+signatures, supporters, appointments and interest rows - never for `agm_resolution_versions`.
+
+**Follow-up: derived tags and a legacy record that could not be resolved without SQL.**
+Two gaps found on review, both fixed in the same close-out:
+
+- `shareholder_tag` (and `member_tag`) are computed from `how_held` (and `email`) at sign time, not
+  independently meaningful. Making `how_held` editable without also recomputing `shareholder_tag`
+  meant a volunteer correcting nominee -> direct would leave the tag saying nominee - and the
+  headline count toward 100 filters on that tag, so the correction would silently not count.
+  `computeDerivedChanges()` in `lib/agm-change-log.ts` now recomputes and logs the derived field in
+  the same edit, whenever its source changes. The tags themselves stay excluded from
+  `EDITABLE_FIELDS` - editing the wrong end of the problem was rejected.
+- `capture_status` is now editable on `agm_signatures` (added to `EDITABLE_FIELDS`), so a
+  `pre_rebuild` record left over from before Package 2 no longer needs SQL to resolve. Voiding it
+  and letting the person sign fresh is the proven path (a legacy row has no `resolution_version_id`
+  and no snapshot, so marking it "complete" directly would be a label with no evidence behind it).
+  Voiding alone did not work at first: `agm_signatures` carried a plain `UNIQUE(email)` constraint
+  on staging - not only the composite `(email, meeting_ref)` `sql/agm-gap-fill-meeting-scoped-email
+  .sql` was meant to leave in its place, meaning that fix either never stuck or staging and
+  production have diverged on this point - so voiding a row did not free the email for a second
+  insert. `sql/agm-p5a-followup-resign-after-void.sql` finds and drops every UNIQUE constraint on
+  `agm_signatures` covering `email`, whatever its exact shape, and replaces them with one partial
+  index scoped to `WHERE status = 'active'`. `app/api/resolution/sign/route.ts`'s duplicate check
+  now matches (`.eq("status", "active")`), so a withdrawn or voided row no longer blocks a fresh
+  sign. Proved end to end in `tests/agm-p5a-editable-records.spec.ts` by voiding a `pre_rebuild` row
+  and then actually signing again through the public route with the same email.
+
+**Known limitation: `meeting_ref` is not editable.** Excluded from `EDITABLE_FIELDS` on every table
+deliberately - if a record ever lands against the wrong meeting, correcting it still needs SQL. Not
+built, because the failure mode (a record scoped to the wrong AGM) has not occurred and the fix
+would touch the same field every meeting-scoping decision in this programme depends on. Flagged
+here rather than silently left out.
+
+**Related, not fixed:** `agm_supporters` and `agm_proxies` carry the same `UNIQUE(email,
+meeting_ref)`-shaped constraint as `agm_signatures` did, with the same latent problem - withdrawing
+or voiding a row on either table does not free the email for a fresh submission, because neither
+constraint is scoped to `status = 'active'`. Only `agm_signatures` was fixed, because that is the
+one Gary raised (the pre_rebuild legacy record). The other two have not caused a real problem yet.
+
+**Follow-up: the proxy declaration is editable.** Gary's earlier acceptance of "leave it as config,
+document it in the runbook" (Package 5 close-out) predated brief section 2c and is withdrawn - the
+AGM Proxy admin page's "The Appointment" card gained a "Change wording" action
+(`DeclarationForm` in `ProxyAdminClient.tsx`), the same shape as `WordingForm` on the resolution
+page: one text field, one reason, one confirmation naming the count of active appointments whose
+own snapshot matches the current text. Saves through the dedicated `/api/admin/proxy-declaration`
+route - deliberately not folded into the generic `agm-edit` machinery, since `site_config`'s
+primary key is `key` rather than `id` and there is exactly one field this will ever touch.
+
+Logged through the same `agm_change_log` table as every other AGM edit, using
+`table_name = 'site_config'` and `record_id = 'proxy_declaration_text'`, so there remains one audit
+trail rather than a second one just for config. This required widening
+`agm_change_log.record_id` from `UUID` to `TEXT` (`sql/agm-p5a-proxy-declaration-editable.sql`) and
+adding `'site_config'` to its `table_name` CHECK constraint - both additive, neither affects any
+existing row.
+
+The TBD guard (`isProxyDeclarationReady()`) is not enforced by this save - a volunteer may
+deliberately park the declaration empty or starting with TBD, and the admin banner already reflects
+that state reactively from the same config value, so the save route does not duplicate the check.
+
 ---
 
 ## Deferred items, tracked across packages

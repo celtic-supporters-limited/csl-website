@@ -33,14 +33,52 @@ function serialise(v: unknown): string | null {
 }
 
 /**
+ * shareholder_tag and member_tag are not independently correctable - they
+ * are computed from how_held and email respectively, at sign time, by the
+ * public route. Making them directly editable would let a correction to
+ * how_held (nominee -> direct) leave the tag saying nominee, which is what
+ * the count toward 100 filters on: a correct edit with no error, and the
+ * headline number silently wrong. Recomputing here, in the same edit that
+ * changes the source field, is the fix - editing the wrong end of the
+ * problem (letting the tag itself be edited) was rejected.
+ */
+async function computeDerivedChanges(
+  db: ReturnType<typeof getSupabase>,
+  table: AgmTable,
+  changes: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  if (table !== "agm_signatures") return {};
+
+  const derived: Record<string, unknown> = {};
+
+  if ("how_held" in changes) {
+    derived.shareholder_tag = changes.how_held === "direct" ? "direct-registered" : "nominee-platform";
+  }
+
+  if ("email" in changes && typeof changes.email === "string") {
+    const { data: memberRow } = await db
+      .from("members")
+      .select("id")
+      .ilike("email", changes.email)
+      .eq("status", "active")
+      .maybeSingle();
+    derived.member_tag = memberRow ? "member" : "non-member";
+  }
+
+  return derived;
+}
+
+/**
  * Edits a set of fields on one record. Diffs against the current stored
  * values so only fields that actually changed are logged - saving with no
- * real change writes nothing.
+ * real change writes nothing. Derived fields (see computeDerivedChanges)
+ * are folded in before the diff, so a source-field edit that also changes
+ * a derived tag logs both, in the same operation.
  */
 export async function applyFieldEdit({
   table,
   id,
-  changes,
+  changes: requestedChanges,
   changedBy,
   reason,
 }: {
@@ -51,6 +89,8 @@ export async function applyFieldEdit({
   reason: string;
 }): Promise<{ ok: true; changed: boolean } | { ok: false; error: string }> {
   const db = getSupabase();
+  const derived = await computeDerivedChanges(db, table, requestedChanges);
+  const changes = { ...requestedChanges, ...derived };
   const fields = Object.keys(changes);
   if (fields.length === 0) return { ok: true, changed: false };
 

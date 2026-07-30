@@ -270,6 +270,12 @@ export async function POST(req: NextRequest) {
   // Scoped to the current meeting: the same email signing for a later AGM is
   // not a duplicate, it is a second, distinct instrument. Read once and
   // reused for the insert below, rather than reading it twice.
+  //
+  // status = active only, matching the partial unique index added in
+  // sql/agm-p5a-followup-resign-after-void.sql (brief section 2c): a
+  // withdrawn or voided row must not block the same person from signing
+  // again, which is the entire point of voiding a pre_rebuild record rather
+  // than leaving it stuck.
   const meetingRef = await getCurrentMeetingRef();
 
   const { data: existing } = await supabase
@@ -277,6 +283,7 @@ export async function POST(req: NextRequest) {
     .select("id")
     .eq("email", email)
     .eq("meeting_ref", meetingRef)
+    .eq("status", "active")
     .maybeSingle();
 
   if (existing) {

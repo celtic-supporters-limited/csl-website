@@ -4,7 +4,7 @@ import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { APPOINTEE_LABEL } from "@/lib/agm-appointee";
 import { isProxyDeclarationReady } from "@/lib/site-gates";
-import { AgmRecordEditor, AgmStatusAction, type AgmField } from "@/components/AgmRecordEditor";
+import { AgmRecordEditor, AgmStatusAction, ChangeHistory, type AgmField } from "@/components/AgmRecordEditor";
 
 export type Appointment = {
   id: string;
@@ -231,6 +231,139 @@ function RevokeAction({ appointment }: { appointment: Appointment }) {
   );
 }
 
+const inputClass =
+  "w-full px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-[0.85rem] font-[inherit] transition-colors duration-200 focus:outline-none focus:border-csl-dark focus:ring-2 focus:ring-csl-dark/10";
+const labelClass = "block text-[0.8rem] font-semibold text-gray-800 mb-1";
+
+/**
+ * Edit the proxy declaration in place. Same shape as WordingForm on the
+ * resolution admin page - one text field, one save, one confirmation -
+ * deliberately not generalised into anything reusable, since this is the
+ * only config-driven text field in the AGM programme that needs an admin
+ * edit surface. Saves through /api/admin/proxy-declaration, which does not
+ * block on the TBD guard - the appointment route's own lock (
+ * isProxyDeclarationReady) and the banner above this card both already
+ * reflect an empty or TBD value reactively, so this form does not duplicate
+ * that check.
+ */
+function DeclarationForm({
+  currentText,
+  signedCount,
+  onClose,
+}: {
+  currentText: string | null;
+  signedCount: number;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [text, setText] = useState(currentText ?? "");
+  const [reason, setReason] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/proxy-declaration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, reason: reason.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Something went wrong. Try again.");
+        setSaving(false);
+        return;
+      }
+      onClose();
+      router.refresh();
+    } catch {
+      setError("Network error. Try again.");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="p-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900 text-sm">Change wording</h2>
+          <button
+            type="button" onClick={onClose} disabled={saving}
+            className="text-[0.78rem] text-gray-500 hover:underline disabled:opacity-60"
+          >
+            Cancel
+          </button>
+        </div>
+
+        {error && (
+          <p className="text-[0.8rem] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+
+        <div>
+          <label htmlFor="pf-text" className={labelClass}>Declaration</label>
+          <p className="text-[0.72rem] text-gray-400 mb-1">
+            Shown to the signatory before they appoint their proxy. Leaving this empty, or starting
+            it with TBD, closes appointments until real wording is saved here.
+          </p>
+          <textarea
+            id="pf-text" rows={5} className={inputClass} disabled={confirming || saving}
+            value={text} onChange={(e) => setText(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="pf-reason" className={labelClass}>Reason for this change</label>
+          <input
+            id="pf-reason" type="text" className={inputClass} disabled={confirming || saving}
+            value={reason} onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. director-approved wording arrived"
+          />
+        </div>
+
+        {!confirming ? (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            disabled={!reason.trim()}
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-csl-dark text-white hover:bg-csl-mid transition-colors disabled:opacity-60"
+          >
+            Save
+          </button>
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 space-y-3">
+            <p className="text-[0.85rem] text-amber-900 leading-snug">
+              {signedCount > 0
+                ? `${signedCount} ${signedCount === 1 ? "person has" : "people have"} appointed a proxy against this declaration. Editing it changes what they agreed to. Anyone who already appointed keeps their own snapshot of the declaration as it was when they signed.`
+                : "This becomes what people sign from now on."}
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button" onClick={save} disabled={saving}
+                className="text-[0.85rem] font-semibold text-amber-900 hover:underline disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Yes, save"}
+              </button>
+              <button
+                type="button" onClick={() => setConfirming(false)} disabled={saving}
+                className="text-[0.85rem] text-amber-600 hover:underline disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <ChangeHistory table="site_config" recordId="proxy_declaration_text" />
+      </div>
+    </div>
+  );
+}
+
 export default function ProxyAdminClient({
   meetingRef,
   mode,
@@ -249,6 +382,15 @@ export default function ProxyAdminClient({
   const [interestExpanded, setInterestExpanded] = useState(false);
   const [editingAppointmentId, setEditingAppointmentId] = useState<string | null>(null);
   const [editingInterestId, setEditingInterestId] = useState<string | null>(null);
+  const [editingDeclaration, setEditingDeclaration] = useState(false);
+
+  // The number named in the declaration-edit warning, per brief section
+  // 3.2 - appointments whose own snapshot matches the current declaration
+  // text exactly, active, not suspected bots. Mirrors
+  // signedCountForCurrentWording on the resolution admin page.
+  const signedCountForDeclaration = appointments.filter(
+    (a) => a.declaration_snapshot === declarationText && !a.suspected_bot && a.status === "active"
+  ).length;
 
   // Countable: not a suspected-bot row, active. Section 5a is explicit that
   // a non-active row (withdrawn or voided) excludes the row from every
@@ -278,7 +420,7 @@ export default function ProxyAdminClient({
 
   const modeNotice =
     mode === "appointment" && !declarationReady
-      ? { cls: "bg-amber-50 border-amber-200 text-amber-800", text: "Proxy mode is set to appointment, but the declaration wording below is still a placeholder. The page cannot take appointments until real wording is saved to proxy_declaration_text." }
+      ? { cls: "bg-amber-50 border-amber-200 text-amber-800", text: "Proxy mode is set to appointment, but the declaration wording below is still a placeholder. The page cannot take appointments until real wording is saved using Change wording, below." }
       : mode === "appointment"
       ? { cls: "bg-green-50 border-green-200 text-green-800", text: "Full proxy appointment is open. Shareholders can appoint their proxy below." }
       : mode === "interest"
@@ -381,34 +523,53 @@ export default function ProxyAdminClient({
         <p className="text-[0.8rem] text-gray-500 mt-1.5">{qualifierLine}</p>
       </div>
 
-      {/* THE APPOINTMENT - mirrors THE REQUISITION on the resolution page.
-          No edit affordance here at all: Package 5 deliberately has no
-          version table and no admin version management for the proxy
-          declaration, only a single config-driven snapshot column copied
-          onto each row at signing time. */}
+      {/* THE APPOINTMENT - mirrors THE REQUISITION on the resolution page,
+          including "Change wording": brief section 2c applies to the proxy
+          declaration too, and there is no version table behind it by
+          design, so editing is a single config value rather than a new
+          row. */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 border-b border-gray-100">
           <p className="text-[0.78rem] font-bold uppercase tracking-wider text-gray-600">The Appointment</p>
+          {!editingDeclaration && (
+            <button
+              onClick={() => setEditingDeclaration(true)}
+              className="text-[0.78rem] text-csl-dark hover:underline font-semibold"
+            >
+              Change wording
+            </button>
+          )}
         </div>
-        <p className="px-4 pt-3 text-[0.82rem] text-gray-500">
-          Every appointment names <strong className="text-gray-800">{APPOINTEE_LABEL}</strong> as proxy.
-        </p>
-        <button
-          onClick={() => setShowFullText((e) => !e)}
-          aria-expanded={showFullText}
-          className="w-full flex items-center gap-2 px-4 py-2.5 mt-1 text-left hover:bg-gray-50 transition-colors"
-        >
-          <span className="text-[0.82rem] text-gray-500">{showFullText ? "Hide" : "Show declaration text"}</span>
-          <ChevronIcon open={showFullText} />
-        </button>
-        {showFullText && (
-          <div className="px-4 pb-4">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3.5">
-              <p className="text-[0.82rem] text-gray-800 leading-relaxed whitespace-pre-line">
-                {declarationText ?? "No declaration text has been set."}
-              </p>
-            </div>
-          </div>
+
+        {editingDeclaration ? (
+          <DeclarationForm
+            currentText={declarationText}
+            signedCount={signedCountForDeclaration}
+            onClose={() => setEditingDeclaration(false)}
+          />
+        ) : (
+          <>
+            <p className="px-4 pt-3 text-[0.82rem] text-gray-500">
+              Every appointment names <strong className="text-gray-800">{APPOINTEE_LABEL}</strong> as proxy.
+            </p>
+            <button
+              onClick={() => setShowFullText((e) => !e)}
+              aria-expanded={showFullText}
+              className="w-full flex items-center gap-2 px-4 py-2.5 mt-1 text-left hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-[0.82rem] text-gray-500">{showFullText ? "Hide" : "Show declaration text"}</span>
+              <ChevronIcon open={showFullText} />
+            </button>
+            {showFullText && (
+              <div className="px-4 pb-4">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3.5">
+                  <p className="text-[0.82rem] text-gray-800 leading-relaxed whitespace-pre-line">
+                    {declarationText ?? "No declaration text has been set."}
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 

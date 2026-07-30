@@ -58,6 +58,7 @@ test.describe.configure({ mode: "serial" });
 let previousResolutionOpen: string | null = null;
 let previousProxyMode: string | null = null;
 let previousCurrentVersionId: string | null = null;
+let previousDeclarationText: string | null = null;
 
 test.beforeAll(async () => {
   if (!SUPABASE_URL?.includes(STAGING_PROJECT_REF)) {
@@ -72,6 +73,8 @@ test.beforeAll(async () => {
   previousProxyMode = modeRow?.value ?? null;
   const { data: currentVersion } = await db().from("agm_resolution_versions").select("id").eq("is_current", true).maybeSingle();
   previousCurrentVersionId = currentVersion?.id ?? null;
+  const { data: declarationRow } = await db().from("site_config").select("value").eq("key", "proxy_declaration_text").maybeSingle();
+  previousDeclarationText = declarationRow?.value ?? null;
 });
 
 test.afterAll(async () => {
@@ -80,6 +83,9 @@ test.afterAll(async () => {
   if (previousCurrentVersionId) {
     await db().from("agm_resolution_versions").update({ is_current: false }).eq("is_current", true);
     await db().from("agm_resolution_versions").update({ is_current: true }).eq("id", previousCurrentVersionId);
+  }
+  if (previousDeclarationText !== null) {
+    await setConfig("proxy_declaration_text", previousDeclarationText);
   }
 });
 
@@ -574,5 +580,216 @@ test("editing the live wording after a signature exists leaves that signature's 
   } finally {
     await db().from("agm_signatures").delete().eq("id", sigId);
     await db().from("agm_resolution_versions").delete().eq("id", versionId);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Follow-up 1. Editing how_held recomputes shareholder_tag in the same
+// operation and logs both - proved by checking the actual headline count on
+// the admin page, not just the stored tag value.
+// ---------------------------------------------------------------------------
+
+test("editing how_held from nominee to direct recomputes shareholder_tag and changes the count toward 100", async ({ page }) => {
+  const sigId = await insertTestSignature({
+    how_held: "nominee",
+    computershare_srn: null,
+    nominee_platform: "Hargreaves Lansdown",
+    shareholder_tag: "nominee-platform",
+  });
+
+  try {
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+
+    const before = await page.getByText(/needed to lodge/i).innerText();
+    const countBefore = Number(before.match(/^([\d,]+)/)![1].replace(/,/g, ""));
+
+    const res = await adminEdit(page, {
+      table: "agm_signatures",
+      id: sigId,
+      changes: { how_held: "direct", computershare_srn: "C0009998887" },
+      reason: "corrected how_held",
+    });
+    expect(res.status()).toBe(200);
+
+    const { data: row } = await db().from("agm_signatures").select("how_held, shareholder_tag").eq("id", sigId).single();
+    expect(row.how_held).toBe("direct");
+    expect(row.shareholder_tag, "shareholder_tag must follow how_held, not be left at the old value").toBe("direct-registered");
+
+    const log = await changeLogFor("agm_signatures", sigId);
+    expect(log.find((e) => e.field_name === "how_held")).toBeTruthy();
+    const tagEntry = log.find((e) => e.field_name === "shareholder_tag");
+    expect(tagEntry, "the derived change must be logged too, not just applied silently").toBeTruthy();
+    expect(tagEntry.old_value).toBe("nominee-platform");
+    expect(tagEntry.new_value).toBe("direct-registered");
+
+    await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+    const after = await page.getByText(/needed to lodge/i).innerText();
+    const countAfter = Number(after.match(/^([\d,]+)/)![1].replace(/,/g, ""));
+    expect(countAfter, "the headline count filters on shareholder_tag - it must reflect the correction").toBe(countBefore + 1);
+  } finally {
+    await db().from("agm_signatures").delete().eq("id", sigId);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Follow-up 2. capture_status is settable, and voiding a pre_rebuild
+// signature actually frees the email for a fresh sign - proved end to end
+// through the real public /api/resolution/sign route, not just at the
+// database level.
+// ---------------------------------------------------------------------------
+
+test("capture_status can be edited directly, and voiding a pre_rebuild signature lets the same email sign again", async ({ page }) => {
+  const email = `p5a-resign-${Date.now()}@example.com`;
+  const legacyId = await insertTestSignature({
+    email,
+    capture_status: "pre_rebuild",
+    address_line_1: null,
+    address_town: null,
+    address_postcode: null,
+    share_class: null,
+    eligibility_confirmed: null,
+    resolution_supported: null,
+    privacy_policy_version: null,
+  });
+  const versionId = await insertTestVersion({ is_placeholder: false });
+  const previousResOpen = await db().from("site_config").select("value").eq("key", "resolution_open").maybeSingle();
+
+  try {
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+
+    // capture_status is directly editable, confirmed here without touching
+    // the missing-fields constraint at all.
+    const editRes = await adminEdit(page, {
+      table: "agm_signatures",
+      id: legacyId,
+      changes: { capture_status: "pre_rebuild" },
+      reason: "confirming capture_status is editable",
+    });
+    expect(editRes.status()).toBe(200);
+
+    // Voiding, not marking complete, is the path proved end to end: the
+    // legacy row has no resolution_version_id and no snapshot, so
+    // "complete" would be a label with no evidence behind it. Void it and
+    // let the person sign fresh instead.
+    const statusRes = await adminStatus(page, { table: "agm_signatures", id: legacyId, status: "voided", reason: "resolving legacy record" });
+    expect(statusRes.status()).toBe(200);
+
+    const { data: voided } = await db().from("agm_signatures").select("status").eq("id", legacyId).single();
+    expect(voided.status).toBe("voided");
+
+    await db().from("agm_resolution_versions").update({ is_current: false }).eq("is_current", true);
+    await db().from("agm_resolution_versions").update({ is_current: true }).eq("id", versionId);
+    await setConfig("resolution_open", "true");
+
+    const signRes = await page.request.post("/api/resolution/sign", {
+      data: {
+        fullName: "P5a Resign Test",
+        addressLine1: "1 Test Street",
+        addressTown: "Glasgow",
+        addressPostcode: "G1 1AA",
+        email,
+        howHeld: "direct",
+        computershareSrn: "C0009998887",
+        shareClass: "ORD",
+        eligibilityConfirmed: true,
+        resolutionSupported: true,
+        consentGiven: true,
+        signatureName: "P5a Resign Test",
+        turnstileToken: "test-token",
+      },
+      headers: { "x-forwarded-for": "10.14.0.50" },
+    });
+    expect(signRes.status(), "the same email must be able to sign again once the old record is voided").toBe(200);
+
+    const { data: rows } = await db().from("agm_signatures").select("id, status, capture_status").eq("email", email);
+    expect(rows?.length).toBe(2);
+    const freshRow = rows!.find((r) => r.id !== legacyId);
+    expect(freshRow?.status).toBe("active");
+    expect(freshRow?.capture_status).toBe("complete");
+  } finally {
+    await db().from("agm_signatures").delete().eq("email", email);
+    await db().from("agm_resolution_versions").delete().eq("id", versionId);
+    await setConfig("resolution_open", previousResOpen.data?.value ?? "false");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Follow-up 3. The proxy declaration is editable through "Change wording"
+// on The Appointment card, logged through agm_change_log with
+// table_name = 'site_config', record_id = 'proxy_declaration_text'.
+// ---------------------------------------------------------------------------
+
+test("the proxy declaration can be edited through Change wording on the AGM Proxy admin page, and is logged against site_config", async ({ page }) => {
+  const marker = `P5A-DECLARATION-${Date.now()}`;
+
+  try {
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    await page.goto("/member-portal/admin/proxy", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+
+    await page.getByRole("button", { name: "Change wording" }).click();
+    await page.locator("#pf-text").fill(marker);
+    await page.locator("#pf-reason").fill("test - proving the declaration edit path");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+
+    // No real appointment on staging has a snapshot matching this brand-new
+    // marker text, so the simpler unsigned-count message is expected.
+    await expect(page.getByText("This becomes what people sign from now on.")).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: "Yes, save" }).click();
+
+    await expect(page.getByRole("button", { name: "Change wording" })).toBeVisible({ timeout: 15_000 });
+
+    const { data: config } = await db().from("site_config").select("value").eq("key", "proxy_declaration_text").single();
+    expect(config.value).toBe(marker);
+
+    const { data: log } = await db()
+      .from("agm_change_log")
+      .select("*")
+      .eq("table_name", "site_config")
+      .eq("record_id", "proxy_declaration_text")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    expect(log.new_value).toBe(marker);
+    expect(log.field_name).toBe("value");
+  } finally {
+    await setConfig("proxy_declaration_text", previousDeclarationText ?? "");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Follow-up 4. The TBD guard is not enforced by the save itself - saving
+// empty or TBD text is allowed - but the admin banner must immediately
+// reflect that appointments cannot be taken.
+// ---------------------------------------------------------------------------
+
+test("saving an empty declaration is not blocked, and the banner immediately says appointments cannot be taken", async ({ page }) => {
+  const previousMode = await db().from("site_config").select("value").eq("key", "proxy_mode").maybeSingle();
+
+  try {
+    await setConfig("proxy_mode", "appointment");
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    await page.goto("/member-portal/admin/proxy", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+
+    await page.getByRole("button", { name: "Change wording" }).click();
+    await page.locator("#pf-text").fill("");
+    await page.locator("#pf-reason").fill("test - deliberately parking the declaration empty");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Yes, save" }).click();
+
+    // The save was not blocked - proceed to check the banner reflects it.
+    await expect(page.getByRole("button", { name: "Change wording" })).toBeVisible({ timeout: 15_000 });
+
+    const { data: config } = await db().from("site_config").select("value").eq("key", "proxy_declaration_text").single();
+    expect(config.value).toBe("");
+
+    await expect(page.getByText(/declaration wording below is still a placeholder/i)).toBeVisible();
+  } finally {
+    await setConfig("proxy_declaration_text", previousDeclarationText ?? "");
+    await setConfig("proxy_mode", previousMode.data?.value ?? "closed");
   }
 });
