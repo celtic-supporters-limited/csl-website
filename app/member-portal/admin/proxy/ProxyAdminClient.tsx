@@ -249,10 +249,14 @@ const labelClass = "block text-[0.8rem] font-semibold text-gray-800 mb-1";
 function DeclarationForm({
   currentText,
   signedCount,
+  matchingCurrentTextCount,
   onClose,
 }: {
   currentText: string | null;
+  /** Every active appointment for this meeting - all affected by editing the declaration, not only the ones whose own snapshot matches it right now. */
   signedCount: number;
+  /** Of signedCount, how many actually saw the text as it stands right now - the rest appointed against an earlier version of it. */
+  matchingCurrentTextCount: number;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -338,7 +342,11 @@ function DeclarationForm({
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 space-y-3">
             <p className="text-[0.85rem] text-amber-900 leading-snug">
               {signedCount > 0
-                ? `${signedCount} ${signedCount === 1 ? "person has" : "people have"} appointed a proxy against this declaration. Editing it changes what they agreed to. Anyone who already appointed keeps their own snapshot of the declaration as it was when they signed.`
+                ? `${signedCount} ${signedCount === 1 ? "person has" : "people have"} appointed a proxy for this meeting${
+                    matchingCurrentTextCount < signedCount
+                      ? ` - ${matchingCurrentTextCount} against the current text, ${signedCount - matchingCurrentTextCount} against an earlier version`
+                      : ""
+                  }. Editing it changes what they agreed to. Anyone who already appointed keeps their own snapshot of the declaration as it was when they signed.`
                 : "This becomes what people sign from now on."}
             </p>
             <div className="flex items-center gap-3">
@@ -384,12 +392,19 @@ export default function ProxyAdminClient({
   const [editingInterestId, setEditingInterestId] = useState<string | null>(null);
   const [editingDeclaration, setEditingDeclaration] = useState(false);
 
-  // The number named in the declaration-edit warning, per brief section
-  // 3.2 - appointments whose own snapshot matches the current declaration
-  // text exactly, active, not suspected bots. Mirrors
-  // signedCountForCurrentWording on the resolution admin page.
-  const signedCountForDeclaration = appointments.filter(
-    (a) => a.declaration_snapshot === declarationText && !a.suspected_bot && a.status === "active"
+  // The numbers named in the declaration-edit warning, per brief section
+  // 3.2. site_config has no version row to bind against the way a
+  // resolution wording does, so signedCountForDeclaration is every active
+  // appointment for this meeting - everyone affected by editing the one
+  // live declaration string, whether or not their own snapshot matches it
+  // right now. Counting only snapshot matches undercounts anyone who
+  // appointed against an earlier edit of the same text - exactly the
+  // defect flagged in review. matchingCurrentTextCount is the more precise
+  // breakdown of that group: how many actually saw today's text.
+  const activeAppointmentsForDeclaration = appointments.filter((a) => !a.suspected_bot && a.status === "active");
+  const signedCountForDeclaration = activeAppointmentsForDeclaration.length;
+  const matchingCurrentTextForDeclaration = activeAppointmentsForDeclaration.filter(
+    (a) => a.declaration_snapshot === declarationText
   ).length;
 
   // Countable: not a suspected-bot row, active. Section 5a is explicit that
@@ -545,6 +560,7 @@ export default function ProxyAdminClient({
           <DeclarationForm
             currentText={declarationText}
             signedCount={signedCountForDeclaration}
+            matchingCurrentTextCount={matchingCurrentTextForDeclaration}
             onClose={() => setEditingDeclaration(false)}
           />
         ) : (

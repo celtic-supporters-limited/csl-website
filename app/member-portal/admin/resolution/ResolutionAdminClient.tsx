@@ -205,10 +205,14 @@ const labelClass = "block text-[0.8rem] font-semibold text-gray-800 mb-1";
 function WordingForm({
   current,
   signedCount,
+  matchingCurrentTextCount,
   onClose,
 }: {
   current: WordingRow & { is_placeholder: boolean };
+  /** Every active signature bound to this row - affected by editing it, whether or not their own snapshot matches the live text. */
   signedCount: number;
+  /** Of signedCount, how many saw exactly the text as it stands right now - the rest signed against an earlier edit of this same row. */
+  matchingCurrentTextCount: number;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -343,7 +347,11 @@ function WordingForm({
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 space-y-3">
             <p className="text-[0.85rem] text-amber-900 leading-snug">
               {signedCount > 0
-                ? `${signedCount} ${signedCount === 1 ? "person has" : "people have"} signed this wording. Editing it changes what they agreed to. Anyone who already signed keeps their own snapshot of the wording as it was when they signed.`
+                ? `${signedCount} ${signedCount === 1 ? "person has" : "people have"} signed this wording${
+                    matchingCurrentTextCount < signedCount
+                      ? ` - ${matchingCurrentTextCount} against the current text, ${signedCount - matchingCurrentTextCount} against an earlier version`
+                      : ""
+                  }. Editing it changes what they agreed to. Anyone who already signed keeps their own snapshot of the wording as it was when they signed.`
                 : "This becomes what people sign from now on."}
             </p>
             <div className="flex items-center gap-3">
@@ -411,10 +419,23 @@ export default function ResolutionAdminClient({
   const preRebuild = signatures.filter((s) => s.capture_status === "pre_rebuild" && !s.suspected_bot && s.status === "active");
   const directCount = complete.filter((s) => s.shareholder_tag === "direct-registered").length;
 
-  // The number named in the wording-edit warning, per brief section 3.2 -
-  // signatures bound to the current version, active, not suspected bots.
-  const signedCountForCurrentWording = currentWording
-    ? signatures.filter((s) => s.resolution_version_id === currentWording.id && !s.suspected_bot && s.status === "active").length
+  // The numbers named in the wording-edit warning, per brief section 3.2.
+  // signedCountForCurrentWording is everyone affected by editing this row -
+  // every active signature bound to it, whether or not their own snapshot
+  // matches the live text right now. Binding to resolution_version_id, not
+  // to a snapshot-text match, is what makes this the right count: someone
+  // bound to a different, non-current row is unaffected by editing this
+  // one, and someone bound to this row is affected by editing it even if an
+  // earlier edit already left their snapshot behind.
+  // matchingCurrentTextCount is the more precise breakdown Gary asked for -
+  // of the affected group, how many actually saw the text as it stands
+  // right now versus an earlier edit of this same row.
+  const activeSignaturesForCurrentWording = currentWording
+    ? signatures.filter((s) => s.resolution_version_id === currentWording.id && !s.suspected_bot && s.status === "active")
+    : [];
+  const signedCountForCurrentWording = activeSignaturesForCurrentWording.length;
+  const matchingCurrentTextCount = currentWording
+    ? activeSignaturesForCurrentWording.filter((s) => s.resolution_snapshot === currentWording.body).length
     : 0;
 
   function toggleSort(key: SortKey) {
@@ -593,6 +614,7 @@ export default function ResolutionAdminClient({
           <WordingForm
             current={currentWording}
             signedCount={signedCountForCurrentWording}
+            matchingCurrentTextCount={matchingCurrentTextCount}
             onClose={() => setEditingWording(false)}
           />
         ) : currentWording ? (

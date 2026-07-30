@@ -329,7 +329,11 @@ test("a change that fails to log does not write to the record", async () => {
 
 test("editing wording with signatures against it warns with the count, and saves when confirmed", async ({ page }) => {
   const versionId = await insertTestVersion({ is_placeholder: false });
-  const sigId = await insertTestSignature({ resolution_version_id: versionId });
+  // resolution_snapshot matches the version's own body deliberately - this
+  // signature genuinely saw today's text, unedited, so the warning must
+  // name the count with no "against an earlier version" breakdown clause.
+  // See the next test for the case where it does not match.
+  const sigId = await insertTestSignature({ resolution_version_id: versionId, resolution_snapshot: "Test body" });
 
   try {
     await db().from("agm_resolution_versions").update({ is_current: false }).eq("is_current", true);
@@ -346,6 +350,7 @@ test("editing wording with signatures against it warns with the count, and saves
     await page.getByRole("button", { name: "Save" }).click();
 
     await expect(page.getByText(/1 person has signed this wording/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/against an earlier version/i)).not.toBeVisible();
 
     await page.getByRole("button", { name: "Yes, save" }).click();
     // The form calls onClose() then router.refresh() on success, which
@@ -358,6 +363,41 @@ test("editing wording with signatures against it warns with the count, and saves
   } finally {
     await db().from("agm_signatures").delete().eq("id", sigId);
     await db().from("agm_resolution_versions").update({ is_current: false }).eq("id", versionId);
+    await db().from("agm_resolution_versions").delete().eq("id", versionId);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The undercount defect, fixed: a signature bound to the current row must
+// still be named in the warning even after an earlier edit has already
+// left its own snapshot behind - counting only snapshot matches would
+// silently drop it, which is worse than no warning at all.
+// ---------------------------------------------------------------------------
+
+test("a signature signed against an earlier edit of the current wording is still counted in the warning, with a breakdown", async ({ page }) => {
+  const versionId = await insertTestVersion({ is_placeholder: false, body: "Original body" });
+  // Deliberately does not match the version's current body - this
+  // signature saw an earlier edit of this same row, not what it says now.
+  const sigId = await insertTestSignature({ resolution_version_id: versionId, resolution_snapshot: "An even earlier body" });
+
+  try {
+    await db().from("agm_resolution_versions").update({ is_current: false }).eq("is_current", true);
+    await db().from("agm_resolution_versions").update({ is_current: true }).eq("id", versionId);
+
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+
+    await page.getByRole("button", { name: "Change wording" }).click();
+    await page.locator("#wf-body").fill("Newest body");
+    await page.locator("#wf-reason").fill("test - proving the earlier-signer is still counted");
+    await page.getByRole("button", { name: "Save" }).click();
+
+    // Must still name this person as affected, and the breakdown must show
+    // them against an earlier version, not omit them from the total.
+    await expect(page.getByText(/1 person has signed this wording - 0 against the current text, 1 against an earlier version/i)).toBeVisible({ timeout: 10_000 });
+  } finally {
+    await db().from("agm_signatures").delete().eq("id", sigId);
     await db().from("agm_resolution_versions").delete().eq("id", versionId);
   }
 });
@@ -725,6 +765,15 @@ test("capture_status can be edited directly, and voiding a pre_rebuild signature
 test("the proxy declaration can be edited through Change wording on the AGM Proxy admin page, and is logged against site_config", async ({ page }) => {
   const marker = `P5A-DECLARATION-${Date.now()}`;
 
+  // A fixture, deliberately, rather than assuming staging has zero active
+  // appointments right now: the warning must count every active
+  // appointment for the meeting, not only ones whose snapshot happens to
+  // match a brand-new marker string - this proxy's declaration_snapshot is
+  // set to the pre-edit text on purpose, so after saving a new marker the
+  // warning's breakdown clause ("N against an earlier version") is
+  // exercised too, not just the total.
+  const proxyId = await insertTestProxy();
+
   try {
     await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
     await page.goto("/member-portal/admin/proxy", { waitUntil: "domcontentloaded" });
@@ -735,9 +784,11 @@ test("the proxy declaration can be edited through Change wording on the AGM Prox
     await page.locator("#pf-reason").fill("test - proving the declaration edit path");
     await page.getByRole("button", { name: "Save", exact: true }).click();
 
-    // No real appointment on staging has a snapshot matching this brand-new
-    // marker text, so the simpler unsigned-count message is expected.
-    await expect(page.getByText("This becomes what people sign from now on.")).toBeVisible({ timeout: 10_000 });
+    // The fixture's snapshot ("test", set by insertTestProxy) does not
+    // match the new marker text, so the warning must name it as affected
+    // by total count, with the breakdown showing it against an earlier
+    // version - not silently drop it because its snapshot does not match.
+    await expect(page.getByText(/appointed a proxy for this meeting.*against an earlier version/i)).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Yes, save" }).click();
 
     await expect(page.getByRole("button", { name: "Change wording" })).toBeVisible({ timeout: 15_000 });
@@ -756,6 +807,7 @@ test("the proxy declaration can be edited through Change wording on the AGM Prox
     expect(log.new_value).toBe(marker);
     expect(log.field_name).toBe("value");
   } finally {
+    await db().from("agm_proxies").delete().eq("id", proxyId);
     await setConfig("proxy_declaration_text", previousDeclarationText ?? "");
   }
 });
@@ -791,5 +843,94 @@ test("saving an empty declaration is not blocked, and the banner immediately say
   } finally {
     await setConfig("proxy_declaration_text", previousDeclarationText ?? "");
     await setConfig("proxy_mode", previousMode.data?.value ?? "closed");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Follow-up 5. The same resign-after-void fix as agm_signatures, applied to
+// agm_proxies and agm_supporters - REQUIRES
+// sql/agm-p5a-followup2-supporters-proxies-resign.sql to have been run.
+// Proved end to end through the real public routes, not just at the
+// database level.
+// ---------------------------------------------------------------------------
+
+test("voiding a proxy appointment frees its email for a fresh appointment", async ({ page }) => {
+  const email = `p5a-proxy-resign-${Date.now()}@example.com`;
+  const previousMode = await db().from("site_config").select("value").eq("key", "proxy_mode").maybeSingle();
+  const previousDeclaration = await db().from("site_config").select("value").eq("key", "proxy_declaration_text").maybeSingle();
+
+  try {
+    const legacyId = await insertTestProxy();
+    await db().from("agm_proxies").update({ email }).eq("id", legacyId);
+
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    const statusRes = await adminStatus(page, { table: "agm_proxies", id: legacyId, status: "voided", reason: "test - freeing the email" });
+    expect(statusRes.status()).toBe(200);
+
+    await setConfig("proxy_mode", "appointment");
+    await setConfig("proxy_declaration_text", "A real, non-placeholder declaration for this test.");
+
+    const appointRes = await page.request.post("/api/proxy/appointment", {
+      data: {
+        fullName: "P5a Proxy Resign Test",
+        addressLine1: "1 Test Street",
+        addressTown: "Glasgow",
+        addressPostcode: "G1 1AA",
+        email,
+        howHeld: "direct",
+        computershareSrn: "C0009998887",
+        shareClass: "ORD",
+        sharesHeld: "101-500",
+        consentGiven: true,
+        signatureName: "P5a Proxy Resign Test",
+        turnstileToken: "test-token",
+      },
+      headers: { "x-forwarded-for": "10.15.0.60" },
+    });
+    expect(appointRes.status(), "the same email must be able to appoint again once the old record is voided").toBe(200);
+
+    const { data: rows } = await db().from("agm_proxies").select("id, status").eq("email", email);
+    expect(rows?.length).toBe(2);
+    const freshRow = rows!.find((r) => r.id !== legacyId);
+    expect(freshRow?.status).toBe("active");
+  } finally {
+    await db().from("agm_proxies").delete().eq("email", email);
+    await setConfig("proxy_mode", previousMode.data?.value ?? "closed");
+    await setConfig("proxy_declaration_text", previousDeclaration.data?.value ?? "");
+  }
+});
+
+test("voiding a supporter record frees its email for a fresh registration", async ({ page }) => {
+  const email = `p5a-supporter-resign-${Date.now()}@example.com`;
+  const previousOpen = await db().from("site_config").select("value").eq("key", "resolution_open").maybeSingle();
+
+  try {
+    const legacyId = await insertTestSupporter();
+    await db().from("agm_supporters").update({ email }).eq("id", legacyId);
+
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    const statusRes = await adminStatus(page, { table: "agm_supporters", id: legacyId, status: "voided", reason: "test - freeing the email" });
+    expect(statusRes.status()).toBe(200);
+
+    await setConfig("resolution_open", "true");
+
+    const supportRes = await page.request.post("/api/resolution/supporter", {
+      data: {
+        fullName: "P5a Supporter Resign Test",
+        email,
+        consentGiven: true,
+        turnstileToken: "test-token",
+      },
+      headers: { "x-forwarded-for": "10.15.0.61" },
+    });
+    expect(supportRes.status(), "the same email must be able to register support again once the old record is voided").toBe(200);
+
+    const { data: rows } = await db().from("agm_supporters").select("id, status").eq("email", email);
+    expect(rows?.length).toBe(2);
+    const freshRow = rows!.find((r) => r.id !== legacyId);
+    expect(freshRow?.status).toBe("active");
+  } finally {
+    await db().from("agm_supporters").delete().eq("email", email);
+    await setConfig("resolution_open", previousOpen.data?.value ?? "false");
   }
 });
