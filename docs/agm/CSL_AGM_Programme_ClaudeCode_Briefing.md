@@ -1,7 +1,7 @@
 # CSL AGM Programme - Claude Code Working Brief
 
-**Version: 1.3**
-**Date:** 28 July 2026
+**Version: 1.4**
+**Date:** 30 July 2026
 **Author:** Gary Phinn, Volunteer IT Lead
 **Read this at the start of every package session.** Every package prompt assumes it.
 
@@ -17,6 +17,10 @@ touches; do not poll `vercel ls` in a loop.
 **Changes in 1.2, all from Package 2:** every SQL Editor table needs an explicit GRANT; rehearse
 the exact production sequence, not an approximation of it; suspect your own code before blaming
 the infrastructure.
+
+**Changes in 1.4:** a primary reference document added at section 2b. Consult it whenever an open
+question touches the instrument, the threshold, who counts, or the form of words. Do not invent
+these things.
 
 **Changes in 1.3, from the solicitor pack review:** a third item added to section 6, the
 declaration must be in the correct legal frame; version binding extended to cover the declaration
@@ -98,6 +102,49 @@ running on it. The build overwrites `.next` beneath the running server, every JS
 no page hydrates, and the symptoms look exactly like application bugs. This has already produced a
 confident but false "pre-existing test failure" conclusion that had to be unwound. Stop the server
 first, or build elsewhere.
+
+---
+
+## 2b. Primary reference. Consult this before inventing anything
+
+**`docs/agm/reference/ShareAction_UK_Guide_Shareholder_Resolutions_2019.md`**
+
+ShareAction's UK Guide to Shareholder Resolutions is the practitioner reference used by UK
+co-filing campaigns and it is committed to this repository. It is the primary source for this
+programme. Read the relevant part of it before making any decision about the instrument, and cite
+what you used.
+
+It covers, among other things:
+
+| Question | Where |
+|---|---|
+| The requisition form for registered shareholders | Appendix 1 |
+| The form for indirect investors holding through a nominee | Appendix 2 |
+| The form where the group is mixed | Appendix 3 |
+| The two routes to filing, 5 per cent or 100 members | Route 1 and Route 2 |
+| The £100 average paid-up test | Route 2, and the indirect investors section |
+| How indirect holders can count, under section 153 | Indirect investors |
+| The conditions on which a company may refuse to circulate | Conditions for a shareholder resolution |
+
+Appendix 1 asks each signatory for name, address, share count, account number, the amount paid up
+on the shares, and five confirmations, and its declaration cites **sections 314 and 338 together**,
+stating that the signatory has signed the supporting statement "for the purposes of
+identification". Our wording should track that form.
+
+**The rule.** When a change touches the language, structure or eligibility rules of the
+requisition, work from this document and say which part you used. If it does not cover the point,
+say so and flag it for the solicitor rather than drafting something plausible. This project has
+already produced signatory-facing wording that diverged from established practice because nobody
+checked a source, and wording that is merely plausible is the most expensive kind of error here:
+it is invisible until a registrar reads it.
+
+The guide is a practitioner document, not a statute. Where it is loose, the Companies Act 2006 wins,
+in particular sections 314, 338, 340, 153 and 1146.
+
+Related process reference, not committed: ShareAction's live co-filing platform at
+`https://resolutions.shareaction.org/faq` documents the same process end to end, including expected
+timescales and failure modes. Useful for how the process is explained to a shareholder. Its
+description of the law is loose, so do not take wording from it.
 
 ---
 

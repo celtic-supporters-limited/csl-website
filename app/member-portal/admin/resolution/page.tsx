@@ -4,7 +4,6 @@ import { createServerSupabase, getSupabase } from "@/lib/supabase";
 import PortalShell from "@/components/PortalShell";
 import ResolutionAdminClient from "./ResolutionAdminClient";
 import { getResolutionSigningState } from "@/lib/agm-signing-state";
-import { SigningStateNotice } from "@/components/SigningStateNotice";
 import { getCurrentMeetingRef } from "@/lib/site-gates";
 
 export const metadata: Metadata = { title: "AGM Resolution | CSL Admin" };
@@ -27,7 +26,7 @@ export default async function ResolutionAdminPage() {
 
   const currentMeetingRef = await getCurrentMeetingRef();
 
-  const [signaturesRes, configRes, supportersRes, wordingsRes, signingState] = await Promise.all([
+  const [signaturesRes, configRes, supportersRes, currentWordingRes, signingState] = await Promise.all([
     // Scoped to the active meeting. With one meeting this excludes nothing;
     // next year it stops a second AGM's signatures inflating this tracker.
     supabase
@@ -43,14 +42,16 @@ export default async function ResolutionAdminPage() {
       .from("agm_supporters")
       .select("id", { count: "exact", head: true })
       .eq("meeting_ref", currentMeetingRef),
-    // Every wording for this meeting, current and superseded alike. Split
-    // into "current" and "history" client-side rather than two queries -
-    // there is one row of the former and a handful of the latter.
+    // Only the current wording is fetched. Superseded wordings still exist as
+    // rows - the immutability trigger and FK are unchanged - but this page no
+    // longer has an interface for reading them, so there is no reason to
+    // fetch a history list here any more.
     supabase
       .from("agm_resolution_versions")
       .select("id, version_label, body, declaration_text, consent_text, supporting_statement, is_placeholder, is_current, created_at")
       .eq("meeting_ref", currentMeetingRef)
-      .order("created_at", { ascending: false }),
+      .eq("is_current", true)
+      .maybeSingle(),
     getResolutionSigningState(),
   ]);
 
@@ -60,21 +61,33 @@ export default async function ResolutionAdminPage() {
   );
   const resolutionTarget = parseInt(configMap["resolution_target"] ?? "100", 10);
 
-  const wordings = wordingsRes.data ?? [];
-  const currentWording = wordings.find((w) => w.is_current) ?? null;
-  const wordingHistory = wordings.filter((w) => !w.is_current);
+  // Labels for the CSV export only, not for anything rendered on this page.
+  // The export is an audit trail that leaves the system, so it still needs
+  // to say which wording each signature was bound to - fetched here as a
+  // targeted lookup against exactly the ids these signatures reference,
+  // rather than a full history list kept around for the UI to read.
+  const referencedVersionIds = Array.from(
+    new Set(signatures.map((s) => s.resolution_version_id).filter((id): id is string => !!id))
+  );
+  const versionLabels: Record<string, string> = {};
+  if (referencedVersionIds.length > 0) {
+    const { data: labelRows } = await supabase
+      .from("agm_resolution_versions")
+      .select("id, version_label")
+      .in("id", referencedVersionIds);
+    for (const row of labelRows ?? []) versionLabels[row.id] = row.version_label;
+  }
 
   return (
     <PortalShell user={{ email: user.email!, id: user.id }} member={member}>
-      <div className="mb-5">
-        <SigningStateNotice state={signingState} />
-      </div>
       <ResolutionAdminClient
+        meetingRef={currentMeetingRef}
+        signingState={signingState}
         signatures={signatures}
         supporterCount={supportersRes.count ?? 0}
         resolutionTarget={resolutionTarget}
-        currentWording={currentWording}
-        wordingHistory={wordingHistory}
+        currentWording={currentWordingRes.data}
+        versionLabels={versionLabels}
       />
     </PortalShell>
   );

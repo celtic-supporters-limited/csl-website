@@ -524,11 +524,11 @@ test("the signing state notice reflects gate and finality on the admin page", as
     await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
 
     await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
-    await expect(page.getByText(/Signing: OPEN\. Shareholders are signing/i)).toBeVisible();
+    await expect(page.getByText(/Signing is open\. Shareholders can sign/i)).toBeVisible();
 
     await setConfig("resolution_open", "false");
     await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
-    await expect(page.getByText(/Signing: CLOSED\. Gate is closed\./i)).toBeVisible();
+    await expect(page.getByText(/Signing is closed\. The gate has not been opened/i)).toBeVisible();
 
     await setCurrentDirect(await getPlaceholderId());
     await setConfig("resolution_open", "true");
@@ -544,62 +544,48 @@ test("the signing state notice reflects gate and finality on the admin page", as
 // ---------------------------------------------------------------------------
 // 9. No editable field for the four texts exists anywhere except inside the
 //    open wording form - not in the collapsed state, not in the expanded
-//    current wording, not in an expanded history entry.
+//    current wording. There is no history entry to check any more: the
+//    Wording History disclosure was deleted entirely in the AGM admin
+//    redesign (docs/agm/CSL_AGM_AdminRedesign_ClaudeCode_Prompt.md section 4),
+//    not merely collapsed, so there is no second surface left to exercise.
 // ---------------------------------------------------------------------------
 
 test("no editable field for the four texts exists outside the wording form", async ({ page }) => {
   test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, "TEST_USER_EMAIL / TEST_USER_PASSWORD not set");
 
-  const marker = `P3HISTORYNOEDIT${Date.now()}`;
-  const historyId = await insertVersion({
-    version_label: `History check ${marker}`,
-    body: `History body ${marker}`,
-    declaration_text: "History declaration",
-    consent_text: "History consent",
-  });
-  try {
-    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
-    await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+  await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+  await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle", { timeout: 30_000 });
 
-    // Nothing expanded yet.
-    await expect(page.locator("textarea")).toHaveCount(0);
+  // Nothing expanded yet.
+  await expect(page.locator("textarea")).toHaveCount(0);
 
-    // Reading the current wording in full must not introduce one either.
-    await page.getByRole("button", { name: "Read in full" }).click();
-    await expect(page.locator("textarea")).toHaveCount(0);
+  // Reading the current wording in full must not introduce one either.
+  await page.getByRole("button", { name: "Show full text" }).click();
+  await expect(page.locator("textarea")).toHaveCount(0);
 
-    // Nor does reading a history entry.
-    await page.getByRole("button", { name: /Wording history/i }).click();
-    await page.getByRole("button", { name: new RegExp(marker) }).click();
-    await expect(page.getByText(`History body ${marker}`)).toBeVisible();
-    await expect(page.locator("textarea")).toHaveCount(0);
+  // Nor does expanding the signature table.
+  await page.getByRole("button", { name: /Who has signed/i }).click();
+  await expect(page.locator("textarea")).toHaveCount(0);
 
-    // Only the wording form introduces editable fields, and only while open.
-    await page.getByRole("button", { name: "Change wording" }).click();
-    await expect(page.locator("textarea")).toHaveCount(4);
-  } finally {
-    await deleteVersion(historyId);
-  }
+  // Only the wording form introduces editable fields, and only while open.
+  await page.getByRole("button", { name: "Change wording" }).click();
+  await expect(page.locator("textarea")).toHaveCount(4);
 });
 
 // ---------------------------------------------------------------------------
 // 10. The redesign's central vocabulary rule, checked mechanically rather
 //     than by eye: none of these words appear anywhere the page can render
-//     them, including inside Wording History and the open wording form.
+//     them. Simpler than it used to be: no wording's label is rendered
+//     anywhere on this page any more, not even the current wording's, so
+//     there is no longer a need to force the seeded placeholder into view to
+//     catch its own label leaking - labels are timestamps in the data now,
+//     with no interface at all.
 // ---------------------------------------------------------------------------
 
 test("the words version, make current, duplicate, placeholder and activate appear nowhere in the rendered admin page", async ({ page }) => {
   test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, "TEST_USER_EMAIL / TEST_USER_PASSWORD not set");
 
-  // Must run with a non-placeholder wording current, so the real seeded
-  // placeholder sits in Wording History rather than being the (unlabelled)
-  // current wording - its own label is exactly what this test has to catch,
-  // and that label only ever renders as history-row text. Not guaranteed by
-  // whatever a previous test left current: test 8 above deliberately leaves
-  // the placeholder current, which would otherwise let this test pass
-  // without ever exercising the one row most likely to still say the banned
-  // word - see sql/agm-relabel-seed-placeholder.sql.
   const id = await insertVersion({
     version_label: "P3 banned words probe",
     body: "Banned words probe body",
@@ -614,12 +600,8 @@ test("the words version, make current, duplicate, placeholder and activate appea
     await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle", { timeout: 30_000 });
 
-    await page.getByRole("button", { name: "Read in full" }).click();
-    await page.getByRole("button", { name: /Wording history/i }).click();
-    // The real placeholder must actually be present in that now-expanded
-    // history list for this test to mean anything - confirms the setup
-    // above worked, not just that the toggle opened.
-    await expect(page.getByRole("button", { name: /pre-solicitor/i })).toBeVisible();
+    await page.getByRole("button", { name: "Show full text" }).click();
+    await page.getByRole("button", { name: /Who has signed/i }).click();
     await page.getByRole("button", { name: "Change wording" }).click();
 
     const bodyText = await page.locator("body").innerText();

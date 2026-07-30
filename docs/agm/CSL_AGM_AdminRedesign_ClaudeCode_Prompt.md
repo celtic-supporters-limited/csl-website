@@ -40,21 +40,47 @@ commissioned these pages has said he is confused by them. Simplicity is the requ
 
 One route, `/member-portal/admin/resolution`, titled **AGM Resolution**. `/versions` goes away.
 
+**This layout has been reviewed and approved by Gary. Build it as described.** An earlier version
+was rejected for putting the signature table ahead of the document and for treating the resolution
+as "wording" rather than as the instrument.
+
 ```
-[ Signing: OPEN. Shareholders are signing "Draft for review". ]
+AGM Resolution                                            2026 AGM
 
-1 of 100 direct registered shareholders                    [ Export CSV ]
-Plus 2 supporters recorded, who are not shareholders and cannot sign
+[ Signing is open. Shareholders can sign the requisition below. ]
 
-WHAT SHAREHOLDERS ARE SIGNING NOW                        [ Change wording ]
-  Resolution / Supporting statement / Declaration / Consent
-  collapsed by default, one click to read in full
+47 of 100 needed to lodge
+direct registered shareholders
+1 record needs completion · 6 supporters recorded, who cannot sign
 
-WHO HAS SIGNED
-  Date | Name | Email | Held | SRN | Status
++-- THE REQUISITION -------------------- [Final] -- Change wording --+
+|  What every signatory agrees to, in the order they see it.         |
+|                                                                    |
+|  > Show full text            one toggle, reveals all four in order |
+|      Resolution                                                    |
+|      Supporting statement                                          |
+|      Declaration                                                   |
+|      Consent                                                       |
++--------------------------------------------------------------------+
 
-  > Wording history (2)        collapsed, at the foot
+> Who has signed (47)                                   [ Export CSV ]
 ```
+
+**The requisition is the object of this page, not a panel bolted onto a tracker.** It sits in a
+card with a state badge, a one-line description, and a **single** toggle revealing all four texts
+in the order a signatory reads them. Do not give each text its own collapsible: the document is
+reviewed as one thing, by Gary and eventually by a solicitor, and four separate toggles made it
+read as four unrelated fields.
+
+State badge shows Final or Not final, reflecting the same underlying flag the "This wording is
+final" checkbox sets.
+
+**The count states its purpose:** "47 of 100 needed to lodge", not a bare figure. The two
+qualifiers, records needing completion and supporters, sit beneath as one quiet line. No progress
+bar: the number already says it.
+
+**Who has signed is a single collapsed row at the foot**, with the export beside it, because the
+export is that list leaving the building. Expanding it reveals the six-column table.
 
 **Wording precision matters here.** Supporters are non-shareholders who cannot be requisitionists,
 which is why Package 2 routes them to a separate table and excludes them from the count. The
@@ -84,13 +110,57 @@ final and signing may open."** Same underlying flag, expressed in words a volunt
 
 ---
 
+## 3a. Established practice, and where to check it
+
+**Do not invent the language of a statutory instrument.** UK shareholder requisitions have an
+established form, and this project has already produced wording that diverged from it because
+nobody checked a source. Before writing or amending any signatory-facing text, read:
+
+| Source | What it gives you |
+|---|---|
+| **ShareAction, UK Guide to Shareholder Resolutions (2019)** - `https://shareaction-api.files.svdcdn.com/production/resources/reports/ShareholderResolutionGuide-UK_2019.pdf` | The standard reference for UK co-filing campaigns. **Appendix 1** is the requisition form for registered shareholders, Appendix 2 for indirect investors, Appendix 3 for a mixed group. This is the closest thing to a canonical form |
+| **Investment Association, Guidance on Filing Requisitioned Resolutions (2023)** - `https://www.theia.org/sites/default/files/2023-06/IA%20Guidance%20on%20Filing%20Requisitioned%20Resolutions.pdf` | How institutional shareholders expect requisitions to arrive |
+| **Companies Act 2006, sections 314, 338, 340, 153, 1146** | The primary source. 338 is the AGM resolution right, 314 the supporting statement, 340 the circulation costs, 153 indirect holders, 1146 authentication |
+
+Appendix 1's form asks for name, address, share count, account number, **the amount paid up on the
+shares**, and five confirmations, and its declaration cites **sections 314 and 338 together**,
+stating that the signatory has signed the supporting statement "for the purposes of
+identification".
+
+**Required change to the declaration in this session.** Ours cites section 338 only and does not
+mention the supporting statement. Bring it into line:
+
+> In accordance with sections 314 and 338 of the Companies Act 2006 I require Celtic plc to give
+> notice of the resolution above, and the text of the supporting statement, to members entitled to
+> receive notice of the 2026 Annual General Meeting.
+
+Treat this as a draft for the solicitor, not settled wording, and keep it in the database as data
+rather than in code.
+
+**Two things Appendix 1 asks for that we do not capture, deliberately not in scope here:** the
+amount paid up on the shares, and a confirmation that the signatory does not hold the shares on
+behalf of someone else. Both are logged as open items awaiting the solicitor. Do not add them
+speculatively, and do not remove anything on the assumption they are unnecessary.
+
+**The general rule.** When a change touches the language or structure of the instrument itself,
+cite the source you worked from. If no source covers it, say so and flag it rather than drafting
+something plausible.
+
+---
+
 ## 4. Delete
 
 From `ResolutionAdminClient.tsx`:
 
 - Five of the six KPI cards. Keep direct registered only. Nominee, complete, members, non-members
   and supporters change nobody's next action and are all in the export.
-- The whole progress bar block. It restates the number directly above it.
+- The whole progress bar block. The number states it.
+- The amber banner as a banner. The records-needing-completion count becomes part of the quiet
+  qualifier line under the count. Keep the badge on the row itself.
+- The Wording History disclosure entirely, per section 3.
+- The document label from every surface. "Draft for review (CelticResolution 28 Jul)" is an
+  auto-generated internal label that correlates to nothing a reader can see. The banner names the
+  meeting, the requisition card names itself, and labels stay in the data as timestamps.
 - The "1% of target" text.
 - The explanatory paragraph inside the amber banner. It is release history, not status. Keep the
   count and the needs-completion badge on the row.
