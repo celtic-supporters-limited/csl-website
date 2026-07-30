@@ -17,7 +17,16 @@ export function getSupabase(): SupabaseClient {
     );
   }
 
-  _serviceClient = createClient(url, key, { auth: { persistSession: false } });
+  _serviceClient = createClient(url, key, {
+    auth: { persistSession: false },
+    // Next.js's Data Cache caches GET fetches by default even on routes marked
+    // force-dynamic (that flag only disables the Full Route Cache). Without
+    // this, a page that reads-then-writes-then-reads in the same request tree
+    // can be served a stale pre-write response - found via the Package 6
+    // confirm-link idempotency test writing a duplicate change-log entry
+    // because the second load's row read came back cached as unconfirmed.
+    global: { fetch: (url, init) => fetch(url, { ...init, cache: "no-store" }) },
+  });
   return _serviceClient;
 }
 

@@ -58,6 +58,7 @@ function validAppointmentBody(email: string, overrides: Record<string, unknown> 
     computershareSrn: "C0009998888",
     shareClass: "ORD",
     sharesHeld: "101-500",
+    sharesHeldExact: 250,
     consentGiven: true,
     signatureName: "Proxy Test Appointee",
     turnstileToken: "test-token",

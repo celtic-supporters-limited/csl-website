@@ -38,6 +38,10 @@ export default function ResolutionForm({
   const [state, setState] = useState<FormState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [firstName, setFirstName] = useState("");
+  // Set only for the signer flow (app/api/resolution/sign/route.ts) - the
+  // supporter route returns no id, and there is no PDF for that flow to
+  // download. Used to link to /api/resolution/pdf/[id], Package 6.
+  const [signatureId, setSignatureId] = useState<string | null>(null);
 
   // Shareholder question gates the whole form. Non-shareholders cannot support
   // a section 338 request, so they are routed to the supporter path instead of
@@ -103,7 +107,7 @@ export default function ResolutionForm({
         body: JSON.stringify(payload),
       });
       const data = (await res.json()) as {
-        ok?: boolean; error?: string; firstName?: string; duplicate?: boolean;
+        ok?: boolean; error?: string; firstName?: string; duplicate?: boolean; id?: string;
       };
 
       if (res.status === 409 || data.duplicate) {
@@ -119,6 +123,7 @@ export default function ResolutionForm({
         return;
       }
       setFirstName(data.firstName ?? "");
+      setSignatureId(data.id ?? null);
       setState("success");
     } catch {
       setErrorMsg("Network error. Please check your connection and try again.");
@@ -194,14 +199,24 @@ export default function ResolutionForm({
         <p className="text-gray-700 max-w-[440px] mx-auto mb-6">
           {wasSupporter
             ? `Thank you${firstName ? `, ${firstName}` : ""}. You cannot sign the requisition without holding Celtic plc shares, but your support is recorded and we will keep you posted.`
-            : `Thank you${firstName ? `, ${firstName}` : ""}. Your signature has been recorded.`}
+            : `Thank you${firstName ? `, ${firstName}` : ""}. Your signature has been recorded. A copy has been emailed to you.`}
         </p>
-        <Link
-          href="/membership"
-          className="inline-flex items-center px-7 py-3 rounded-lg text-[0.92rem] font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200"
-        >
-          Support our work - Join CSL
-        </Link>
+        {!wasSupporter && signatureId && (
+          <a
+            href={`/api/resolution/pdf/${signatureId}`}
+            className="inline-flex items-center px-6 py-2.5 mb-4 rounded-lg text-[0.85rem] font-semibold border-2 border-csl-dark text-csl-dark hover:bg-csl-light transition-colors duration-200"
+          >
+            Download your requisition (PDF)
+          </a>
+        )}
+        <div>
+          <Link
+            href="/membership"
+            className="inline-flex items-center px-7 py-3 rounded-lg text-[0.92rem] font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200"
+          >
+            Support our work - Join CSL
+          </Link>
+        </div>
       </div>
     );
   }

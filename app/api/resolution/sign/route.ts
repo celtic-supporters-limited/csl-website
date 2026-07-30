@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { renderToBuffer } from "@react-pdf/renderer";
 import { getSupabase } from "@/lib/supabase";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
+import { RequisitionPdf } from "@/components/RequisitionPdf";
+import { sendRequisitionSignatureEmail } from "@/lib/resend";
 import {
   AGM_GATE_CLOSED_ERROR,
   getConfigList,
@@ -319,7 +322,7 @@ export async function POST(req: NextRequest) {
   const signerUserAgent = captureMetadata ? req.headers.get("user-agent") : null;
 
   // ── 8. Insert ──────────────────────────────────────────────────────────────
-  const { error: dbError } = await supabase.from("agm_signatures").insert({
+  const { data: inserted, error: dbError } = await supabase.from("agm_signatures").insert({
     full_name:              fullName,
     address_line_1:         addressLine1,
     address_line_2:         body.addressLine2?.trim() || null,
@@ -361,7 +364,7 @@ export async function POST(req: NextRequest) {
     declaration_snapshot:             version.declaration_text,
     consent_snapshot:                 version.consent_text,
     supporting_statement_snapshot:    version.supporting_statement,
-  });
+  }).select("id").single();
 
   if (dbError) {
     if (dbError.code === "23505") {
@@ -378,5 +381,50 @@ export async function POST(req: NextRequest) {
     return bad("Failed to record your signature. Please try again.", 500);
   }
 
-  return NextResponse.json({ ok: true, firstName: fullName.split(" ")[0] });
+  // ── 9. Confirmation email ────────────────────────────────────────────────────
+  // Package 6, section 6. A send (or PDF render) failure must never block or
+  // roll back a submission that is already stored - awaited so it completes
+  // within this invocation, caught so its result never changes the response,
+  // and recorded on the row so a volunteer can see the backlog rather than it
+  // failing silently (brief section 8).
+  try {
+    const pdfBuffer = await renderToBuffer(
+      RequisitionPdf({
+        fullName,
+        addressLine1,
+        addressLine2: body.addressLine2?.trim() || null,
+        addressTown,
+        addressPostcode,
+        email,
+        howHeld,
+        computershareSrn: srn || null,
+        nomineePlatform: howHeld === "nominee" ? platform ?? null : null,
+        nomineePlatformOther: howHeld === "nominee" && platform === "Other" ? platformOther ?? null : null,
+        sharesHeld,
+        shareClass,
+        eligibilityConfirmed: true,
+        resolutionSupported: true,
+        resolutionSnapshot: version.body,
+        supportingStatementSnapshot: version.supporting_statement,
+        declarationSnapshot: version.declaration_text,
+        consentSnapshot: version.consent_text,
+        signatureName,
+        signedAt: new Date().toISOString(),
+        meetingRef,
+      })
+    );
+    await sendRequisitionSignatureEmail({
+      to: email,
+      firstName: fullName.split(" ")[0],
+      pdf: { filename: `csl-requisition-${inserted.id}.pdf`, content: pdfBuffer },
+    });
+    await supabase.from("agm_signatures").update({ email_sent_at: new Date().toISOString() }).eq("id", inserted.id);
+  } catch (err) {
+    console.error("[resolution/sign] confirmation email failed:", err);
+    await supabase.from("agm_signatures").update({ email_error: String(err) }).eq("id", inserted.id);
+  }
+
+  // id returned so the success screen can link to the downloadable PDF at
+  // /api/resolution/pdf/[id] - the same document just attached to the email.
+  return NextResponse.json({ ok: true, firstName: fullName.split(" ")[0], id: inserted.id });
 }

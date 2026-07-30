@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { getSupabase } from "@/lib/supabase";
+import { P6_COPY } from "@/lib/agm-p6-copy";
 
 let _client: Resend | null = null;
 
@@ -730,4 +731,191 @@ export async function sendCancellationReversedEmail({
     throw err;
   }
   logEmailSend(emailType, stripeEventId);
+}
+
+// ── AGM Package 6 - one email per public submission ─────────────────────────
+// Six flows, section 6 of the package brief. Attachments carry the same PDF
+// the submitter can download at the point of completion - lib/resend.ts does
+// not regenerate different content for the email than for the download.
+// Callers are responsible for the log-then-record pattern that writes
+// email_sent_at/email_error back onto the row; these functions only send.
+
+type PdfAttachment = { filename: string; content: Buffer };
+
+export async function sendRequisitionSignatureEmail({
+  to,
+  firstName,
+  pdf,
+}: {
+  to: string;
+  firstName: string;
+  pdf: PdfAttachment;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const c = P6_COPY.requisitionSignature;
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: c.subject,
+      html: `<p>Hello ${firstName},</p><p>${c.intro}</p><p>${c.nextStep}</p><p>Celtic Supporters Limited</p>`,
+      attachments: [pdf],
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "agm_requisition_signature", to, err });
+    throw err;
+  }
+  logEmailSend("agm_requisition_signature");
+}
+
+export async function sendRequisitionSupporterEmail({
+  to,
+  firstName,
+}: {
+  to: string;
+  firstName: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const c = P6_COPY.requisitionSupporter;
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: c.subject,
+      html: `
+        <p>Hello ${firstName},</p>
+        <p>${c.intro}</p>
+        <p>${c.nextStep}</p>
+        <p><a href="${SITE_URL}/membership" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Join CSL</a></p>
+        <p>Celtic Supporters Limited</p>
+      `,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "agm_requisition_supporter", to, err });
+    throw err;
+  }
+  logEmailSend("agm_requisition_supporter");
+}
+
+export async function sendProxyInterestEmail({
+  to,
+  firstName,
+}: {
+  to: string;
+  firstName: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const c = P6_COPY.proxyInterestPreNotice;
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: c.subject,
+      html: `<p>Hello ${firstName},</p><p>${c.intro}</p><p>${c.nextStep}</p><p>Celtic Supporters Limited</p>`,
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "agm_proxy_interest", to, err });
+    throw err;
+  }
+  logEmailSend("agm_proxy_interest");
+}
+
+export async function sendProxyAppointmentWeLodgeEmail({
+  to,
+  firstName,
+  pdf,
+}: {
+  to: string;
+  firstName: string;
+  pdf: PdfAttachment;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const c = P6_COPY.proxyAppointmentWeLodge;
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: c.subject,
+      html: `<p>Hello ${firstName},</p><p>${c.intro}</p><p>${c.nextStep}</p><p>Celtic Supporters Limited</p>`,
+      attachments: [pdf],
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "agm_proxy_appointment_we_lodge", to, err });
+    throw err;
+  }
+  logEmailSend("agm_proxy_appointment_we_lodge");
+}
+
+export async function sendProxyAppointmentMemberLodgesEmail({
+  to,
+  firstName,
+  pdf,
+}: {
+  to: string;
+  firstName: string;
+  pdf: PdfAttachment;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const c = P6_COPY.proxyAppointmentMemberLodges;
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: c.subject,
+      html: `<p>Hello ${firstName},</p><p>${c.intro}</p><p>${c.nextStep}</p><p>Celtic Supporters Limited</p>`,
+      attachments: [pdf],
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "agm_proxy_appointment_member_lodges", to, err });
+    throw err;
+  }
+  logEmailSend("agm_proxy_appointment_member_lodges");
+}
+
+export async function sendProxyAppointmentNomineeEmail({
+  to,
+  firstName,
+  pdf,
+  confirmId,
+}: {
+  to: string;
+  firstName: string;
+  pdf: PdfAttachment;
+  /** agm_proxies.id - the confirmation link's only token, per section 7. */
+  confirmId: string;
+}): Promise<void> {
+  const resend = getResend();
+  if (!resend) return;
+
+  const c = P6_COPY.proxyAppointmentNominee;
+  const confirmUrl = `${SITE_URL}/proxy/confirm/${confirmId}`;
+  try {
+    await resend.emails.send({
+      from: "Celtic Supporters Limited <info@celticsupporters.net>",
+      to,
+      subject: c.subject,
+      html: `
+        <p>Hello ${firstName},</p>
+        <p>${c.intro}</p>
+        <p>${c.nextStep}</p>
+        <p><a href="${confirmUrl}" style="display:inline-block;background:#1B4D2E;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">${c.confirmButtonLabel}</a></p>
+        <p>Celtic Supporters Limited</p>
+      `,
+      attachments: [pdf],
+    });
+  } catch (err) {
+    console.error("[resend] send failed", { emailType: "agm_proxy_appointment_nominee", to, err });
+    throw err;
+  }
+  logEmailSend("agm_proxy_appointment_nominee");
 }

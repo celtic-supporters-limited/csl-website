@@ -885,6 +885,7 @@ test("voiding a proxy appointment frees its email for a fresh appointment", asyn
         computershareSrn: "C0009998887",
         shareClass: "ORD",
         sharesHeld: "101-500",
+        sharesHeldExact: 250,
         consentGiven: true,
         signatureName: "P5a Proxy Resign Test",
         turnstileToken: "test-token",

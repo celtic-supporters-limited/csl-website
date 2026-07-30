@@ -19,6 +19,7 @@ export type Appointment = {
   nominee_platform: string | null;
   nominee_platform_other: string | null;
   shares_held: string | null;
+  shares_held_exact: number | null;
   share_class: string | null;
   appointee_name: string;
   declaration_snapshot: string;
@@ -33,6 +34,8 @@ export type Appointment = {
   revoked_reason: string | null;
   created_at: string;
   suspected_bot: boolean;
+  email_sent_at: string | null;
+  email_error: string | null;
 };
 
 export type InterestRow = {
@@ -654,11 +657,17 @@ export default function ProxyAdminClient({
                     { key: "computershare_srn", label: "Computershare SRN", type: "text", value: a.computershare_srn },
                     { key: "nominee_platform", label: "Nominee platform", type: "text", value: a.nominee_platform },
                     { key: "nominee_platform_other", label: "Nominee platform (other)", type: "text", value: a.nominee_platform_other },
-                    { key: "shares_held", label: "Shares held", type: "text", value: a.shares_held },
+                    { key: "shares_held", label: "Shares held (band)", type: "text", value: a.shares_held },
+                    { key: "shares_held_exact", label: "Shares held (exact)", type: "text", value: a.shares_held_exact != null ? String(a.shares_held_exact) : null },
                     { key: "share_class", label: "Share class", type: "text", value: a.share_class },
                     { key: "appointee_name", label: "Appointee", type: "text", value: a.appointee_name },
                     { key: "signature_name", label: "Signature name", type: "text", value: a.signature_name },
                     { key: "signed_at", label: "Signed at", type: "text", value: a.signed_at },
+                    { key: "lodgement_path", label: "Lodgement path (we-lodge/member-lodges)", type: "text", value: a.lodgement_path },
+                    // Package 6, section 7: a volunteer must be able to set
+                    // this from the admin, because members reply by email
+                    // rather than clicking the confirmation link.
+                    { key: "nominee_instruction_sent", label: "Nominee has sent instruction to platform", type: "checkbox", value: a.nominee_instruction_sent === true },
                   ];
                   return (
                   <Fragment key={a.id}>
@@ -698,13 +707,23 @@ export default function ProxyAdminClient({
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => setEditingAppointmentId(editingAppointmentId === a.id ? null : a.id)}
-                        className="text-[0.75rem] text-csl-dark hover:underline font-medium"
-                      >
-                        {editingAppointmentId === a.id ? "Close" : "Edit"}
-                      </button>
+                      <div className="flex flex-col gap-1 items-start">
+                        <button
+                          type="button"
+                          onClick={() => setEditingAppointmentId(editingAppointmentId === a.id ? null : a.id)}
+                          className="text-[0.75rem] text-csl-dark hover:underline font-medium"
+                        >
+                          {editingAppointmentId === a.id ? "Close" : "Edit"}
+                        </button>
+                        <a href={`/api/proxy/pdf/${a.id}`} className="text-[0.75rem] text-gray-500 hover:underline">
+                          Download PDF
+                        </a>
+                        {a.email_error && (
+                          <span className="text-[0.7rem] text-red-700 font-semibold" title={a.email_error}>
+                            Email failed
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   {editingAppointmentId === a.id && (

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
+import { sendRequisitionSupporterEmail } from "@/lib/resend";
 import {
   AGM_GATE_CLOSED_ERROR,
   getConfigValue,
@@ -146,6 +147,15 @@ export async function POST(req: NextRequest) {
       { error: "Failed to record your support. Please try again." },
       { status: 500 }
     );
+  }
+
+  // Package 6, section 6. No attachment for this flow, no backlog tracking -
+  // a failure here has no lodgement-document consequence, unlike a
+  // signature or appointment confirmation.
+  try {
+    await sendRequisitionSupporterEmail({ to: email, firstName: fullName.split(" ")[0] });
+  } catch (err) {
+    console.error("[resolution/supporter] confirmation email failed:", err);
   }
 
   return NextResponse.json({ ok: true, firstName: fullName.split(" ")[0] });
