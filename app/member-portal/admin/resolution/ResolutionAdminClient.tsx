@@ -36,6 +36,15 @@ export type Signature = {
   created_at: string;
 };
 
+export type Supporter = {
+  id: string;
+  full_name: string;
+  email: string;
+  consent_given: boolean;
+  privacy_policy_version: string | null;
+  created_at: string;
+};
+
 type SortKey = "created_at" | "shareholder_tag";
 type SortDir = "asc" | "desc";
 
@@ -280,7 +289,7 @@ export default function ResolutionAdminClient({
   meetingRef,
   signingState,
   signatures,
-  supporterCount,
+  supporters,
   resolutionTarget,
   currentWording,
   versionLabels,
@@ -288,7 +297,7 @@ export default function ResolutionAdminClient({
   meetingRef: string;
   signingState: ResolutionSigningState;
   signatures: Signature[];
-  supporterCount: number;
+  supporters: Supporter[];
   resolutionTarget: number;
   currentWording: (WordingRow & { is_placeholder: boolean; is_current: boolean; created_at: string }) | null;
   /** Label lookup for the CSV export only - see the comment in page.tsx. */
@@ -299,6 +308,9 @@ export default function ResolutionAdminClient({
   const [showFullText, setShowFullText] = useState(false);
   const [editingWording, setEditingWording] = useState(false);
   const [signaturesExpanded, setSignaturesExpanded] = useState(false);
+  const [supportersExpanded, setSupportersExpanded] = useState(false);
+
+  const supporterCount = supporters.length;
 
   // Counting logic unchanged: only direct registered holders count toward
   // the 100, and rows preserved from before Package 2 are excluded, because
@@ -363,6 +375,34 @@ export default function ResolutionAdminClient({
     const a = document.createElement("a");
     a.href = url;
     a.download = `csl-resolution-signatures-${meetingRef}-${today}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // A separate file from downloadCsv() above, deliberately. The signature
+  // export is the lodgement document - it leaves the system and may reach a
+  // solicitor or a registrar, and it must contain only people who have
+  // actually signed the requisition. Supporters are non-shareholders who
+  // cannot sign one; mixing the two populations in one file would misstate
+  // who is actually requisitioning.
+  function downloadSupportersCsv() {
+    const rows = supporters.map((s) => ({
+      id:                     s.id,
+      created_at:             s.created_at,
+      full_name:              s.full_name,
+      email:                  s.email,
+      consent_given:          s.consent_given,
+      privacy_policy_version: s.privacy_policy_version ?? "",
+    }));
+    const csv = toCsv(rows as unknown as Record<string, unknown>[]);
+    const today = new Date().toISOString().split("T")[0];
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `csl-resolution-supporters-${meetingRef}-${today}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -550,6 +590,66 @@ export default function ResolutionAdminClient({
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Registered Support: non-shareholders who registered support but
+          cannot sign the requisition. Same collapsed-row-plus-export shape
+          as "Who has signed" immediately above, deliberately - the only
+          differences are the columns (no shareholding fields exist to show)
+          and that this export is entirely separate from the signature one,
+          so the lodgement document never mixes the two populations. This
+          closes the gap left when Package 2 moved non-shareholders out of
+          agm_signatures: until now there was a count in the qualifier line
+          above and no way to see who they actually were. */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <button
+            onClick={() => setSupportersExpanded((e) => !e)}
+            aria-expanded={supportersExpanded}
+            className="flex items-center gap-2 text-left"
+          >
+            <span className="text-[0.82rem] font-semibold text-gray-600">
+              Registered Support ({supporterCount.toLocaleString("en-GB")})
+            </span>
+            <ChevronIcon open={supportersExpanded} />
+          </button>
+          <button
+            onClick={downloadSupportersCsv}
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-csl-dark text-white hover:bg-csl-mid transition-colors whitespace-nowrap"
+          >
+            Export CSV
+          </button>
+        </div>
+
+        {supportersExpanded && (
+          <div className="border-t border-gray-100 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Date</th>
+                  <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Name</th>
+                  <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500">Email</th>
+                </tr>
+              </thead>
+              <tbody>
+                {supporters.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-10 text-center text-gray-400 text-sm">
+                      No supporters yet.
+                    </td>
+                  </tr>
+                )}
+                {supporters.map((s) => (
+                  <tr key={s.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(s.created_at)}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{s.full_name}</td>
+                    <td className="px-4 py-3 text-gray-600">{s.email}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

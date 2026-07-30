@@ -38,10 +38,13 @@ export default async function ResolutionAdminPage() {
       .from("site_config")
       .select("key, value")
       .eq("key", "resolution_target"),
+    // Full rows, not a count - Registered Support needs to show who these
+    // people are, which the previous count-only query could never answer.
     supabase
       .from("agm_supporters")
-      .select("id", { count: "exact", head: true })
-      .eq("meeting_ref", currentMeetingRef),
+      .select("id, full_name, email, consent_given, privacy_policy_version, created_at")
+      .eq("meeting_ref", currentMeetingRef)
+      .order("created_at", { ascending: false }),
     // Only the current wording is fetched. Superseded wordings still exist as
     // rows - the immutability trigger and FK are unchanged - but this page no
     // longer has an interface for reading them, so there is no reason to
@@ -56,6 +59,7 @@ export default async function ResolutionAdminPage() {
   ]);
 
   const signatures = signaturesRes.data ?? [];
+  const supporters = supportersRes.data ?? [];
   const configMap = Object.fromEntries(
     (configRes.data ?? []).map((r: { key: string; value: string }) => [r.key, r.value])
   );
@@ -84,7 +88,7 @@ export default async function ResolutionAdminPage() {
         meetingRef={currentMeetingRef}
         signingState={signingState}
         signatures={signatures}
-        supporterCount={supportersRes.count ?? 0}
+        supporters={supporters}
         resolutionTarget={resolutionTarget}
         currentWording={currentWordingRes.data}
         versionLabels={versionLabels}
