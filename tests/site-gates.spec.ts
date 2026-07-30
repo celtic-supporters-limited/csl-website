@@ -154,9 +154,27 @@ async function postSign(
 
 test.describe.configure({ mode: "serial" });
 
+// Captured before any describe below touches resolution_open, so the final
+// afterAll can put back whatever staging actually held - not a hardcoded
+// close. Staging can be mid-review with the gate deliberately open, and
+// forcing it shut here would silently undo that every time this file runs.
+// Same capture/restore shape as tests/agm-requisition-capture.spec.ts.
+let originalResolutionGateValue: string | null = null;
+
+test.beforeAll(async () => {
+  const { data } = await adminDb()
+    .from("site_config")
+    .select("value")
+    .eq("key", "resolution_open")
+    .maybeSingle();
+  originalResolutionGateValue = data?.value ?? null;
+});
+
 test.afterAll(async () => {
-  // Always leave the gate closed, whatever happened above.
-  await setGate(false);
+  // null (key absent) restores to closed, matching the fail-closed default in
+  // lib/site-gates.ts GATE_DEFAULTS.resolution_open - anything else restores
+  // exactly what was there before this file ran.
+  await setSiteGate("resolution_open", originalResolutionGateValue === "true");
 });
 
 // ---------------------------------------------------------------------------
@@ -239,7 +257,11 @@ test.describe("Requisition gate open", () => {
     const { data, error } = await adminDb()
       .from("agm_resolution_versions")
       .insert({
-        version_label: "site-gates.spec.ts gate-open test version",
+        // Prefixed so a row left behind by a crashed run is identifiable on
+        // the admin Versions page - this version is signable (is_placeholder:
+        // false, below), so an unremoved survivor is one click away from
+        // being live wording.
+        version_label: "[TEST] site-gates.spec.ts gate-open test version",
         body: "Gate test resolution body - not real content.",
         declaration_text: "Gate test declaration text.",
         consent_text: "Gate test consent text.",
@@ -262,6 +284,14 @@ test.describe("Requisition gate open", () => {
     if (previousCurrentVersionId) {
       await adminDb().from("agm_resolution_versions").update({ is_current: false }).eq("is_current", true);
       await adminDb().from("agm_resolution_versions").update({ is_current: true }).eq("id", previousCurrentVersionId);
+    }
+    if (gateTestVersionId) {
+      // The one signature written against this version in the tests below is
+      // already removed by its own test (deleteSignature in a finally), but
+      // clear defensively first in case that test failed before reaching it -
+      // otherwise the FK restrict would leave this row behind permanently.
+      await adminDb().from("agm_signatures").delete().eq("resolution_version_id", gateTestVersionId);
+      await adminDb().from("agm_resolution_versions").delete().eq("id", gateTestVersionId);
     }
   });
 

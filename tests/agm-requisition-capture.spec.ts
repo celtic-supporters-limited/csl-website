@@ -49,7 +49,10 @@ function db() {
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 }
 
-const TEST_VERSION_LABEL = "Automated test version";
+// Prefixed so a row left behind by an interrupted run is identifiable on the
+// admin Versions page, same convention as tests/agm-p3-resolution-content.spec.ts
+// and tests/site-gates.spec.ts.
+const TEST_VERSION_LABEL = "[TEST] Automated test version";
 let testVersionId = "";
 let previousGateValue: string | null = null;
 let previousCurrentVersionId: string | null = null;
@@ -125,13 +128,32 @@ async function signIn(page: Page, email: string, password: string) {
   await page.waitForURL(/\/member-portal/, { timeout: 20_000 });
 }
 
-/** Reads a stat card's value by its label. The value <p> is the label <p>'s
- * immediately preceding sibling - see the stat card markup in
- * ResolutionAdminClient.tsx. */
-async function readStatValue(page: Page, label: string): Promise<number> {
-  const labelEl = page.getByText(label, { exact: true });
-  const valueText = await labelEl.locator("xpath=preceding-sibling::p[1]").innerText();
-  return Number(valueText.replace(/,/g, ""));
+/** Reads the direct registered shareholder count from the admin redesign's
+ * count block - see ResolutionAdminClient.tsx. The number and its "direct
+ * registered shareholders" label are two separate lines now ("N of 100
+ * needed to lodge" / "direct registered shareholders"), not one combined
+ * sentence, so the number is read off the first line alone. There is no
+ * longer a separate "Complete signatures" figure to read; that KPI card was
+ * deleted in the redesign (docs/agm/CSL_AGM_AdminRedesign_ClaudeCode_Prompt.md
+ * section 4), so this is the one number this test can still track. */
+async function readDirectCount(page: Page): Promise<number> {
+  const text = await page.getByText(/[\d,]+ of [\d,]+ needed to lodge/i).innerText();
+  const match = text.match(/^([\d,]+) of/);
+  if (!match) throw new Error(`Could not parse direct count from "${text}"`);
+  return Number(match[1].replace(/,/g, ""));
+}
+
+/** Reads the completion count from the quiet qualifier line under the count
+ * ("N record(s) need(s) completion · M supporter(s)..."). The clause is
+ * omitted entirely when there is nothing to complete, so absence means 0 -
+ * not a parse failure. Staging is never guaranteed to be at zero pre_rebuild
+ * rows when this test starts, so the assertion this feeds has to be "went up
+ * by exactly one", the same style already used for readDirectCount. */
+async function readCompletionCount(page: Page): Promise<number> {
+  const supporterLine = page.getByText(/supporters? recorded, who cannot sign/i);
+  const text = await supporterLine.innerText();
+  const match = text.match(/^([\d,]+) record/);
+  return match ? Number(match[1].replace(/,/g, "")) : 0;
 }
 
 test.describe.configure({ mode: "serial" });
@@ -393,9 +415,19 @@ test("signer metadata is captured only while the flag is on", async ({ request }
 
 // ---------------------------------------------------------------------------
 // 9. Version immutability. The one that matters most.
+//
+// version_label is deliberately excluded from this test's immutability
+// assertion. The AGM admin redesign carved version_label out of the
+// immutability trigger (sql/agm-p3-amend-editable-label.sql, run against
+// staging) because it is metadata nobody signs, not evidence of what a
+// signatory saw - the redesign later deleted the inline label-edit interface
+// entirely, but the trigger amendment underneath it was not reverted, so a
+// label remains editable at the database level even with no UI to edit it
+// through. body is what a signature is evidence of and stays immutable and
+// unconditional, exactly as before.
 // ---------------------------------------------------------------------------
 
-test("resolution version body and label cannot be edited", async () => {
+test("resolution version body cannot be edited; label can", async () => {
   const { error: bodyErr } = await db()
     .from("agm_resolution_versions")
     .update({ body: "tampered" })
@@ -406,10 +438,18 @@ test("resolution version body and label cannot be edited", async () => {
     .from("agm_resolution_versions")
     .update({ version_label: "tampered" })
     .eq("id", testVersionId);
-  expect(labelErr).not.toBeNull();
+  expect(labelErr).toBeNull();
+
+  // Restore, so later tests and reports in this file keep seeing the label
+  // they expect.
+  await db()
+    .from("agm_resolution_versions")
+    .update({ version_label: TEST_VERSION_LABEL })
+    .eq("id", testVersionId);
 
   const { data: unchanged } = await db()
     .from("agm_resolution_versions").select("body, version_label").eq("id", testVersionId).single();
+  expect(unchanged.body).not.toBe("tampered");
   expect(unchanged.version_label).toBe(TEST_VERSION_LABEL);
 });
 
@@ -481,12 +521,17 @@ test("pre_rebuild rows do not count toward the target, per the rendered admin pa
     // count that depends on whatever else is on staging.
     await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
     await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
-    const directBefore = await readStatValue(page, "Direct registered shareholders");
-    const completeBefore = await readStatValue(page, "Complete signatures");
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+    const directBefore = await readDirectCount(page);
+    const completionBefore = await readCompletionCount(page);
 
     expect((await sign(request, validBody(completeEmail))).status()).toBe(200);
 
-    // Insert a pre_rebuild row directly: the API never produces one.
+    // Insert a pre_rebuild row directly: the API never produces one. Carries
+    // an SRN deliberately, so the row's own gap is the wording-version
+    // binding it predates, not a missing SRN - see rowStatus() in
+    // ResolutionAdminClient.tsx, which checks SRN first and would otherwise
+    // report the wrong reason.
     const { error } = await db().from("agm_signatures").insert({
       full_name: "Preserved Row",
       email: preEmail,
@@ -504,19 +549,34 @@ test("pre_rebuild rows do not count toward the target, per the rendered admin pa
     await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
 
     // Both rows are direct-registered, but only the complete one may count.
-    // This reads the app's own filter, via the rendered page, rather than
+    // This reads the app's own count, via the rendered page, rather than
     // re-deriving the filter in the test and asserting on the test's own
-    // arithmetic - it fails if the app's counting logic changes.
-    expect(await readStatValue(page, "Direct registered shareholders")).toBe(directBefore + 1);
-    expect(await readStatValue(page, "Complete signatures")).toBe(completeBefore + 1);
+    // arithmetic - it fails if the app's counting logic changes. There is no
+    // separate "complete signatures" figure any more - that KPI card was
+    // deleted in the admin redesign - so direct count is the only number
+    // this test can still track.
+    expect(await readDirectCount(page)).toBe(directBefore + 1);
 
-    // The amber banner names the pre_rebuild row.
-    await expect(page.getByText(/record.*need completion/i).first()).toBeVisible();
+    // The completion count is a quiet qualifier line under the count now,
+    // not a banner - see the redesign's "Delete" list section 4. Read as a
+    // delta, the same style as directCount above, since staging is not
+    // guaranteed to start this test at zero pre_rebuild rows.
+    expect(await readCompletionCount(page)).toBe(completionBefore + 1);
 
-    // Each row's own badge is distinct: the preserved row reads "Needs
-    // completion", the fresh one reads "Complete".
+    // The table is a collapsed disclosure by default - expand it before
+    // looking for row content. domcontentloaded fires before this client
+    // component has hydrated, so a click straight away can land on a button
+    // with no React handler attached yet - same gotcha as the CSV export
+    // test below.
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+    await page.getByRole("button", { name: /Who has signed/i }).click();
+
+    // Each row's own Status cell is specific to what is actually wrong with
+    // it, not a generic "needs completion" - the preserved row has an SRN,
+    // so what is wrong is that it predates the wording binding and the
+    // person has to sign again; the fresh row is simply complete.
     const preRow = page.locator("tr", { hasText: preEmail });
-    await expect(preRow.getByText("Needs completion")).toBeVisible();
+    await expect(preRow.getByText("Needs to re-sign")).toBeVisible();
 
     const completeRow = page.locator("tr", { hasText: completeEmail });
     await expect(completeRow.getByText("Complete", { exact: true })).toBeVisible();

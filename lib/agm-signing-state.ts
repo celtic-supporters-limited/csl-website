@@ -13,6 +13,17 @@ import { isGateOpen } from "@/lib/site-gates";
  * being asked. The state of either individual lock is the explanation, not the
  * answer.
  *
+ * Exactly three closed messages, deliberately not more: gate not open, no
+ * wording saved at all, and wording saved but not finalised. Gate-closed is
+ * reported as one state regardless of the wording underneath it - "closed and
+ * also not finalised" is not a fourth thing a volunteer needs to act on
+ * differently, it is the same action (open the gate) with an extra clause that
+ * used to make the message longer without making it more actionable.
+ *
+ * The document label never appears here. It is an auto-generated timestamp in
+ * the data, not something a reader can use - the wording itself is shown in
+ * full on the same page, which is what "shown below" refers to.
+ *
  * The proxy gate has no equivalent second condition: proxy_open is the only
  * thing standing between the public and /proxy, so its toggle already tells the
  * whole truth.
@@ -24,7 +35,6 @@ export type ResolutionSigningState = {
   gateOpen: boolean;
   wordingIsPlaceholder: boolean;
   hasCurrentVersion: boolean;
-  currentVersionLabel: string | null;
   /** One line, leading with the effective state. */
   headline: string;
   /** Set when the gate is open but signing still is not possible. */
@@ -36,7 +46,7 @@ export async function getResolutionSigningState(): Promise<ResolutionSigningStat
     isGateOpen("resolution_open"),
     getSupabase()
       .from("agm_resolution_versions")
-      .select("version_label, is_placeholder")
+      .select("is_placeholder")
       .eq("is_current", true)
       .maybeSingle(),
   ]);
@@ -44,7 +54,6 @@ export async function getResolutionSigningState(): Promise<ResolutionSigningStat
   const version = versionRes.data;
   const hasCurrentVersion = !!version;
   const wordingIsPlaceholder = !version || version.is_placeholder === true;
-  const currentVersionLabel = version?.version_label ?? null;
 
   const canSign = gateOpen && hasCurrentVersion && !wordingIsPlaceholder;
 
@@ -52,19 +61,16 @@ export async function getResolutionSigningState(): Promise<ResolutionSigningStat
   let blockedReason: string | null = null;
 
   if (canSign) {
-    headline = `Signing: OPEN. Members can sign against "${currentVersionLabel}".`;
-  } else if (!gateOpen && wordingIsPlaceholder) {
-    headline = "Signing: CLOSED. Gate is closed and the wording is still a placeholder.";
+    headline = "Signing is open. Shareholders can sign the requisition below.";
   } else if (!gateOpen) {
-    headline = "Signing: CLOSED. Gate is closed.";
+    headline = "Signing is closed. The gate has not been opened yet.";
+    blockedReason = "the gate has not been opened yet";
   } else if (!hasCurrentVersion) {
-    headline =
-      "Signing: CLOSED. No resolution version is current. Opening the gate will not enable signing until one is.";
-    blockedReason = "no resolution version is current";
+    headline = "Signing is closed. No wording has been saved yet.";
+    blockedReason = "no wording has been saved yet";
   } else {
-    headline =
-      "Signing: CLOSED. The resolution wording is a placeholder. Opening the gate will not enable signing until a real version is current.";
-    blockedReason = "the resolution wording is still a placeholder";
+    headline = "Signing is closed. The wording has not been finalised.";
+    blockedReason = "the wording has not been finalised";
   }
 
   return {
@@ -72,7 +78,6 @@ export async function getResolutionSigningState(): Promise<ResolutionSigningStat
     gateOpen,
     wordingIsPlaceholder,
     hasCurrentVersion,
-    currentVersionLabel,
     headline,
     blockedReason,
   };
