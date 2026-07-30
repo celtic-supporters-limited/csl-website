@@ -24,9 +24,10 @@ import { isGateOpen } from "@/lib/site-gates";
  * the data, not something a reader can use - the wording itself is shown in
  * full on the same page, which is what "shown below" refers to.
  *
- * The proxy gate has no equivalent second condition: proxy_open is the only
- * thing standing between the public and /proxy, so its toggle already tells the
- * whole truth.
+ * The proxy flow has no equivalent second condition of its own: proxy_mode
+ * (see lib/site-gates.ts) is a single three-value control with no separate
+ * "is the wording ready" lock behind it, so its own value already tells the
+ * whole truth and needs no notice like this one.
  */
 
 export type ResolutionSigningState = {

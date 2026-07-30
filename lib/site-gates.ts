@@ -23,8 +23,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 export type SiteGateKey =
   | "membership_open"
   | "portal_open"
-  | "resolution_open"
-  | "proxy_open";
+  | "resolution_open";
 
 /**
  * Value used when the key is absent, the read errors, or Supabase is not
@@ -43,16 +42,13 @@ export type SiteGateKey =
 const GATE_DEFAULTS: Record<SiteGateKey, boolean> = {
   membership_open: false,
   resolution_open: false,
-  proxy_open: false,
   portal_open: true,
 };
 
 /** Message returned by the AGM API routes when a flow is closed. */
-export const AGM_GATE_CLOSED_ERROR: Record<"resolution_open" | "proxy_open", string> = {
+export const AGM_GATE_CLOSED_ERROR: Record<"resolution_open", string> = {
   resolution_open:
     "Signing is not open yet. The resolution wording is with our solicitor and this page will open for signature once it is confirmed.",
-  proxy_open:
-    "Proxy appointment is not open yet. It opens once Celtic plc issues the formal Notice of the Annual General Meeting.",
 };
 
 let gateClient: SupabaseClient | null = null;
@@ -196,7 +192,32 @@ export async function getCurrentMeetingRef(): Promise<string> {
   return (await getConfigValue("current_meeting_ref")) ?? "2026-AGM";
 }
 
-/** Convenience wrapper for the two AGM gates. */
-export async function getAgmGates() {
-  return getGates("resolution_open", "proxy_open");
+/**
+ * The proxy flow's three states, replacing the old binary proxy_open gate.
+ * A proxy is specific to one meeting and can only be appointed after Celtic
+ * issues the Notice of AGM - before that, the page records an intention, not
+ * an appointment. Both states are wanted and the page stays open throughout.
+ */
+export type ProxyMode = "closed" | "interest" | "appointment";
+
+/**
+ * Reads proxy_mode. Falls back to "closed" on a missing key, an unrecognised
+ * value, or any read failure - the same fail-closed posture as the boolean
+ * gates, for the same reason: a wrongly rejected submission can be
+ * re-collected, an appointment accepted before Celtic's Notice of AGM exists
+ * cannot be un-accepted.
+ */
+export async function getProxyMode(): Promise<ProxyMode> {
+  const raw = await getConfigValue("proxy_mode");
+  if (raw === "interest" || raw === "appointment") return raw;
+  return "closed";
+}
+
+/** Convenience wrapper for the resolution gate plus the proxy mode. */
+export async function getAgmGates(): Promise<{ resolution_open: boolean; proxy_mode: ProxyMode }> {
+  const [resolution_open, proxy_mode] = await Promise.all([
+    isGateOpen("resolution_open"),
+    getProxyMode(),
+  ]);
+  return { resolution_open, proxy_mode };
 }

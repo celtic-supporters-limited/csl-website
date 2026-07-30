@@ -60,10 +60,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
+  // Store-and-flag, not reject-and-discard - see the matching note in
+  // app/api/resolution/sign/route.ts. Best-effort field values, not
+  // validated: a suspected-bot row does not need a useful error.
   if (body.hpField) {
-    console.error(
-      `[resolution/supporter] honeypot triggered: email=${body.email ?? "(none)"} at=${new Date().toISOString()}`
-    );
+    await getSupabase().from("agm_supporters").insert({
+      full_name: body.fullName?.trim() || "(honeypot)",
+      email: body.email?.trim().toLowerCase() || `unknown-${Date.now()}@invalid`,
+      consent_given: true,
+      meeting_ref: await getCurrentMeetingRef(),
+      privacy_policy_version: await getConfigValue("privacy_policy_version"),
+      suspected_bot: true,
+    });
     return NextResponse.json({ ok: true, firstName: "" });
   }
 
@@ -124,6 +132,7 @@ export async function POST(req: NextRequest) {
     // app/api/resolution/sign/route.ts.
     meeting_ref: await getCurrentMeetingRef(),
     privacy_policy_version: privacyPolicyVersion,
+    suspected_bot: false,
   });
 
   if (error) {

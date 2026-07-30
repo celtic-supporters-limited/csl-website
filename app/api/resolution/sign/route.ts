@@ -86,18 +86,48 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 2b. Honeypot ───────────────────────────────────────────────────────────
-  // Checked before anything else reveals system state. A filled honeypot gets
-  // exactly the same success shape a real submission gets, with nothing
-  // written - a bot that got this far by posting directly must learn nothing
-  // from the response that distinguishes "caught" from "succeeded". The
-  // response to the caller stays silent, but the rejection itself is logged
-  // with the email and a timestamp: a field named for autofill-safety, not
-  // for cleverness, can still occasionally catch a genuine person, and that
-  // has to be visible within days, not discovered by a shareholder complaint.
+  // Checked before anything else reveals system state. The row is written as
+  // normal, flagged suspected_bot, rather than discarded - a field named for
+  // autofill-safety, not for cleverness, can still occasionally catch a
+  // genuine person, and reject-and-log meant recovering that signature was a
+  // reconstruction from a log line CSL might never read. A flagged row sits
+  // in the register, excluded from every count and export, and is a click
+  // away from being released if it turns out to be genuine. The response to
+  // the caller is unchanged either way - a bot that got this far by posting
+  // directly must learn nothing that distinguishes "caught" from "succeeded".
+  //
+  // Field values below are best-effort from the raw body, not validated -
+  // validation exists to give a genuine signatory a useful error, which a
+  // suspected-bot row does not need. Placeholders satisfy the NOT NULL /
+  // completeness constraint so the insert cannot fail on missing fields.
   if (body.hpField) {
-    console.error(
-      `[resolution/sign] honeypot triggered: email=${body.email ?? "(none)"} at=${new Date().toISOString()}`
-    );
+    const supabase = getSupabase();
+    const { data: currentVersion } = await supabase
+      .from("agm_resolution_versions")
+      .select("id")
+      .eq("is_current", true)
+      .maybeSingle();
+    await supabase.from("agm_signatures").insert({
+      full_name:              body.fullName?.trim() || "(honeypot)",
+      address_line_1:         body.addressLine1?.trim() || "(honeypot)",
+      address_town:           body.addressTown?.trim() || "(honeypot)",
+      address_postcode:       body.addressPostcode?.trim() || "(honeypot)",
+      email:                  body.email?.trim().toLowerCase() || `unknown-${Date.now()}@invalid`,
+      how_held:                body.howHeld === "nominee" ? "nominee" : "direct",
+      share_class:            "ORD",
+      eligibility_confirmed:  true,
+      resolution_supported:   true,
+      consent_given:          true,
+      privacy_policy_version: await getConfigValue("privacy_policy_version"),
+      resolution_version_id:  currentVersion?.id ?? null,
+      signature_name:         body.signatureName?.trim() || "(honeypot)",
+      signed_at:              new Date().toISOString(),
+      capture_status:         "complete",
+      shareholder_tag:        body.howHeld === "nominee" ? "nominee-platform" : "direct-registered",
+      member_tag:             "non-member",
+      meeting_ref:            await getCurrentMeetingRef(),
+      suspected_bot:          true,
+    });
     return NextResponse.json({ ok: true, firstName: "" });
   }
 
@@ -306,6 +336,7 @@ export async function POST(req: NextRequest) {
     // alone is enough for a future AGM - a code change is not required for
     // new rows to follow it.
     meeting_ref:            meetingRef,
+    suspected_bot:          false,
   });
 
   if (dbError) {

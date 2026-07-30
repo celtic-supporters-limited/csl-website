@@ -55,8 +55,13 @@ export default function ProxyForm() {
 
     const fd = new FormData(e.currentTarget);
 
-    // Honeypot: silently reject submissions where the hidden field is filled
-    if (fd.get("website")) {
+    // Honeypot: silently fake success. Renamed away from "website", exactly
+    // what autofill/password managers target unprompted - see the matching
+    // fix on the resolution form. No suspected_bot column exists on
+    // shareholder_cases (only agm_proxies/agm_signatures/agm_supporters were
+    // authorised for it), so a direct POST bypassing this check is logged
+    // and rejected server-side rather than stored, not stored and flagged.
+    if (fd.get("hp_field")) {
       setState("success");
       return;
     }
@@ -77,11 +82,16 @@ export default function ProxyForm() {
     setErrorMsg("");
 
     const payload = {
+      hpField: fd.get("hp_field"),
       name: fd.get("name"),
       email: fd.get("email"),
       numShares: fd.get("numShares"),
       yearPurchased: fd.get("yearPurchased"),
       source: fd.get("source"),
+      // Was never sent at all - the API discarded it (audit Finding 5), so
+      // every prior registration held personal data with no recorded
+      // consent even though the checkbox was required client-side.
+      consentGiven: consent,
       turnstileToken,
     };
 
@@ -116,9 +126,10 @@ export default function ProxyForm() {
           Proxy Intent Registered
         </h2>
         <p className="text-gray-600 max-w-[420px] mx-auto mb-6">
-          We will send you the official proxy form ahead of the next Celtic PLC
-          AGM, completed to appoint {APPOINTEE_LABEL} as your proxy. Thank you
-          for supporting governance change.
+          Thank you for registering your intent to appoint {APPOINTEE_LABEL} as
+          your proxy. A proxy can only be completed once Celtic plc issues the
+          formal Notice of the Annual General Meeting - we will contact you as
+          soon as that happens so you can finish the appointment.
         </p>
         <Link
           href="/membership"
@@ -136,10 +147,12 @@ export default function ProxyForm() {
       noValidate
       className="max-w-[520px] mx-auto bg-white rounded-2xl p-10 shadow-lg border border-gray-200"
     >
-      {/* Honeypot — hidden from real users; bots fill it in */}
+      {/* Honeypot. Named away from any recognised autofill category, so a
+          browser or password manager cannot populate it unprompted - see the
+          matching note on the resolution form. */}
       <input
         type="text"
-        name="website"
+        name="hp_field"
         style={{ display: "none" }}
         tabIndex={-1}
         autoComplete="off"
@@ -270,7 +283,7 @@ export default function ProxyForm() {
       </button>
 
       <p className="text-center text-[0.8rem] text-gray-400 mt-3">
-        CSL will contact you with the official proxy form before the next AGM date.
+        CSL will contact you once proxy appointment opens, ahead of the next AGM date.
       </p>
     </form>
   );

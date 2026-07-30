@@ -34,6 +34,7 @@ export type Signature = {
   shareholder_tag: string;
   member_tag: string;
   created_at: string;
+  suspected_bot: boolean;
 };
 
 export type Supporter = {
@@ -43,6 +44,7 @@ export type Supporter = {
   consent_given: boolean;
   privacy_policy_version: string | null;
   created_at: string;
+  suspected_bot: boolean;
 };
 
 type SortKey = "created_at" | "shareholder_tag";
@@ -78,6 +80,9 @@ function heldBadge(howHeld: string) {
  * person to sign again - so that is what the status says, not "completion".
  */
 function rowStatus(s: Signature): { label: string; needsAttention: boolean } {
+  if (s.suspected_bot) {
+    return { label: "Suspected bot", needsAttention: true };
+  }
   if (s.how_held === "direct" && !s.computershare_srn) {
     return { label: "Needs SRN", needsAttention: true };
   }
@@ -96,6 +101,67 @@ function ChevronIcon({ open }: { open: boolean }) {
     >
       <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+/**
+ * Release or purge a row flagged suspected_bot. Only rendered for flagged
+ * rows - the other half of store-and-flag, so a flag is something a
+ * volunteer can act on rather than a label nobody can do anything about.
+ * Release clears the flag (the row rejoins every count and export); purge
+ * deletes it outright.
+ */
+function SuspectedBotActions({ table, id }: { table: "agm_signatures" | "agm_supporters"; id: string }) {
+  const router = useRouter();
+  const [confirming, setConfirming] = useState<"release" | "purge" | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function act(action: "release" | "purge") {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/suspected-bot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table, id, action }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Something went wrong. Try again.");
+        setLoading(false);
+        setConfirming(null);
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Network error. Try again.");
+      setLoading(false);
+      setConfirming(null);
+    }
+  }
+
+  if (confirming) {
+    return (
+      <span className="text-[0.7rem]">
+        <button onClick={() => act(confirming)} disabled={loading} className="font-semibold text-csl-dark hover:underline disabled:opacity-60">
+          {loading ? "..." : "Confirm"}
+        </button>
+        {" / "}
+        <button onClick={() => setConfirming(null)} disabled={loading} className="text-gray-400 hover:underline disabled:opacity-60">
+          Cancel
+        </button>
+        {error && <span className="block text-red-600">{error}</span>}
+      </span>
+    );
+  }
+
+  return (
+    <span className="text-[0.7rem] whitespace-nowrap">
+      <button onClick={() => setConfirming("release")} className="text-csl-dark hover:underline">Release</button>
+      {" / "}
+      <button onClick={() => setConfirming("purge")} className="text-red-600 hover:underline">Purge</button>
+    </span>
   );
 }
 
@@ -310,13 +376,19 @@ export default function ResolutionAdminClient({
   const [signaturesExpanded, setSignaturesExpanded] = useState(false);
   const [supportersExpanded, setSupportersExpanded] = useState(false);
 
-  const supporterCount = supporters.length;
+  // Rows flagged suspected_bot are excluded everywhere a count is derived -
+  // the headline figure, the supporter count, the qualifier line and both
+  // exports below - but stay visible in the tables themselves, badged, so a
+  // volunteer can actually review and release or purge them. A flag nothing
+  // filters on is worse than no flag at all.
+  const supporterCount = supporters.filter((s) => !s.suspected_bot).length;
 
-  // Counting logic unchanged: only direct registered holders count toward
-  // the 100, and rows preserved from before Package 2 are excluded, because
-  // they were collected without a wording binding and cannot be relied on.
-  const complete = signatures.filter((s) => s.capture_status === "complete");
-  const preRebuild = signatures.filter((s) => s.capture_status === "pre_rebuild");
+  // Counting logic otherwise unchanged: only direct registered holders count
+  // toward the 100, and rows preserved from before Package 2 are excluded,
+  // because they were collected without a wording binding and cannot be
+  // relied on.
+  const complete = signatures.filter((s) => s.capture_status === "complete" && !s.suspected_bot);
+  const preRebuild = signatures.filter((s) => s.capture_status === "pre_rebuild" && !s.suspected_bot);
   const directCount = complete.filter((s) => s.shareholder_tag === "direct-registered").length;
 
   function toggleSort(key: SortKey) {
@@ -337,7 +409,10 @@ export default function ResolutionAdminClient({
   // file leaves the system and lands in a solicitor's inbox, with no page
   // around it to say which meeting it is for.
   function downloadCsv() {
-    const rows = signatures.map((s) => ({
+    // Suspected-bot rows are excluded from this file entirely, not merely
+    // marked - it is the lodgement document, and it must contain only people
+    // who have actually signed.
+    const rows = signatures.filter((s) => !s.suspected_bot).map((s) => ({
       id:                     s.id,
       capture_status:         s.capture_status,
       created_at:             s.created_at,
@@ -388,7 +463,7 @@ export default function ResolutionAdminClient({
   // cannot sign one; mixing the two populations in one file would misstate
   // who is actually requisitioning.
   function downloadSupportersCsv() {
-    const rows = supporters.map((s) => ({
+    const rows = supporters.filter((s) => !s.suspected_bot).map((s) => ({
       id:                     s.id,
       created_at:             s.created_at,
       full_name:              s.full_name,
@@ -579,13 +654,20 @@ export default function ResolutionAdminClient({
                       <td className="px-4 py-3 whitespace-nowrap">{heldBadge(s.how_held)}</td>
                       <td className="px-4 py-3 text-gray-500 text-[0.8rem] whitespace-nowrap truncate">{s.computershare_srn ?? "-"}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {status.needsAttention ? (
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-[0.75rem] font-semibold bg-amber-100 text-amber-800">
-                            {status.label}
-                          </span>
-                        ) : (
-                          <span className="text-[0.75rem] text-gray-400">Complete</span>
-                        )}
+                        <div className="flex flex-col gap-1 items-start">
+                          {status.needsAttention ? (
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded-full text-[0.75rem] font-semibold ${
+                                s.suspected_bot ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {status.label}
+                            </span>
+                          ) : (
+                            <span className="text-[0.75rem] text-gray-400">Complete</span>
+                          )}
+                          {s.suspected_bot && <SuspectedBotActions table="agm_signatures" id={s.id} />}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -633,21 +715,34 @@ export default function ResolutionAdminClient({
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Date</th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Name</th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500">Email</th>
+                  <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {supporters.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-4 py-10 text-center text-gray-400 text-sm">
+                    <td colSpan={4} className="px-4 py-10 text-center text-gray-400 text-sm">
                       No supporters yet.
                     </td>
                   </tr>
                 )}
                 {supporters.map((s) => (
-                  <tr key={s.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                  <tr key={s.id} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${s.suspected_bot ? "bg-red-50/40" : ""}`}>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(s.created_at)}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">{s.full_name}</td>
                     <td className="px-4 py-3 text-gray-600">{s.email}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {s.suspected_bot ? (
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-[0.75rem] font-semibold bg-red-100 text-red-800">
+                            Suspected bot
+                          </span>
+                          <SuspectedBotActions table="agm_supporters" id={s.id} />
+                        </div>
+                      ) : (
+                        <span className="text-[0.75rem] text-gray-400">-</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

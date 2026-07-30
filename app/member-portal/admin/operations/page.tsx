@@ -9,7 +9,7 @@ import PortalGateToggle from "@/components/PortalGateToggle";
 import MembershipGateToggle from "@/components/MembershipGateToggle";
 import ResolutionGateToggle from "@/components/ResolutionGateToggle";
 import ProxyGateToggle from "@/components/ProxyGateToggle";
-import { getGates } from "@/lib/site-gates";
+import { getGates, getProxyMode } from "@/lib/site-gates";
 import { getResolutionSigningState } from "@/lib/agm-signing-state";
 import { SigningStateNotice } from "@/components/SigningStateNotice";
 
@@ -196,6 +196,7 @@ export default async function OperationsPage() {
     stripeResult,
     gates,
     signingState,
+    proxyMode,
   ] = await Promise.all([
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", todayStart.toISOString()),
     db.from("email_log").select("id", { count: "exact", head: true }).gte("sent_at", monthStart.toISOString()),
@@ -215,11 +216,12 @@ export default async function OperationsPage() {
     // All four gates read through the helper, not the shared client: it forces
     // cache: "no-store" so the toggles show the state the site is actually
     // enforcing rather than a cached value. See lib/site-gates.ts.
-    getGates("portal_open", "membership_open", "resolution_open", "proxy_open"),
+    getGates("portal_open", "membership_open", "resolution_open"),
     // Signing needs the gate open AND a non-placeholder resolution version.
     // The toggle alone cannot show that, which is how "I opened the gate and
     // nothing happened" starts.
     getResolutionSigningState(),
+    getProxyMode(),
   ]);
 
   const todayCount    = emailsToday       ?? 0;
@@ -231,7 +233,6 @@ export default async function OperationsPage() {
   const portalOpenValue      = gates.portal_open     ? "true" : "false";
   const membershipOpenValue  = gates.membership_open ? "true" : "false";
   const resolutionOpenValue  = gates.resolution_open ? "true" : "false";
-  const proxyOpenValue       = gates.proxy_open      ? "true" : "false";
 
   const backupRows = (backupResult.data ?? []) as {
     ran_at: string; status: string; total_rows: number | null;
@@ -451,12 +452,13 @@ export default async function OperationsPage() {
 
           <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
             <div className="pb-3 border-b border-gray-100">
-              <h2 className="font-semibold text-gray-900 text-sm">AGM proxy appointment</h2>
+              <h2 className="font-semibold text-gray-900 text-sm">AGM proxy</h2>
               <p className="text-[11px] text-gray-400 mt-0.5">
-                Controls /proxy and POST /api/proxy. Open only once Celtic plc has issued the Notice of AGM.
+                Controls /proxy. Interest capture can open any time; full appointment only once Celtic plc
+                has issued the Notice of AGM.
               </p>
             </div>
-            <ProxyGateToggle currentValue={proxyOpenValue} />
+            <ProxyGateToggle currentValue={proxyMode} />
           </div>
         </div>
 

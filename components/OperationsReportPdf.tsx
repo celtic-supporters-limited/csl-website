@@ -66,7 +66,8 @@ export type OperationsReportData = {
     portalOpen: boolean;
     membershipOpen: boolean;
     resolutionOpen: boolean;
-    proxyOpen: boolean;
+    /** closed | interest | appointment - replaces the old proxyOpen boolean. */
+    proxyMode: string;
   };
 };
 
@@ -183,7 +184,7 @@ function backupOverflow(d: OperationsReportData): string | null {
   return `${rest.length} earlier run${rest.length === 1 ? "" : "s"} not shown: ${ok} successful${failPart}.`;
 }
 
-type GateCard = { label: string; open: boolean; desc: string };
+type GateCard = { label: string; open: boolean; desc: string; stateLabel?: string };
 
 /**
  * Chunks the gate cards into rows so the section stays two rows tall as gates
@@ -282,7 +283,14 @@ export function OperationsReportPdf(d: OperationsReportData) {
             { label: "Member portal", open: d.gates.portalOpen, desc: "Authenticated member access to /member-portal" },
             { label: "New membership sign-ups", open: d.gates.membershipOpen, desc: "Public access to join via /membership checkout" },
             { label: "AGM requisition signing", open: d.gates.resolutionOpen, desc: "Public signing of the AGM resolution via /resolution" },
-            { label: "AGM proxy appointment", open: d.gates.proxyOpen, desc: "Public proxy appointment capture via /proxy" },
+            {
+              label: "AGM proxy",
+              open: d.gates.proxyMode !== "closed",
+              desc: "Public proxy page via /proxy - mode governs whether it captures interest or full appointments",
+              stateLabel:
+                d.gates.proxyMode === "appointment" ? "Appointment" :
+                d.gates.proxyMode === "interest"    ? "Interest"    : "Closed",
+            },
           ]).map((row, rowIdx) => (
             <View key={rowIdx} style={s.cardRow}>
               {row.map((g) => (
@@ -290,7 +298,7 @@ export function OperationsReportPdf(d: OperationsReportData) {
                   <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
                     <View style={[s.pillDot, { backgroundColor: g.open ? "#16A34A" : "#D97706", marginRight: 5 }]} />
                     <Text style={[s.execVal, { fontSize: 10, marginBottom: 0, color: g.open ? GREEN : AMBER }]}>
-                      {g.open ? "Open" : "Closed"}
+                      {g.stateLabel ?? (g.open ? "Open" : "Closed")}
                     </Text>
                   </View>
                   <Text style={[s.execLabel, { textTransform: "none", letterSpacing: 0, marginBottom: 3 }]}>{g.label}</Text>

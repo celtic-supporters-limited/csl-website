@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import ProxyForm from "./ProxyForm";
+import AppointmentForm from "./AppointmentForm";
 import { Container } from "@/components/Container";
-import { isGateOpen } from "@/lib/site-gates";
+import { getConfigList, getConfigValue, getProxyMode } from "@/lib/site-gates";
 import { APPOINTEE_LABEL } from "@/lib/agm-appointee";
 
 export const metadata: Metadata = {
@@ -15,7 +16,16 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function ProxyPage() {
-  const proxyOpen = await isGateOpen("proxy_open");
+  const mode = await getProxyMode();
+
+  const [nomineePlatforms, shareBands, declarationText] =
+    mode === "appointment"
+      ? await Promise.all([
+          getConfigList("agm_nominee_platforms"),
+          getConfigList("agm_share_bands"),
+          getConfigValue("proxy_declaration_text"),
+        ])
+      : [[], [], null];
 
   return (
     <>
@@ -126,9 +136,9 @@ export default async function ProxyPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 max-w-[1000px] mx-auto">
             {[
-              { num: 1, title: "Register Below", body: "Confirm your name, shareholding details, and email address in the form below." },
-              { num: 2, title: "We Send a Form", body: `CSL sends you the official proxy form, completed to appoint ${APPOINTEE_LABEL} as your proxy.` },
-              { num: 3, title: "Sign and Return", body: "Sign and return the form to Computershare by the stated deadline before the AGM." },
+              { num: 1, title: "Register Your Intent", body: "Tell us you plan to appoint a proxy, any time before the AGM is called." },
+              { num: 2, title: "Notice of AGM Issued", body: "Once Celtic plc formally calls the meeting, we contact you to complete the appointment." },
+              { num: 3, title: "Complete Your Appointment", body: `Confirm your details and sign to appoint ${APPOINTEE_LABEL}. CSL lodges direct holdings with Computershare; nominee holders send their own instruction.` },
               { num: 4, title: "Your Proxy Votes", body: "Your appointed proxy attends the AGM and votes your shares in line with CSL's published governance positions." },
             ].map(({ num, title, body }, i, arr) => (
               <div key={num} className="relative text-center px-6 py-8">
@@ -151,46 +161,75 @@ export default async function ProxyPage() {
       {/* PROXY FORM */}
       <section id="assign" className="py-[72px]">
         <Container>
-          <div className="text-center mb-[52px]">
-            <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
-              Appoint Your Proxy
-            </span>
-            <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-3.5">
-              {proxyOpen ? "Register Your Proxy Intent" : "Proxy Appointment Opens Later This Year"}
-            </h2>
-            <p className="text-[1.05rem] text-gray-500 max-w-[600px] mx-auto">
-              {proxyOpen
-                ? "Complete this form and we will send you the official proxy documentation before the meeting."
-                : "A proxy can only be appointed for a specific meeting, so this page opens once Celtic PLC issues the formal Notice of the Annual General Meeting."}
-            </p>
-          </div>
-
-          {proxyOpen ? (
-            <ProxyForm />
+          {mode === "appointment" ? (
+            <>
+              <div className="text-center mb-[52px]">
+                <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
+                  Appoint Your Proxy
+                </span>
+                <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-3.5">
+                  Complete Your Appointment
+                </h2>
+                <p className="text-[1.05rem] text-gray-500 max-w-[600px] mx-auto">
+                  Celtic plc has issued the Notice of AGM. Complete this form to appoint {APPOINTEE_LABEL} as
+                  your proxy.
+                </p>
+              </div>
+              <AppointmentForm
+                nomineePlatforms={nomineePlatforms}
+                shareBands={shareBands}
+                declarationText={declarationText ?? "Declaration text unavailable."}
+              />
+            </>
+          ) : mode === "interest" ? (
+            <>
+              <div className="text-center mb-[52px]">
+                <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
+                  Appoint Your Proxy
+                </span>
+                <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-3.5">
+                  Register Your Proxy Intent
+                </h2>
+                <p className="text-[1.05rem] text-gray-500 max-w-[600px] mx-auto">
+                  A proxy can only be completed once Celtic plc issues the Notice of the Annual General
+                  Meeting. Register now and we will contact you the moment it opens.
+                </p>
+              </div>
+              <ProxyForm />
+            </>
           ) : (
-            <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-[520px] mx-auto text-center shadow-lg">
-              <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1 rounded-full text-[0.78rem] font-semibold mb-4">
-                Not open yet
-              </span>
-              <h3 className="text-xl font-bold text-csl-dark mb-3">
-                We will contact you when it opens
-              </h3>
-              <p className="text-gray-600 text-sm leading-relaxed mb-6">
-                Celtic PLC has not yet issued the Notice of AGM. Once it does, this page opens and
-                we will send the proxy form to every CSL member who holds shares. Join CSL to be on
-                that list, or email{" "}
-                <a href="mailto:info@celticsupporters.net" className="text-csl-dark underline">
-                  info@celticsupporters.net
-                </a>{" "}
-                if you hold shares and are not yet a member.
-              </p>
-              <Link
-                href="/membership"
-                className="inline-flex items-center px-7 py-3 rounded-lg text-[0.92rem] font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200"
-              >
-                Join CSL
-              </Link>
-            </div>
+            <>
+              <div className="text-center mb-[52px]">
+                <span className="inline-block bg-csl-light text-csl-dark text-[0.78rem] font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
+                  Appoint Your Proxy
+                </span>
+                <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold tracking-tight mb-3.5">
+                  Proxy Registration Opens Soon
+                </h2>
+              </div>
+              <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-[520px] mx-auto text-center shadow-lg">
+                <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1 rounded-full text-[0.78rem] font-semibold mb-4">
+                  Not open yet
+                </span>
+                <h3 className="text-xl font-bold text-csl-dark mb-3">
+                  We will contact you when it opens
+                </h3>
+                <p className="text-gray-600 text-sm leading-relaxed mb-6">
+                  A proxy can only be appointed for a specific meeting, so full appointment opens once
+                  Celtic plc issues the Notice of AGM. Join CSL to be on that list, or email{" "}
+                  <a href="mailto:info@celticsupporters.net" className="text-csl-dark underline">
+                    info@celticsupporters.net
+                  </a>{" "}
+                  if you hold shares and are not yet a member.
+                </p>
+                <Link
+                  href="/membership"
+                  className="inline-flex items-center px-7 py-3 rounded-lg text-[0.92rem] font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200"
+                >
+                  Join CSL
+                </Link>
+              </div>
+            </>
           )}
         </Container>
       </section>
