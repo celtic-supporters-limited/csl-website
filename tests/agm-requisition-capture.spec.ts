@@ -636,7 +636,13 @@ test("CSV export contains every schema column and distinguishes pre_rebuild rows
     // never needed to wait for hydration; this is the first one that clicks
     // something.
     await page.waitForLoadState("networkidle", { timeout: 30_000 });
-    await page.getByRole("button", { name: "Export CSV" }).click();
+    // There are now two "Export CSV" buttons on the page - Who has signed's
+    // and Registered Support's - so a bare role query is ambiguous. The
+    // signature export's button is the sibling of the "Who has signed"
+    // toggle in the same row.
+    await page.getByRole("button", { name: /^Who has signed/ })
+      .locator("xpath=following-sibling::button[1]")
+      .click();
 
     const csv = await page.evaluate(async () => {
       const blob = (window as unknown as { __capturedBlob?: Blob }).__capturedBlob;
@@ -680,5 +686,84 @@ test("CSV export contains every schema column and distinguishes pre_rebuild rows
   } finally {
     await cleanup(completeEmail);
     await cleanup(preEmail);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 13. Registered Support - a non-shareholder supporter appears in the
+//     Registered Support list and its own export, and never in the
+//     signature export. That export is the lodgement document and must
+//     contain only people who have actually signed the requisition.
+// ---------------------------------------------------------------------------
+
+test("a supporter appears in Registered Support and its export, never in the signature export", async ({ page, request }) => {
+  test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, "TEST_USER_EMAIL / TEST_USER_PASSWORD not set");
+
+  const supporterEmail = `p2-regsupport-${Date.now()}@example.com`;
+  try {
+    const res = await request.post("/api/resolution/supporter", {
+      data: { fullName: "Registered Support Check", email: supporterEmail, consentGiven: true, turnstileToken: "test-token" },
+      headers: { "Content-Type": "application/json", "x-forwarded-for": nextIp() },
+    });
+    expect(res.status()).toBe(200);
+
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+
+    await page.addInitScript(() => {
+      const orig = URL.createObjectURL.bind(URL);
+      (window as unknown as { __capturedBlob?: Blob }).__capturedBlob = undefined;
+      URL.createObjectURL = (obj: Blob) => {
+        (window as unknown as { __capturedBlob?: Blob }).__capturedBlob = obj;
+        return orig(obj);
+      };
+    });
+
+    await page.goto("/member-portal/admin/resolution", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+
+    // Expand Registered Support and confirm the row is visible - the point
+    // of this feature is that a volunteer can see who this person is, not
+    // just a count.
+    await page.getByRole("button", { name: /^Registered Support/ }).click();
+    const supporterRow = page.locator("tr", { hasText: supporterEmail });
+    await expect(supporterRow).toBeVisible();
+    await expect(supporterRow.getByText("Registered Support Check")).toBeVisible();
+
+    // Registered Support's own export contains the supporter.
+    await page.getByRole("button", { name: /^Registered Support/ })
+      .locator("xpath=following-sibling::button[1]")
+      .click();
+    const supportersCsv = await page.evaluate(async () => {
+      const blob = (window as unknown as { __capturedBlob?: Blob }).__capturedBlob;
+      if (!blob) throw new Error("Registered Support export did not create a Blob via URL.createObjectURL");
+      return blob.text();
+    });
+    expect(supportersCsv).toContain(supporterEmail);
+    expect(supportersCsv).toContain("Registered Support Check");
+    // Exactly the columns Registered Support has data for - no shareholding
+    // fields exist to include.
+    const supportersHeaders = supportersCsv.split("\r\n")[0].split(",");
+    expect(supportersHeaders).toEqual([
+      "id", "created_at", "full_name", "email", "consent_given", "privacy_policy_version",
+    ]);
+
+    // The signature export - a separate download, a separate file - never
+    // contains this person. Reset the capture before triggering it, so a
+    // stale supporters Blob from the click above cannot be misread as the
+    // signature export succeeding.
+    await page.evaluate(() => {
+      (window as unknown as { __capturedBlob?: Blob }).__capturedBlob = undefined;
+    });
+    await page.getByRole("button", { name: /^Who has signed/ })
+      .locator("xpath=following-sibling::button[1]")
+      .click();
+    const signaturesCsv = await page.evaluate(async () => {
+      const blob = (window as unknown as { __capturedBlob?: Blob }).__capturedBlob;
+      if (!blob) throw new Error("Export CSV did not create a Blob via URL.createObjectURL");
+      return blob.text();
+    });
+    expect(signaturesCsv).not.toContain(supporterEmail);
+  } finally {
+    await db().from("agm_supporters").delete().eq("email", supporterEmail);
   }
 });
