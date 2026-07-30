@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
 
-const TABLES = ["agm_signatures", "agm_supporters", "agm_proxies"] as const;
+const TABLES = ["agm_signatures", "agm_supporters", "agm_proxies", "shareholder_cases"] as const;
 type Table = (typeof TABLES)[number];
 
 /**
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
   const { table, id, action } = body;
   if (!table || !TABLES.includes(table as Table)) {
-    return NextResponse.json({ error: "table must be one of agm_signatures, agm_supporters, agm_proxies" }, { status: 400 });
+    return NextResponse.json({ error: "table must be one of agm_signatures, agm_supporters, agm_proxies, shareholder_cases" }, { status: 400 });
   }
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
   if (action !== "release" && action !== "purge") {

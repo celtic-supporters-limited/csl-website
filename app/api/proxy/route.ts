@@ -55,12 +55,12 @@ export async function POST(req: NextRequest) {
 
   let body: {
     // Honeypot. Renamed from "website" - see the matching note on the
-    // resolution routes. No suspected_bot column exists on shareholder_cases
-    // (it holds Share Tracing rows too, and Package 5 only authorised the
-    // column on agm_proxies/agm_signatures/agm_supporters), so this route
-    // keeps the log-and-reject shape rather than store-and-flag: nothing is
-    // written, and the rejection is logged with email and timestamp so a
-    // genuine person caught by it is at least visible in server logs.
+    // resolution routes. Store-and-flag, not log-and-reject: this is the one
+    // proxy surface that stays permanently public, which makes it the
+    // likeliest place a real person is silently discarded by an autofilled
+    // hidden field. A suspected_bot row sitting in the admin table is a
+    // click away from being released; a log line is a reconstruction CSL
+    // may never see. See the close-out session note in sql/agm-p5-schema.sql.
     hpField?: string;
     name?: string;
     email?: string;
@@ -79,9 +79,17 @@ export async function POST(req: NextRequest) {
   const { name, email, numShares, yearPurchased, source } = body;
 
   if (body.hpField) {
-    console.error(
-      `[proxy] honeypot triggered: email=${email ?? "(none)"} at=${new Date().toISOString()}`
-    );
+    await getSupabase().from("shareholder_cases").insert({
+      contact_name: name?.trim() || "(honeypot)",
+      email: email?.trim().toLowerCase() || `unknown-${Date.now()}@invalid`,
+      case_type: "Proxy Interest",
+      enquiry_source: source || null,
+      status: "New",
+      consent_given: body.consentGiven === true,
+      meeting_ref: await getCurrentMeetingRef(),
+      privacy_policy_version: await getConfigValue("privacy_policy_version"),
+      suspected_bot: true,
+    });
     return NextResponse.json({ success: true });
   }
 
@@ -178,6 +186,7 @@ export async function POST(req: NextRequest) {
       // to one meeting exactly as an appointment is.
       meeting_ref: await getCurrentMeetingRef(),
       privacy_policy_version: privacyPolicyVersion,
+      suspected_bot: false,
     });
 
   if (dbError) {

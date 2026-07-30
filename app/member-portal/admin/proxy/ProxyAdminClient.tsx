@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { APPOINTEE_LABEL } from "@/lib/agm-appointee";
+import { isProxyDeclarationReady } from "@/lib/site-gates";
 
 export type Appointment = {
   id: string;
@@ -42,6 +43,7 @@ export type InterestRow = {
   enquiry_source: string | null;
   consent_given: boolean | null;
   privacy_policy_version: string | null;
+  suspected_bot: boolean;
   created_at: string;
 };
 
@@ -95,7 +97,7 @@ function toCsv(rows: Record<string, unknown>[]): string {
  * Release or purge a row flagged suspected_bot. Same shape as the matching
  * component on the resolution admin page - see the note there.
  */
-function SuspectedBotActions({ id }: { id: string }) {
+function SuspectedBotActions({ id, table }: { id: string; table: "agm_proxies" | "shareholder_cases" }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState<"release" | "purge" | null>(null);
   const [loading, setLoading] = useState(false);
@@ -108,7 +110,7 @@ function SuspectedBotActions({ id }: { id: string }) {
       const res = await fetch("/api/admin/suspected-bot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ table: "agm_proxies", id, action }),
+        body: JSON.stringify({ table, id, action }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -254,10 +256,18 @@ export default function ProxyAdminClient({
   const qualifierLine = revokedCount > 0 ? `${heldClause} · ${revokedCount} revoked` : heldClause;
 
   // Plain sentences, not raw config values - no volunteer should ever see
-  // "proxy_mode", "interest" or "appointment" as a bare internal label. Three
-  // states, exactly like the resolution page's three closed messages.
+  // "proxy_mode", "interest" or "appointment" as a bare internal label.
+  //
+  // declarationReady mirrors isProxyDeclarationReady() in lib/site-gates.ts -
+  // the same one condition the appointment route itself enforces, so this
+  // banner can never say "open" while the route is actually refusing every
+  // submission with a 503.
+  const declarationReady = isProxyDeclarationReady(declarationText);
+
   const modeNotice =
-    mode === "appointment"
+    mode === "appointment" && !declarationReady
+      ? { cls: "bg-amber-50 border-amber-200 text-amber-800", text: "Proxy mode is set to appointment, but the declaration wording below is still a placeholder. The page cannot take appointments until real wording is saved to proxy_declaration_text." }
+      : mode === "appointment"
       ? { cls: "bg-green-50 border-green-200 text-green-800", text: "Full proxy appointment is open. Shareholders can appoint their proxy below." }
       : mode === "interest"
       ? { cls: "bg-blue-50 border-blue-200 text-blue-800", text: "Registering intent to appoint a proxy is open. Full appointment is not available until Celtic plc issues the Notice of AGM." }
@@ -304,10 +314,15 @@ export default function ProxyAdminClient({
     URL.revokeObjectURL(url);
   }
 
+  // Excludes suspected-bot rows, matching Registered Support's audit-trail
+  // philosophy on the resolution page and the appointments count/export
+  // above - a flagged row is not counted or exported until released.
+  const interestCountable = registeredInterest.filter((r) => !r.suspected_bot);
+
   // Separate file, deliberately - an intention is not an appointment, and
   // this list must never be mistaken for the register above it.
   function downloadInterestCsv() {
-    const rows = registeredInterest.map((r) => ({
+    const rows = interestCountable.map((r) => ({
       id:                     r.id,
       created_at:             r.created_at,
       contact_name:           r.contact_name,
@@ -450,7 +465,7 @@ export default function ProxyAdminClient({
                             <span className="inline-flex px-2 py-0.5 rounded-full text-[0.75rem] font-semibold bg-red-100 text-red-800">
                               Suspected bot
                             </span>
-                            <SuspectedBotActions id={a.id} />
+                            <SuspectedBotActions id={a.id} table="agm_proxies" />
                           </>
                         ) : (
                           <RevokeAction appointment={a} />
@@ -480,7 +495,7 @@ export default function ProxyAdminClient({
             className="flex items-center gap-2 text-left"
           >
             <span className="text-[0.82rem] font-semibold text-gray-600">
-              Registered interest ({registeredInterest.length.toLocaleString("en-GB")})
+              Registered interest ({interestCountable.length.toLocaleString("en-GB")})
             </span>
             <ChevronIcon open={interestExpanded} />
           </button>
@@ -500,21 +515,37 @@ export default function ProxyAdminClient({
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Date</th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Name</th>
                   <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500">Email</th>
+                  <th className="px-4 py-3 text-left text-[0.78rem] font-semibold text-gray-500 whitespace-nowrap">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {registeredInterest.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-4 py-10 text-center text-gray-400 text-sm">
+                    <td colSpan={4} className="px-4 py-10 text-center text-gray-400 text-sm">
                       No registered interest yet.
                     </td>
                   </tr>
                 )}
                 {registeredInterest.map((r) => (
-                  <tr key={r.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                  <tr
+                    key={r.id}
+                    className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${r.suspected_bot ? "bg-red-50/40" : ""}`}
+                  >
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(r.created_at)}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">{r.contact_name}</td>
                     <td className="px-4 py-3 text-gray-600">{r.email}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {r.suspected_bot ? (
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-[0.75rem] font-semibold bg-red-100 text-red-800">
+                            Suspected bot
+                          </span>
+                          <SuspectedBotActions id={r.id} table="shareholder_cases" />
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-[0.75rem]">-</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

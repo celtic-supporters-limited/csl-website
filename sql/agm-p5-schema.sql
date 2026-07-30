@@ -1,12 +1,24 @@
 -- AGM Package 5 - proxy appointment instrument, suspected_bot flagging,
 -- interest flow updates
 --
--- Rehearse on staging first, then run unchanged on production, per the
--- brief's standing rule on rehearsing the exact sequence. Nothing here drops
--- or rewrites existing content: agm_signatures and agm_supporters each gain
--- one column with a default, agm_proxies is a new table, and
--- shareholder_cases gains two columns plus a targeted UPDATE of its existing
--- Proxy Assignment rows (leads, not signed instruments - see the note there).
+-- This is the production script as well as the staging one, unchanged,
+-- per the brief's standing rule on rehearsing the exact sequence rather than
+-- an approximation of it - production has not had any of Package 5 run
+-- against it yet, so this single file is the whole catch-up. Idempotent
+-- throughout (IF NOT EXISTS / ON CONFLICT DO NOTHING / a WHERE clause that
+-- matches nothing once already applied), so re-running it after a partial
+-- or already-completed run is safe and changes nothing further.
+--
+-- Nothing here drops or rewrites existing content: agm_signatures,
+-- agm_supporters and shareholder_cases each gain one or more columns with a
+-- default or nullable type (metadata-only in modern Postgres - no table
+-- rewrite, so the two preserved production shareholder rows on
+-- agm_signatures are not touched), agm_proxies is a new table, and
+-- shareholder_cases gets a targeted UPDATE of its existing Proxy Assignment
+-- rows (leads, not signed instruments - see the note there). The exact
+-- row count that UPDATE will touch is not knowable from here - production is
+-- not accessible to this session - so it is reported by the pre-flight
+-- SELECT immediately before the UPDATE, not asserted in this comment.
 --
 -- ── 1. agm_proxies ───────────────────────────────────────────────────────────
 -- New table, separate from shareholder_cases. An expression of interest is a
@@ -138,6 +150,19 @@ ALTER TABLE agm_supporters ADD COLUMN IF NOT EXISTS suspected_bot BOOLEAN NOT NU
 ALTER TABLE shareholder_cases ADD COLUMN IF NOT EXISTS consent_given          BOOLEAN;
 ALTER TABLE shareholder_cases ADD COLUMN IF NOT EXISTS meeting_ref            TEXT;
 ALTER TABLE shareholder_cases ADD COLUMN IF NOT EXISTS privacy_policy_version TEXT;
+-- Added in the close-out session: the interest page is the one proxy surface
+-- that stays permanently public, which makes it the likeliest place a real
+-- person is silently discarded by an autofilled hidden field. Same
+-- add-with-default treatment as the other three tables - metadata only, no
+-- rewrite, existing rows unaffected beyond gaining the column at its default.
+ALTER TABLE shareholder_cases ADD COLUMN IF NOT EXISTS suspected_bot          BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Pre-flight count. This is the number of rows the UPDATE immediately below
+-- will touch - read it before running the UPDATE, since afterwards this
+-- query returns 0 (nothing left matching the old case_type) regardless of
+-- how many rows were actually renamed a moment ago.
+SELECT count(*) AS rows_to_be_renamed_proxy_assignment_to_proxy_interest
+FROM shareholder_cases WHERE case_type = 'Proxy Assignment';
 
 UPDATE shareholder_cases
 SET case_type   = 'Proxy Interest',
@@ -182,7 +207,8 @@ SELECT count(*) AS proxy_interest_rows, count(*) FILTER (WHERE meeting_ref IS NU
 FROM shareholder_cases WHERE case_type = 'Proxy Interest';
 
 SELECT
-  (SELECT column_default FROM information_schema.columns WHERE table_name='agm_signatures' AND column_name='suspected_bot') AS signatures_suspected_bot_default,
-  (SELECT column_default FROM information_schema.columns WHERE table_name='agm_supporters' AND column_name='suspected_bot') AS supporters_suspected_bot_default;
+  (SELECT column_default FROM information_schema.columns WHERE table_name='agm_signatures'   AND column_name='suspected_bot') AS signatures_suspected_bot_default,
+  (SELECT column_default FROM information_schema.columns WHERE table_name='agm_supporters'   AND column_name='suspected_bot') AS supporters_suspected_bot_default,
+  (SELECT column_default FROM information_schema.columns WHERE table_name='shareholder_cases' AND column_name='suspected_bot') AS shareholder_cases_suspected_bot_default;
 
 SELECT key, value FROM site_config WHERE key IN ('proxy_mode', 'proxy_declaration_text');

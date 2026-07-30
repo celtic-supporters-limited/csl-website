@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
-import { getConfigList, getConfigValue, getCurrentMeetingRef, getProxyMode } from "@/lib/site-gates";
+import {
+  getConfigList,
+  getConfigValue,
+  getCurrentMeetingRef,
+  getProxyMode,
+  isProxyDeclarationReady,
+} from "@/lib/site-gates";
 import { APPOINTEE_LABEL } from "@/lib/agm-appointee";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -94,8 +100,10 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabase();
   const meetingRef = await getCurrentMeetingRef();
-  const declarationSnapshot =
-    (await getConfigValue("proxy_declaration_text")) ?? "Declaration text unavailable.";
+  // Read raw, before the storage fallback below is applied - the fallback
+  // string itself must never satisfy the declaration lock further down.
+  const declarationTextRaw = await getConfigValue("proxy_declaration_text");
+  const declarationSnapshot = declarationTextRaw ?? "Declaration text unavailable.";
   const privacyPolicyVersion = await getConfigValue("privacy_policy_version");
 
   // ── 2b. Honeypot ───────────────────────────────────────────────────────────
@@ -144,6 +152,21 @@ export async function POST(req: NextRequest) {
   } else {
     console.error(
       "[proxy/appointment] TURNSTILE_SECRET_KEY is not set - Turnstile verification was skipped entirely for this submission."
+    );
+  }
+
+  // ── 3b. Declaration lock ─────────────────────────────────────────────────────
+  // The resolution has a second lock for exactly this reason: opening the
+  // gate alone does not mean real wording exists yet. The proxy declaration
+  // has no version table and no placeholder flag - it is a single config
+  // string - so the equivalent lock is isProxyDeclarationReady() against the
+  // raw config read, not declarationSnapshot above, which carries a
+  // "Declaration text unavailable." fallback that must never itself pass
+  // this check just because it is a non-empty, non-TBD string.
+  if (!isProxyDeclarationReady(declarationTextRaw)) {
+    return bad(
+      "Appointment is not open yet. The declaration wording has not been finalised.",
+      503
     );
   }
 

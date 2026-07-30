@@ -96,6 +96,18 @@ async function signIn(page: Page, email: string, password: string) {
 test.describe.configure({ mode: "serial" });
 
 let previousProxyMode: string | null = null;
+let previousDeclarationText: string | null = null;
+
+// A real-looking value for the suite's duration. Staging's actual value is
+// the seeded "TBD - ..." placeholder (Brian's wording has not arrived), which
+// the new declaration lock (item 1 of the Package 5 close-out) now correctly
+// refuses to sign against - every postAppointment() call in this file
+// expecting 200 would otherwise fail with 503 the moment that lock exists.
+// Deliberately contains a comma, matching the shape of the real seeded text -
+// the CSV export test below relies on a comma appearing inside
+// declaration_snapshot to exercise its RFC 4180 quoting.
+const TEST_DECLARATION_TEXT =
+  "I hereby appoint the above-named person as my proxy, to vote on my behalf at the Annual General Meeting.";
 
 test.beforeAll(async () => {
   if (!SUPABASE_URL?.includes(STAGING_PROJECT_REF)) {
@@ -108,11 +120,20 @@ test.beforeAll(async () => {
   const { data: modeRow } = await db().from("site_config").select("value").eq("key", "proxy_mode").maybeSingle();
   previousProxyMode = modeRow?.value ?? null;
 
+  const { data: declarationRow } = await db().from("site_config").select("value").eq("key", "proxy_declaration_text").maybeSingle();
+  previousDeclarationText = declarationRow?.value ?? null;
+
   await setConfig("proxy_mode", "appointment");
+  await setConfig("proxy_declaration_text", TEST_DECLARATION_TEXT);
 });
 
 test.afterAll(async () => {
   await setConfig("proxy_mode", previousProxyMode ?? "closed");
+  await setConfig(
+    "proxy_declaration_text",
+    previousDeclarationText ??
+      "TBD - proxy appointment declaration wording, pending director approval. Placeholder only: do not rely on this text for a real appointment."
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -442,6 +463,99 @@ test("the appointments export has the documented column list, and a revoked appo
     expect(dataRow![revokedAtIdx]).not.toBe("");
   } finally {
     await cleanupProxy(email);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 13. Package 5 close-out item 1: declaration lock
+// ---------------------------------------------------------------------------
+
+test("an appointment is refused while proxy_declaration_text is empty or still TBD", async ({ request }) => {
+  const email = `p5-declaration-lock-${Date.now()}@example.com`;
+  try {
+    await setConfig("proxy_declaration_text", "TBD - still pending director approval.");
+    let res = await postAppointment(request, validAppointmentBody(email));
+    expect(res.status()).toBe(503);
+    expect(await fetchProxyByEmail(email)).toBeNull();
+
+    await setConfig("proxy_declaration_text", "");
+    res = await postAppointment(request, validAppointmentBody(email));
+    expect(res.status()).toBe(503);
+    expect(await fetchProxyByEmail(email)).toBeNull();
+  } finally {
+    await setConfig("proxy_declaration_text", TEST_DECLARATION_TEXT);
+    await cleanupProxy(email);
+  }
+});
+
+test("the admin banner explains the declaration is not finalised when mode is appointment but the wording is still TBD", async ({ page }) => {
+  test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, "TEST_USER_EMAIL / TEST_USER_PASSWORD not set");
+
+  try {
+    await setConfig("proxy_declaration_text", "TBD - still pending director approval.");
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    await page.goto("/member-portal/admin/proxy", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+    await expect(page.getByText(/declaration wording below is still a placeholder/i)).toBeVisible();
+  } finally {
+    await setConfig("proxy_declaration_text", TEST_DECLARATION_TEXT);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 14. Package 5 close-out item 2: interest flow honeypot store-and-flag
+// ---------------------------------------------------------------------------
+
+test("an interest submission with the honeypot filled is stored with suspected_bot set, and excluded from the admin count and export", async ({ page, request }) => {
+  test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, "TEST_USER_EMAIL / TEST_USER_PASSWORD not set");
+
+  const email = `p5-interest-honeypot-${Date.now()}@example.com`;
+  const { data: modeRow } = await db().from("site_config").select("value").eq("key", "proxy_mode").maybeSingle();
+  const modeBefore = modeRow?.value ?? null;
+
+  try {
+    await setConfig("proxy_mode", "interest");
+
+    const res = await request.post("/api/proxy", {
+      data: { name: "Interest Honeypot Test", email, consentGiven: true, turnstileToken: "test-token", hpField: "http://spam.example.com" },
+      headers: { "Content-Type": "application/json", "x-forwarded-for": nextIp() },
+    });
+    expect(res.status()).toBe(200);
+
+    const { data: row } = await db().from("shareholder_cases").select("*").eq("email", email).eq("case_type", "Proxy Interest").maybeSingle();
+    expect(row).toBeTruthy();
+    expect(row!.suspected_bot).toBe(true);
+
+    await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    await page.goto("/member-portal/admin/proxy", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+
+    await page.getByRole("button", { name: /^Registered interest/ }).click();
+    const flaggedRow = page.locator("tr", { hasText: email });
+    await expect(flaggedRow.getByText("Suspected bot")).toBeVisible();
+
+    await page.addInitScript(() => {
+      const orig = URL.createObjectURL.bind(URL);
+      (window as unknown as { __capturedBlob?: Blob }).__capturedBlob = undefined;
+      URL.createObjectURL = (obj: Blob) => {
+        (window as unknown as { __capturedBlob?: Blob }).__capturedBlob = obj;
+        return orig(obj);
+      };
+    });
+    await page.goto("/member-portal/admin/proxy", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+    await page.getByRole("button", { name: /^Registered interest/ })
+      .locator("xpath=following-sibling::button[1]")
+      .click();
+    const csv = await page.evaluate(async () => {
+      const blob = (window as unknown as { __capturedBlob?: Blob }).__capturedBlob;
+      if (!blob) throw new Error("Export did not create a Blob via URL.createObjectURL");
+      return blob.text();
+    });
+    expect(csv).not.toContain(email);
+  } finally {
+    await db().from("shareholder_cases").delete().eq("email", email).eq("case_type", "Proxy Interest");
+    await setConfig("proxy_mode", modeBefore ?? "appointment");
   }
 });
 

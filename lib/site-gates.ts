@@ -213,6 +213,21 @@ export async function getProxyMode(): Promise<ProxyMode> {
   return "closed";
 }
 
+/**
+ * Whether the proxy declaration wording is real enough to sign against.
+ *
+ * The resolution's second lock (see lib/agm-signing-state.ts) checks a
+ * version row's is_placeholder flag. The proxy has no version table by
+ * design, so the equivalent lock is this one condition against the single
+ * config string: empty, or still starting with the seeded "TBD" placeholder,
+ * both read as not ready. Shared by the appointment route and the admin
+ * banner so the two cannot disagree about what "ready" means.
+ */
+export function isProxyDeclarationReady(text: string | null): boolean {
+  const trimmed = text?.trim() ?? "";
+  return trimmed.length > 0 && !trimmed.toUpperCase().startsWith("TBD");
+}
+
 /** Convenience wrapper for the resolution gate plus the proxy mode. */
 export async function getAgmGates(): Promise<{ resolution_open: boolean; proxy_mode: ProxyMode }> {
   const [resolution_open, proxy_mode] = await Promise.all([
