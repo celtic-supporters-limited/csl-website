@@ -39,10 +39,15 @@ export default function AppointmentForm({
   const [state, setState] = useState<FormState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [firstName, setFirstName] = useState("");
+  const [appointmentId, setAppointmentId] = useState<string | null>(null);
 
   const [howHeld, setHowHeld] = useState<HowHeld>("");
   const [platform, setPlatform] = useState("");
   const [instructionSent, setInstructionSent] = useState(false);
+  // Direct holders only - Celtic's Notice of AGM 2025, note 2: the exact
+  // number of shares must be stated, and a band cannot satisfy that.
+  const [sharesHeldExact, setSharesHeldExact] = useState("");
+  const [lodgementPath, setLodgementPath] = useState<"we-lodge" | "member-lodges">("we-lodge");
 
   const [prefillName, setPrefillName] = useState("");
   const [prefillEmail, setPrefillEmail] = useState("");
@@ -116,10 +121,12 @@ export default function AppointmentForm({
       nomineePlatform:        platform,
       nomineePlatformOther:   fd.get("nomineePlatformOther"),
       sharesHeld:             fd.get("sharesHeld"),
+      sharesHeldExact:        howHeld === "direct" ? sharesHeldExact : undefined,
       shareClass:             fd.get("shareClass"),
       consentGiven:           consent,
       signatureName:          fd.get("signatureName"),
       nomineeInstructionSent: howHeld === "nominee" ? instructionSent : undefined,
+      lodgementPath:          howHeld === "direct" ? lodgementPath : undefined,
       turnstileToken,
     };
 
@@ -130,7 +137,7 @@ export default function AppointmentForm({
         body: JSON.stringify(payload),
       });
       const data = (await res.json()) as {
-        ok?: boolean; error?: string; firstName?: string; duplicate?: boolean;
+        ok?: boolean; error?: string; firstName?: string; duplicate?: boolean; id?: string;
       };
 
       if (res.status === 409 || data.duplicate) {
@@ -146,6 +153,7 @@ export default function AppointmentForm({
         return;
       }
       setFirstName(data.firstName ?? "");
+      setAppointmentId(data.id ?? null);
       setState("success");
     } catch {
       setErrorMsg("Network error. Please check your connection and try again.");
@@ -161,19 +169,59 @@ export default function AppointmentForm({
         <h2 className="text-2xl font-extrabold text-csl-dark mb-3">
           Proxy appointment recorded
         </h2>
-        <p className="text-gray-700 max-w-[440px] mx-auto mb-6">
+        <p className="text-gray-700 max-w-[440px] mx-auto mb-4">
           Thank you{firstName ? `, ${firstName}` : ""}. You have appointed {APPOINTEE_LABEL} as your
-          proxy for the Annual General Meeting.{" "}
-          {howHeld === "nominee"
-            ? "CSL has recorded that you have sent the instruction to your platform."
-            : "CSL will lodge your appointment with Computershare ahead of the deadline."}
+          proxy for the Annual General Meeting. A copy has been emailed to you.
         </p>
-        <Link
-          href="/membership"
-          className="inline-flex items-center px-7 py-3 rounded-lg text-[0.92rem] font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200"
-        >
-          Support our work - Join CSL
-        </Link>
+
+        {howHeld === "direct" && lodgementPath === "we-lodge" && (
+          <p className="text-gray-700 max-w-[440px] mx-auto mb-6 text-[0.9rem]">
+            CSL will lodge your appointment with Computershare ahead of the deadline.
+          </p>
+        )}
+
+        {howHeld === "direct" && lodgementPath === "member-lodges" && (
+          <div className="mb-6 p-4 bg-white rounded-lg border border-gray-200 text-left text-[0.85rem] text-gray-700 leading-relaxed max-w-[440px] mx-auto">
+            <p className="font-semibold text-csl-dark mb-2">You chose to lodge this appointment yourself</p>
+            <p className="mb-2">Either post the signed form to Computershare Investor Services PLC, The Pavilions, Bridgwater Road, Bristol BS13 8AE, or appoint {APPOINTEE_LABEL} yourself through Computershare&apos;s online Investor Centre.</p>
+            <p>It must arrive no later than 24 hours before the meeting. Investor Centre is faster and avoids any risk of the post missing the deadline.</p>
+          </div>
+        )}
+
+        {howHeld === "nominee" && (
+          <p className="text-gray-700 max-w-[440px] mx-auto mb-6 text-[0.9rem]">
+            Once you have sent the instruction to your platform, use the confirm link in the email
+            we just sent you so CSL knows to expect your vote.
+          </p>
+        )}
+
+        {howHeld === "nominee" && (
+          <div className="mb-4 p-3.5 bg-white rounded-lg border border-gray-200 text-left text-[0.82rem] text-gray-800 leading-relaxed max-w-[440px] mx-auto">
+            <p className="font-semibold text-csl-dark mb-1.5">Instruction to copy into an email to {platform === "Other" ? "your platform" : platform}</p>
+            <p>
+              Please appoint {APPOINTEE_LABEL} as my proxy to vote on my behalf at the Celtic plc
+              Annual General Meeting, on all resolutions, in accordance with my instructions.
+            </p>
+          </div>
+        )}
+
+        {appointmentId && (
+          <a
+            href={`/api/proxy/pdf/${appointmentId}`}
+            className="inline-flex items-center px-6 py-2.5 mb-4 rounded-lg text-[0.85rem] font-semibold border-2 border-csl-dark text-csl-dark hover:bg-white transition-colors duration-200"
+          >
+            {howHeld === "nominee" ? "Download your instruction (PDF)" : "Download your appointment (PDF)"}
+          </a>
+        )}
+
+        <div>
+          <Link
+            href="/membership"
+            className="inline-flex items-center px-7 py-3 rounded-lg text-[0.92rem] font-semibold bg-csl-dark text-white hover:bg-csl-mid transition-colors duration-200"
+          >
+            Support our work - Join CSL
+          </Link>
+        </div>
       </div>
     );
   }
@@ -271,10 +319,53 @@ export default function AppointmentForm({
           </p>
           <input id="computershareSrn" name="computershareSrn" type="text" required placeholder="e.g. C0001234567" className={inputClass} />
 
-          <div className="mt-4 p-3.5 bg-blue-50 rounded-lg border border-blue-200 text-[0.82rem] text-blue-900 leading-relaxed">
-            CSL will lodge this appointment with Computershare Investor Services PLC on your behalf,
-            ahead of the deadline stated in Celtic plc&apos;s Notice of AGM.
+          <label htmlFor="sharesHeldExact" className={`${labelClass} mt-4`}>
+            Exact number of shares you hold <span className="text-red-500">*</span>
+          </label>
+          <p className={hintClass}>
+            Celtic plc requires the exact number of shares your appointment relates to - the same
+            paperwork that gives you your SRN also shows this. Stating none, or more than you hold,
+            may invalidate the appointment.
+          </p>
+          <input
+            id="sharesHeldExact" name="sharesHeldExact" type="number" required min={1} step={1}
+            placeholder="e.g. 250" className={inputClass}
+            value={sharesHeldExact} onChange={(e) => setSharesHeldExact(e.target.value)}
+          />
+
+          <p className={`${labelClass} mt-4`}>
+            How would you like this appointment lodged? <span className="text-red-500">*</span>
+          </p>
+          <div className="flex flex-col gap-3">
+            <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
+              <input
+                type="radio" name="lodgementPath" value="we-lodge" checked={lodgementPath === "we-lodge"}
+                className={`${radioClass} mt-0.5`} onChange={() => setLodgementPath("we-lodge")}
+              />
+              <span>CSL lodges it for me, as part of a block with other members (recommended)</span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
+              <input
+                type="radio" name="lodgementPath" value="member-lodges" checked={lodgementPath === "member-lodges"}
+                className={`${radioClass} mt-0.5`} onChange={() => setLodgementPath("member-lodges")}
+              />
+              <span>I will lodge it myself</span>
+            </label>
           </div>
+
+          {lodgementPath === "we-lodge" ? (
+            <div className="mt-4 p-3.5 bg-blue-50 rounded-lg border border-blue-200 text-[0.82rem] text-blue-900 leading-relaxed">
+              CSL will lodge this appointment with Computershare Investor Services PLC on your behalf,
+              ahead of the deadline stated in Celtic plc&apos;s Notice of AGM.
+            </div>
+          ) : (
+            <div className="mt-4 p-3.5 bg-blue-50 rounded-lg border border-blue-200 text-[0.82rem] text-blue-900 leading-relaxed">
+              Post the signed form to Computershare Investor Services PLC, The Pavilions, Bridgwater
+              Road, Bristol BS13 8AE, or appoint {APPOINTEE_LABEL} yourself through Computershare&apos;s
+              online Investor Centre. It must arrive no later than 24 hours before the meeting -
+              Investor Centre is faster and avoids any risk of the post missing that deadline.
+            </div>
+          )}
         </div>
       )}
 

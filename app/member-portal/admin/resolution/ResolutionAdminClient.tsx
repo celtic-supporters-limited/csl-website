@@ -41,6 +41,8 @@ export type Signature = {
   declaration_snapshot: string | null;
   consent_snapshot: string | null;
   supporting_statement_snapshot: string | null;
+  email_sent_at: string | null;
+  email_error: string | null;
 };
 
 export type Supporter = {
@@ -762,6 +764,17 @@ export default function ResolutionAdminClient({
                             {editingSignatureId === s.id ? "Close" : "Edit"}
                           </button>
                           <AgmStatusAction table="agm_signatures" id={s.id} currentStatus={s.status} personLabel={s.full_name} />
+                          <a href={`/api/resolution/pdf/${s.id}`} className="text-[0.75rem] text-gray-500 hover:underline">
+                            Download PDF
+                          </a>
+                          {s.email_error && (
+                            <span
+                              className="text-[0.7rem] text-red-700 font-semibold"
+                              title={s.email_error}
+                            >
+                              Email failed
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>

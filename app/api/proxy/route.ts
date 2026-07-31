@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { findOrCreateZohoContact, createZohoCase } from "@/lib/zoho";
-import { sendProxyNotification } from "@/lib/resend";
+import { sendProxyNotification, sendProxyInterestEmail } from "@/lib/resend";
 import { DISPOSABLE_EMAIL_DOMAINS } from "@/lib/disposable-email-domains";
 import { getConfigValue, getCurrentMeetingRef, getProxyMode } from "@/lib/site-gates";
 
@@ -206,6 +206,16 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[proxy] Notification email error:", err);
+  }
+
+  // Package 6, section 6 - the submitter's own confirmation, separate from
+  // the volunteer notification above. No attachment, no backlog tracking:
+  // this row has no PDF and no lodgement-document consequence if the send
+  // fails.
+  try {
+    await sendProxyInterestEmail({ to: email.trim().toLowerCase(), firstName: name.trim().split(" ")[0] });
+  } catch (err) {
+    console.error("[proxy] Confirmation email error:", err);
   }
 
   try {

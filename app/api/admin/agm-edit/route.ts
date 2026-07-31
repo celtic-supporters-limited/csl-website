@@ -43,8 +43,8 @@ const EDITABLE_FIELDS: Record<AgmTable, string[]> = {
   agm_proxies: [
     "full_name", "address_line_1", "address_line_2", "address_town", "address_postcode",
     "email", "how_held", "computershare_srn", "nominee_platform", "nominee_platform_other",
-    "shares_held", "share_class", "appointee_name",
-    "signature_name", "signed_at", "nominee_instruction_sent", "revoked_reason",
+    "shares_held", "shares_held_exact", "share_class", "appointee_name",
+    "signature_name", "signed_at", "nominee_instruction_sent", "revoked_reason", "lodgement_path",
   ],
   // Proxy Interest rows only - enforced by checking case_type below, not by
   // a separate table.
