@@ -328,6 +328,24 @@ use the "Forgot password" flow to set one — `signUp()` will reject already-reg
 - **No em dashes** — use hyphens. Avoid AI-obvious phrasing.
 - **Never commit `.env` files or secret keys to GitHub.**
 - **All personal data must stay EU/UK** — Supabase EU region only.
+- **CSL never stores payment history. Ever.** Stripe is the sole system of record for all
+  payment data — CSL holds no local record of what a member paid, when, or on what instrument.
+  This keeps CSL outside PCI DSS scope and avoids CSL becoming controller of financial records
+  Stripe already holds authoritatively. Any proposal requiring local persistence of payment
+  data (a `payments` table row, a cached amount/date/label) is to be rejected without further
+  analysis — read it from Stripe at render time instead. (This is narrower than "no personal
+  data" — CSL does hold member names and emails in Supabase; the constraint is specific to
+  payment data.)
+- **Historical financial labels are derived at write time from the richest source object, never
+  at read time from a reduced one.** Never render a mutable current-state field (a member's
+  current plan, current amount) as the label on a historical financial row — a later change
+  silently relabels past history. Never guard against a third party's auto-generated text (e.g.
+  Stripe's `charge.description`) with a blocklist — either don't display that text at all, or
+  derive the value from a richer source object (an invoice line item, not a bare amount).
+  Amount alone breaks under discounts, refunds, and interval collisions. Where an external
+  system already holds an immutable record, read from it rather than copying it locally — see
+  the no-payment-storage rule above; a local copy creates a reconciliation duty and a new way
+  for the record to be wrong.
 
 ## Development Conventions
 

@@ -263,6 +263,12 @@ export async function POST(req: NextRequest) {
       session = await stripe.checkout.sessions.create({
         mode: "payment",
         ...(existingCustomerId ? {} : { customer_creation: "always" as const }),
+        // Payment-mode Checkout sessions don't generate a Stripe Invoice by
+        // default — only subscription-mode ones do. Without this, the
+        // Lifetime payment would never appear in stripe.invoices.list(),
+        // which is what the member portal and admin payment history now
+        // read from exclusively (no local storage of payment data).
+        invoice_creation: { enabled: true },
         line_items: [
           {
             quantity: 1,

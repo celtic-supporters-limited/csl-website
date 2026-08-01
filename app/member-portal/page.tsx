@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
-import { getStripe, getSubscriptionPeriodEnd } from "@/lib/stripe";
+import { getStripe, getSubscriptionPeriodEnd, paymentLabelFromInvoiceLine } from "@/lib/stripe";
 import PortalClient from "./PortalClient";
 
 export const dynamic = "force-dynamic";
@@ -140,35 +140,39 @@ export default async function MemberPortalPage({
       const [chargesResult, subResult] = await Promise.all([
         member.stripe_customer_id
           ? getStripe()
-              .charges.list({ customer: member.stripe_customer_id, limit: 24 })
+              .invoices.list({
+                customer: member.stripe_customer_id,
+                status: "paid",
+                limit: 12,
+                expand: ["data.lines.data.pricing.price_details.price"],
+              })
               .then((list) =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (list.data as any[]).map((charge) => {
-                  const desc = charge.description as string | null;
-                  const isGeneric =
-                    !desc ||
-                    desc.toLowerCase().includes("subscription creation") ||
-                    desc.toLowerCase().includes("invoice");
-                  const planName = isGeneric
-                    ? (charge.metadata?.plan_name as string | undefined) ??
-                      member!.plan_name ??
-                      "Membership"
-                    : desc;
+                (list.data as any[])
+                  // A trial-period invoice with nothing due is marked "paid" by
+                  // Stripe (trivially satisfied), same as the annual-switch
+                  // trial start (checkout.session.completed's subscription_data.trial_end).
+                  // Showing a £0 row as a "payment" is the same credibility
+                  // problem this history was just fixed for — the invoice.paid
+                  // webhook handler already skips these for the same reason.
+                  .filter((invoice) => (invoice.amount_paid as number) > 0)
+                  .map((invoice) => {
+                  const line = invoice.lines?.data?.[0];
                   return {
-                  id: charge.id as string,
-                  stripe_payment_intent_id: charge.id as string,
-                  amount_pence: charge.amount as number,
-                  plan_name: planName,
-                  paid_at: new Date(
-                    (charge.created as number) * 1000
-                  ).toISOString(),
-                  status:
-                    charge.status === "succeeded" ? "completed" : (charge.status as string),
+                    id: invoice.id as string,
+                    stripe_payment_intent_id: (invoice.payment_intent as string | null) ?? invoice.id as string,
+                    amount_pence: invoice.amount_paid as number,
+                    plan_name: line ? paymentLabelFromInvoiceLine(line) : "Membership",
+                    paid_at: new Date(
+                      ((invoice.status_transitions?.paid_at as number) ?? (invoice.created as number)) * 1000
+                    ).toISOString(),
+                    status: "completed",
+                    hosted_invoice_url: (invoice.hosted_invoice_url as string | null) ?? null,
                   };
                 })
               )
               .catch((err) => {
-                console.error("[member-portal] Stripe charges fetch error:", err);
+                console.error("[member-portal] Stripe invoices fetch error:", err);
                 return [];
               })
           : Promise.resolve([]),
