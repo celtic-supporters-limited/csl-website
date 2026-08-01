@@ -26,6 +26,7 @@ export type LiveStripe = {
     currency: string;
     status: string;
     description: string;
+    hostedInvoiceUrl: string | null;
   }[];
 };
 
@@ -277,6 +278,11 @@ export default function MemberTimeline({ member, entries, defaultShowTest, liveS
                                 </span>
                               )}
                               <span className={`font-bold ${meta.amountCls}`}>{formatGbp(c.amount)}</span>
+                              {c.hostedInvoiceUrl && (
+                                <a href={c.hostedInvoiceUrl} target="_blank" rel="noopener noreferrer" className="text-csl-dark hover:text-csl-mid text-[10px] font-semibold underline">
+                                  Receipt
+                                </a>
+                              )}
                             </span>
                           </div>
                         );

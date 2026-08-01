@@ -31,6 +31,7 @@ export type Member = {
   is_admin: boolean | null;
   payment_failed_at: string | null;
   pending_email: string | null;
+  subscription_start_date: string | null;
 };
 
 export type PortalDocument = {
@@ -68,6 +69,7 @@ export type PortalPayment = {
   plan_name: string | null;
   paid_at: string;
   status: string;
+  hosted_invoice_url: string | null;
 };
 
 export type StripeSubData = {
@@ -891,7 +893,7 @@ function MyMembershipTab({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <StatusPill status={statusToShow} isPendingCancellation={isPendingCancellation} />
             <span className="text-sm font-semibold text-gray-900">{planDisplay(member)}</span>
-            <span className="text-xs text-gray-400">Member since {formatDate(member.created_at)}</span>
+            <span className="text-xs text-gray-400">Member since {formatDate(member.subscription_start_date ?? member.created_at)}</span>
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500">
             {!isLifetime && stripeSub && !isPendingCancellation && (
@@ -1362,27 +1364,71 @@ function MyMembershipTab({
               <p className="text-gray-400 text-sm">No payments recorded yet.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full" style={{ fontVariantNumeric: "tabular-nums" }}>
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left py-2 px-4 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Date</th>
-                    <th className="text-left py-2 px-2 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider">Plan</th>
-                    <th className="text-right py-2 px-4 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider">Amount</th>
+            <table className="w-full table-fixed" style={{ fontVariantNumeric: "tabular-nums" }}>
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left py-2 px-4 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider w-[42%]">Date</th>
+                  <th className="text-left py-2 px-2 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider w-[33%]">Plan</th>
+                  <th className="text-right py-2 px-4 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider w-[25%]">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => (
+                  <tr
+                    key={p.id}
+                    className={`border-b border-gray-100 last:border-0 ${p.hosted_invoice_url ? "cursor-pointer hover:bg-gray-50 focus:outline-none focus:bg-gray-50" : ""}`}
+                    {...(p.hosted_invoice_url
+                      ? {
+                          role: "link",
+                          tabIndex: 0,
+                          "aria-label": `View receipt for ${formatPence(p.amount_pence)} on ${formatDate(p.paid_at)}`,
+                          onClick: () => window.open(p.hosted_invoice_url!, "_blank", "noopener,noreferrer"),
+                          onKeyDown: (e: React.KeyboardEvent) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              window.open(p.hosted_invoice_url!, "_blank", "noopener,noreferrer");
+                            }
+                          },
+                        }
+                      : {})}
+                  >
+                    <td className="py-2.5 px-4 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{formatDate(p.paid_at)}</td>
+                    <td className="py-2.5 px-2 text-xs text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap">{p.plan_name ?? "-"}</td>
+                    <td className="py-2.5 px-4 text-xs font-semibold text-gray-900 text-right whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1">
+                        {formatPence(p.amount_pence)}
+                        {p.hosted_invoice_url && (
+                          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3 text-gray-400">
+                            <path d="M8 5h7v7M15 5L5 15" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {payments.map((p) => (
-                    <tr key={p.id} className="border-b border-gray-100 last:border-0">
-                      <td className="py-2.5 px-4 text-xs text-gray-600 whitespace-nowrap">{formatDate(p.paid_at)}</td>
-                      <td className="py-2.5 px-2 text-xs text-gray-500">{p.plan_name ?? "-"}</td>
-                      <td className="py-2.5 px-4 text-xs font-semibold text-gray-900 text-right whitespace-nowrap">{formatPence(p.amount_pence)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           )}
+          {(() => {
+            // Members migrated from WordPress have real payment history that
+            // predates Stripe entirely — CSL never stores it locally (Stripe
+            // is the sole system of record), so it genuinely cannot appear
+            // here. Left unexplained this reads as missing records rather
+            // than as the correct, unavoidable result of the no-storage rule.
+            const oldestShown = payments[payments.length - 1];
+            const joinDate = member.subscription_start_date;
+            if (!oldestShown || !joinDate) return null;
+            const gapDays = (new Date(oldestShown.paid_at).getTime() - new Date(joinDate).getTime()) / (1000 * 60 * 60 * 24);
+            if (gapDays <= 35) return null;
+            return (
+              <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50">
+                <p className="text-[0.7rem] text-gray-400">
+                  Payment history shown reflects payments made through Stripe from {formatDate(oldestShown.paid_at)}.
+                  Earlier payments made before CSL&apos;s migration to Stripe are not shown here.
+                </p>
+              </div>
+            );
+          })()}
         </div>
 
         {/* ── Billing portal for non-monthly active members ───────────────── */}

@@ -113,6 +113,74 @@ export async function findPendingCancellations(): Promise<PendingCancellationStr
   return results;
 }
 
+// ── Payment history label derivation ────────────────────────────────────────
+// Shared by the member portal and admin Member Support payment history views.
+// Never derive a plan label from a mutable current-state field (member.plan_name)
+// or from Stripe's own auto-generated charge.description text — both produced
+// real production defects (2026-08-01). Always derive from the specific
+// invoice line item being displayed, so a later plan change can never rewrite
+// how a past payment is labelled, and Stripe's internal wording ("Subscription
+// update", "Subscription creation") never reaches a member or volunteer.
+//
+// In the 2026-05-27 "dahlia" Stripe API version, an invoice line item has no
+// top-level `price` field — it's nested at `pricing.price_details.price`,
+// which returns a bare price ID unless the caller expands it (confirmed live,
+// 2026-08-01: `expand: ["data.lines.data.pricing.price_details.price"]` on
+// `invoices.list()` returns the full Price object in the same call, no extra
+// round trip). Callers of this helper must pass that expand option.
+export type PaymentHistoryLine = {
+  amount: number;
+  parent: {
+    type?: string;
+    subscription_item_details?: { proration?: boolean } | null;
+  } | null;
+  pricing: {
+    price_details?: {
+      price?: string | { unit_amount: number | null; recurring: { interval: string } | null } | null;
+    } | null;
+  } | null;
+};
+
+export function paymentLabelFromInvoiceLine(line: PaymentHistoryLine): string {
+  const isSubscriptionLine = line.parent?.type === "subscription_item_details";
+
+  if (!isSubscriptionLine) {
+    // One-off charge (e.g. Lifetime) or a manually added invoice item — never
+    // attach a recurring membership plan name to either. Lifetime is a fixed,
+    // known amount (see app/api/checkout/route.ts), so it can still be named
+    // specifically without guessing at any other one-off amount.
+    return line.amount === 500000 ? "Lifetime Member" : "Membership";
+  }
+
+  // Defensive: CSL's plan-change routes all use proration_behavior: "none",
+  // so a proration line should never occur. If one appears anyway, that is a
+  // policy breach signal, not something to silently label as a normal plan —
+  // log it and surface a neutral "Adjustment" label instead.
+  if (line.parent?.subscription_item_details?.proration) {
+    console.error(
+      "[payment-history] Unexpected proration line on a paid invoice — policy says proration_behavior: 'none' everywhere. Investigate before trusting this row's amount."
+    );
+    return "Adjustment";
+  }
+
+  const price = line.pricing?.price_details?.price;
+  if (!price || typeof price === "string") {
+    // Not expanded — caller forgot the expand option, or Stripe returned an
+    // unexpanded price for some other reason. Fail safe to a neutral label
+    // rather than guessing from amount alone.
+    return "Membership";
+  }
+
+  const unitAmount = price.unit_amount ?? line.amount;
+  const amountPounds = Math.round(unitAmount / 100);
+  const interval = price.recurring?.interval;
+
+  if (interval === "year") return `Annual ${amountPounds}`;
+  if (unitAmount === 1000) return "Monthly 10";
+  if (unitAmount === 2500) return "Monthly 25";
+  return `Monthly ${amountPounds}`;
+}
+
 // Plan identifiers used across client and server
 export type PlanType =
   | "standard"
