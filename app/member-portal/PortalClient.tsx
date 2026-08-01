@@ -1364,36 +1364,50 @@ function MyMembershipTab({
               <p className="text-gray-400 text-sm">No payments recorded yet.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full" style={{ fontVariantNumeric: "tabular-nums" }}>
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left py-2 px-4 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Date</th>
-                    <th className="text-left py-2 px-2 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider">Plan</th>
-                    <th className="text-right py-2 px-4 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider">Amount</th>
-                    <th className="text-right py-2 px-4 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider">Receipt</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payments.map((p) => (
-                    <tr key={p.id} className="border-b border-gray-100 last:border-0">
-                      <td className="py-2.5 px-4 text-xs text-gray-600 whitespace-nowrap">{formatDate(p.paid_at)}</td>
-                      <td className="py-2.5 px-2 text-xs text-gray-500">{p.plan_name ?? "-"}</td>
-                      <td className="py-2.5 px-4 text-xs font-semibold text-gray-900 text-right whitespace-nowrap">{formatPence(p.amount_pence)}</td>
-                      <td className="py-2.5 px-4 text-xs text-right whitespace-nowrap">
-                        {p.hosted_invoice_url ? (
-                          <a href={p.hosted_invoice_url} target="_blank" rel="noopener noreferrer" className="text-csl-dark hover:text-csl-mid font-semibold">
-                            View
-                          </a>
-                        ) : (
-                          <span className="text-gray-300">-</span>
+            <table className="w-full table-fixed" style={{ fontVariantNumeric: "tabular-nums" }}>
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left py-2 px-4 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider w-[42%]">Date</th>
+                  <th className="text-left py-2 px-2 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider w-[33%]">Plan</th>
+                  <th className="text-right py-2 px-4 text-[0.65rem] font-semibold text-gray-400 uppercase tracking-wider w-[25%]">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => (
+                  <tr
+                    key={p.id}
+                    className={`border-b border-gray-100 last:border-0 ${p.hosted_invoice_url ? "cursor-pointer hover:bg-gray-50 focus:outline-none focus:bg-gray-50" : ""}`}
+                    {...(p.hosted_invoice_url
+                      ? {
+                          role: "link",
+                          tabIndex: 0,
+                          "aria-label": `View receipt for ${formatPence(p.amount_pence)} on ${formatDate(p.paid_at)}`,
+                          onClick: () => window.open(p.hosted_invoice_url!, "_blank", "noopener,noreferrer"),
+                          onKeyDown: (e: React.KeyboardEvent) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              window.open(p.hosted_invoice_url!, "_blank", "noopener,noreferrer");
+                            }
+                          },
+                        }
+                      : {})}
+                  >
+                    <td className="py-2.5 px-4 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{formatDate(p.paid_at)}</td>
+                    <td className="py-2.5 px-2 text-xs text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap">{p.plan_name ?? "-"}</td>
+                    <td className="py-2.5 px-4 text-xs font-semibold text-gray-900 text-right whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1">
+                        {formatPence(p.amount_pence)}
+                        {p.hosted_invoice_url && (
+                          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3 text-gray-400">
+                            <path d="M8 5h7v7M15 5L5 15" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
           {(() => {
             // Members migrated from WordPress have real payment history that
