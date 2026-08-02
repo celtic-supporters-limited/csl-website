@@ -108,8 +108,12 @@ test.describe("paymentLabelFromInvoiceLine — pure derivation", () => {
     expect(paymentLabelFromInvoiceLine(nonSubscriptionLine(500000))).toBe("Lifetime Member");
   });
 
-  test("other non-subscription line → neutral Membership label, never a plan name", () => {
-    expect(paymentLabelFromInvoiceLine(nonSubscriptionLine(1234))).toBe("Membership");
+  test("other non-subscription, non-Lifetime amount → amount-based Monthly fallback, never a bare generic label", () => {
+    // £12.34 doesn't match any known plan exactly, but Lifetime is CSL's
+    // only genuine one-off product — a "Monthly N" fallback from the known
+    // amount is strictly more useful than a flat "Membership" that discards
+    // real data (see nonSubscriptionPaymentLabel in lib/stripe.ts).
+    expect(paymentLabelFromInvoiceLine(nonSubscriptionLine(1234))).toBe("Monthly 12");
   });
 
   test("defensive: an unexpected proration line is labelled as an adjustment, not a plan", () => {
@@ -125,13 +129,16 @@ test.describe("paymentLabelFromInvoiceLine — pure derivation", () => {
     }
   });
 
-  test("unexpanded price (caller forgot the expand option) fails safe to a neutral label", () => {
+  test("unexpanded price (caller forgot the expand option) fails safe to the amount-based fallback, not a bare label", () => {
+    // Real production regression, 2026-08-02: this used to return the flat
+    // "Membership" string, discarding the known £10 amount — a member's
+    // genuine £10/month payment displayed with no plan information at all.
     const line: PaymentHistoryLine = {
       amount: 1000,
       parent: { type: "subscription_item_details", subscription_item_details: { proration: false } },
       pricing: { price_details: { price: "price_notExpanded123" } }, // bare string, not expanded
     };
-    expect(paymentLabelFromInvoiceLine(line)).toBe("Membership");
+    expect(paymentLabelFromInvoiceLine(line)).toBe("Monthly 10");
   });
 });
 

@@ -141,15 +141,25 @@ export type PaymentHistoryLine = {
   } | null;
 };
 
-// One-off charge (e.g. Lifetime) or a manually added invoice item — never
-// attach a recurring membership plan name to either. Lifetime is a fixed,
-// known amount (see app/api/checkout/route.ts), so it can still be named
-// specifically without guessing at any other one-off amount. Shared between
-// the invoice-line non-subscription branch and raw Charge objects that never
-// got an invoice at all (Lifetime payments made before invoice_creation was
-// enabled on that Checkout session — see paymentHistoryRowFromCharge below).
+// Fallback label for a payment with no reliable line-item/interval data —
+// either a genuinely invoice-less charge (Lifetime payments made before
+// invoice_creation was enabled, or any other reason a charge never got an
+// invoice), or an invoice whose price object failed to expand. Lifetime is
+// a fixed, known amount (see app/api/checkout/route.ts) and stays named
+// specifically. Everything else falls back to the same "Monthly N" mapping
+// used at checkout and in the subscription.updated webhook handler — Lifetime
+// is CSL's only genuine one-off product today, so a non-Lifetime amount with
+// no other data is overwhelmingly likely to be a monthly payment. Interval
+// can't be known for certain without a line item, but discarding the known
+// amount down to a bare "Membership" is strictly less accurate than this,
+// not more — a real production regression (2026-08-02): older payments fell
+// through this fallback and displayed as "Membership" instead of the £10/mo
+// they actually were.
 export function nonSubscriptionPaymentLabel(amountPence: number): string {
-  return amountPence === 500000 ? "Lifetime Member" : "Membership";
+  if (amountPence === 500000) return "Lifetime Member";
+  if (amountPence === 1000) return "Monthly 10";
+  if (amountPence === 2500) return "Monthly 25";
+  return `Monthly ${Math.round(amountPence / 100)}`;
 }
 
 export function paymentLabelFromInvoiceLine(line: PaymentHistoryLine): string {
@@ -173,9 +183,12 @@ export function paymentLabelFromInvoiceLine(line: PaymentHistoryLine): string {
   const price = line.pricing?.price_details?.price;
   if (!price || typeof price === "string") {
     // Not expanded — caller forgot the expand option, or Stripe returned an
-    // unexpanded price for some other reason. Fail safe to a neutral label
-    // rather than guessing from amount alone.
-    return "Membership";
+    // unexpanded price for some other reason. This IS a subscription line
+    // (checked above), so the amount-based fallback is safe here — the only
+    // ambiguity it can't resolve is interval, and CSL's amount-only
+    // collision (£300 monthly vs £300 annual) is a narrow, disclosed edge
+    // case, not a reason to discard the amount entirely.
+    return nonSubscriptionPaymentLabel(line.amount);
   }
 
   const unitAmount = price.unit_amount ?? line.amount;
