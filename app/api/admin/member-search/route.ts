@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
-import { getStripe, getSubscriptionPeriodEnd, paymentLabelFromInvoiceLine } from "@/lib/stripe";
+import { getStripe, getSubscriptionPeriodEnd, fetchPaymentHistory } from "@/lib/stripe";
 import type { TimelineEntry, LiveStripe } from "@/components/MemberTimeline";
 
 // ── Auth event helper types ───────────────────────────────────────────────────
@@ -196,16 +196,11 @@ export async function POST(req: NextRequest) {
       const stripeSubscriptionUrl = target.stripe_subscription_id
         ? `https://dashboard.stripe.com/subscriptions/${target.stripe_subscription_id}` : null;
 
-      const [customerResult, invoicesResult] = await Promise.allSettled([
+      const [customerResult, paymentHistoryResult] = await Promise.allSettled([
         stripe.customers.retrieve(target.stripe_customer_id, {
           expand: ["subscriptions.data.default_payment_method"],
         }),
-        stripe.invoices.list({
-          customer: target.stripe_customer_id,
-          status: "paid",
-          limit: 5,
-          expand: ["data.lines.data.pricing.price_details.price"],
-        }),
+        fetchPaymentHistory(target.stripe_customer_id),
       ]);
 
       let subscriptionStatus: string | null = null;
@@ -237,27 +232,22 @@ export async function POST(req: NextRequest) {
         console.error("[member-search] Stripe customer fetch failed:", customerResult.reason);
       }
 
-      const recentCharges: LiveStripe["recentCharges"] = invoicesResult.status === "fulfilled"
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ? (invoicesResult.value.data as any[])
-            // See app/member-portal/page.tsx — £0 trial invoices are marked
-            // "paid" by Stripe but showing them as a payment is misleading.
-            .filter((invoice) => (invoice.amount_paid as number) > 0)
-            .map((invoice) => {
-            const line = invoice.lines?.data?.[0];
-            return {
-              date:             new Date(((invoice.status_transitions?.paid_at as number) ?? (invoice.created as number)) * 1000).toISOString(),
-              amount:           invoice.amount_paid as number,
-              currency:         invoice.currency as string,
-              status:           "succeeded",
-              description:      line ? paymentLabelFromInvoiceLine(line) : "Membership",
-              hostedInvoiceUrl: (invoice.hosted_invoice_url as string | null) ?? null,
-            };
-          })
+      // CSL only ever charges in GBP (see app/api/checkout/route.ts — every
+      // price_data uses currency: "gbp"), so it's hardcoded here rather than
+      // carried through PaymentHistoryRow, which both display surfaces share.
+      const recentCharges: LiveStripe["recentCharges"] = paymentHistoryResult.status === "fulfilled"
+        ? paymentHistoryResult.value.map((row) => ({
+            date:             row.paid_at,
+            amount:           row.amount_pence,
+            currency:         "gbp",
+            status:           "succeeded",
+            description:      row.plan_name,
+            hostedInvoiceUrl: row.url,
+          }))
         : [];
 
-      if (invoicesResult.status === "rejected") {
-        console.error("[member-search] Stripe invoices fetch failed:", invoicesResult.reason);
+      if (paymentHistoryResult.status === "rejected") {
+        console.error("[member-search] Stripe payment history fetch failed:", paymentHistoryResult.reason);
       }
 
       liveStripe = {

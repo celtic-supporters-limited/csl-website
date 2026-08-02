@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createServerSupabase, getSupabase } from "@/lib/supabase";
-import { getStripe, getSubscriptionPeriodEnd, paymentLabelFromInvoiceLine } from "@/lib/stripe";
+import { getStripe, getSubscriptionPeriodEnd, fetchPaymentHistory } from "@/lib/stripe";
 import PortalClient from "./PortalClient";
 
 export const dynamic = "force-dynamic";
@@ -139,42 +139,17 @@ export default async function MemberPortalPage({
     if (member) {
       const [chargesResult, subResult] = await Promise.all([
         member.stripe_customer_id
-          ? getStripe()
-              .invoices.list({
-                customer: member.stripe_customer_id,
-                status: "paid",
-                limit: 12,
-                expand: ["data.lines.data.pricing.price_details.price"],
-              })
-              .then((list) =>
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (list.data as any[])
-                  // A trial-period invoice with nothing due is marked "paid" by
-                  // Stripe (trivially satisfied), same as the annual-switch
-                  // trial start (checkout.session.completed's subscription_data.trial_end).
-                  // Showing a £0 row as a "payment" is the same credibility
-                  // problem this history was just fixed for — the invoice.paid
-                  // webhook handler already skips these for the same reason.
-                  .filter((invoice) => (invoice.amount_paid as number) > 0)
-                  .map((invoice) => {
-                  const line = invoice.lines?.data?.[0];
-                  return {
-                    id: invoice.id as string,
-                    stripe_payment_intent_id: (invoice.payment_intent as string | null) ?? invoice.id as string,
-                    amount_pence: invoice.amount_paid as number,
-                    plan_name: line ? paymentLabelFromInvoiceLine(line) : "Membership",
-                    paid_at: new Date(
-                      ((invoice.status_transitions?.paid_at as number) ?? (invoice.created as number)) * 1000
-                    ).toISOString(),
-                    status: "completed",
-                    hosted_invoice_url: (invoice.hosted_invoice_url as string | null) ?? null,
-                  };
-                })
-              )
-              .catch((err) => {
-                console.error("[member-portal] Stripe invoices fetch error:", err);
-                return [];
-              })
+          ? fetchPaymentHistory(member.stripe_customer_id).then((rows) =>
+              rows.map((r) => ({
+                id: r.id,
+                stripe_payment_intent_id: r.id,
+                amount_pence: r.amount_pence,
+                plan_name: r.plan_name,
+                paid_at: r.paid_at,
+                status: "completed",
+                hosted_invoice_url: r.url,
+              }))
+            )
           : Promise.resolve([]),
 
         member.stripe_subscription_id
