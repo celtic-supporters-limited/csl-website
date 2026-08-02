@@ -680,6 +680,12 @@ function MyMembershipTab({
   // Accordion
   const [openPanel, setOpenPanel] = useState<AccordionPanel>(null);
 
+  // Payment history — full history is already fetched server-side; this
+  // just reveals rows already in memory, no extra request.
+  const [showAllPayments, setShowAllPayments] = useState(false);
+  const PAYMENTS_PREVIEW_COUNT = 12;
+  const visiblePayments = showAllPayments ? payments : payments.slice(0, PAYMENTS_PREVIEW_COUNT);
+
   // Change monthly amount
   const [planState, setPlanState] = useState<ChangePlanState>("idle");
   const [selected, setSelected] = useState<"standard" | "accelerator" | "custom">("standard");
@@ -1373,7 +1379,7 @@ function MyMembershipTab({
                 </tr>
               </thead>
               <tbody>
-                {payments.map((p) => (
+                {visiblePayments.map((p) => (
                   <tr
                     key={p.id}
                     className={`border-b border-gray-100 last:border-0 ${p.hosted_invoice_url ? "cursor-pointer hover:bg-gray-50 focus:outline-none focus:bg-gray-50" : ""}`}
@@ -1408,6 +1414,17 @@ function MyMembershipTab({
                 ))}
               </tbody>
             </table>
+          )}
+          {payments.length > PAYMENTS_PREVIEW_COUNT && (
+            <div className="px-4 py-2 border-t border-gray-100 text-center">
+              <button
+                type="button"
+                onClick={() => setShowAllPayments((v) => !v)}
+                className="text-xs font-semibold text-csl-dark hover:text-csl-mid"
+              >
+                {showAllPayments ? "Show fewer payments" : `Show all ${payments.length} payments`}
+              </button>
+            </div>
           )}
           {(() => {
             // Members migrated from WordPress have real payment history that

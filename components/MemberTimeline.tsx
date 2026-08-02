@@ -137,6 +137,8 @@ function ExternalLinkIcon() {
 export default function MemberTimeline({ member, entries, defaultShowTest, liveStripe }: Props) {
   const [copied, setCopied] = useState(false);
   const [showTest, setShowTest] = useState(defaultShowTest ?? false);
+  const [showAllCharges, setShowAllCharges] = useState(false);
+  const RECENT_CHARGES_PREVIEW_COUNT = 5;
 
   const hasTestEvents = entries.some((e) => e.isTest);
   const visible = showTest ? entries : entries.filter((e) => !e.isTest);
@@ -263,9 +265,9 @@ export default function MemberTimeline({ member, entries, defaultShowTest, liveS
                 )}
                 {stripe.recentCharges.length > 0 && (
                   <div className="mt-3 bg-gray-50 rounded-md p-2.5">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Recent charges</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Payments</p>
                     <div className="space-y-1">
-                      {stripe.recentCharges.map((c, i) => {
+                      {(showAllCharges ? stripe.recentCharges : stripe.recentCharges.slice(0, RECENT_CHARGES_PREVIEW_COUNT)).map((c, i) => {
                         const meta = chargeStatusMeta(c.status);
                         return (
                           <div key={i} className="flex items-baseline justify-between gap-2">
@@ -288,6 +290,15 @@ export default function MemberTimeline({ member, entries, defaultShowTest, liveS
                         );
                       })}
                     </div>
+                    {stripe.recentCharges.length > RECENT_CHARGES_PREVIEW_COUNT && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllCharges((v) => !v)}
+                        className="mt-2 text-[10px] font-semibold text-csl-dark hover:text-csl-mid"
+                      >
+                        {showAllCharges ? "Show fewer" : `Show all ${stripe.recentCharges.length} payments`}
+                      </button>
+                    )}
                   </div>
                 )}
               </>

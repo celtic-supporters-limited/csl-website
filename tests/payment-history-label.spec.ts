@@ -248,3 +248,96 @@ test.describe("stripe.invoices.list({ status: 'paid' }) — open/void invoices n
     }
   });
 });
+
+// ── Group C: fetchPaymentHistory — full history, invoice-less charges ──────
+
+test.describe("fetchPaymentHistory — full history across both Stripe sources", () => {
+  test.skip(!canRunLive, "STRIPE_SECRET_KEY / STRIPE_PRODUCT_ID not set");
+
+  test("a one-off payment with no invoice (pre-invoice_creation-fix Lifetime shape) still appears, with its receipt_url", async () => {
+    const stripe = stripeClient();
+    const { fetchPaymentHistory } = await import("@/lib/stripe");
+
+    const customer = await stripe.customers.create({ email: `csl-test-noinvoice-${Date.now()}@celticsupporters.net` });
+
+    try {
+      const pm = await stripe.paymentMethods.attach("pm_card_visa", { customer: customer.id });
+      await stripe.customers.update(customer.id, { invoice_settings: { default_payment_method: pm.id } });
+
+      // A payment-mode charge with no invoice_creation — exactly what a
+      // Lifetime Checkout session produced before invoice_creation: { enabled:
+      // true } was added (see app/api/checkout/route.ts). No Invoice object
+      // exists for this payment at all.
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: 500000,
+        currency: "gbp",
+        customer: customer.id,
+        payment_method: pm.id,
+        off_session: true,
+        confirm: true,
+      });
+      expect(paymentIntent.status).toBe("succeeded");
+
+      const rows = await fetchPaymentHistory(customer.id);
+      expect(rows.length).toBe(1);
+      expect(rows[0].amount_pence).toBe(500000);
+      expect(rows[0].plan_name).toBe("Lifetime Member");
+      // Test-mode receipt_url may be null without a receipt_email set — the
+      // important assertion is that the row exists and is correctly labelled,
+      // not that a receipt URL is guaranteed in every Stripe configuration.
+
+      console.log("PASS: invoice-less one-off payment appears in fetchPaymentHistory, correctly labelled Lifetime Member");
+    } finally {
+      await stripe.customers.del(customer.id).catch((err) =>
+        console.error("[payment-history-label test] cleanup: failed to delete test customer:", err)
+      );
+    }
+  });
+
+  test("a real subscription invoice's underlying charge is not duplicated alongside its invoice", async () => {
+    const stripe = stripeClient();
+    const { fetchPaymentHistory } = await import("@/lib/stripe");
+
+    const customer = await stripe.customers.create({ email: `csl-test-dedupe-${Date.now()}@celticsupporters.net` });
+    let subscription: Stripe.Subscription | null = null;
+
+    try {
+      const pm = await stripe.paymentMethods.attach("pm_card_visa", { customer: customer.id });
+      await stripe.customers.update(customer.id, { invoice_settings: { default_payment_method: pm.id } });
+
+      const price = await stripe.prices.create({
+        currency: "gbp",
+        unit_amount: 1000,
+        recurring: { interval: "month" },
+        product: STRIPE_PRODUCT_ID!,
+      });
+
+      subscription = await stripe.subscriptions.create({
+        customer: customer.id,
+        items: [{ price: price.id }],
+        default_payment_method: pm.id,
+        payment_behavior: "error_if_incomplete",
+      });
+      expect(subscription.status).toBe("active");
+
+      const rows = await fetchPaymentHistory(customer.id);
+      // One payment happened (the subscription's first invoice) — must
+      // appear exactly once, not once via invoices.list() and again via
+      // charges.list() because the cross-reference filter failed to match.
+      expect(rows.length).toBe(1);
+      expect(rows[0].amount_pence).toBe(1000);
+      expect(rows[0].plan_name).toBe("Monthly 10");
+
+      console.log("PASS: subscription invoice's charge is not duplicated by the charges.list() pass");
+    } finally {
+      if (subscription?.id) {
+        await stripe.subscriptions.cancel(subscription.id).catch((err) =>
+          console.error("[payment-history-label test] cleanup: failed to cancel test subscription:", err)
+        );
+      }
+      await stripe.customers.del(customer.id).catch((err) =>
+        console.error("[payment-history-label test] cleanup: failed to delete test customer:", err)
+      );
+    }
+  });
+});

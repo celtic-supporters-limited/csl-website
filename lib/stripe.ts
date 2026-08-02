@@ -141,15 +141,22 @@ export type PaymentHistoryLine = {
   } | null;
 };
 
+// One-off charge (e.g. Lifetime) or a manually added invoice item — never
+// attach a recurring membership plan name to either. Lifetime is a fixed,
+// known amount (see app/api/checkout/route.ts), so it can still be named
+// specifically without guessing at any other one-off amount. Shared between
+// the invoice-line non-subscription branch and raw Charge objects that never
+// got an invoice at all (Lifetime payments made before invoice_creation was
+// enabled on that Checkout session — see paymentHistoryRowFromCharge below).
+export function nonSubscriptionPaymentLabel(amountPence: number): string {
+  return amountPence === 500000 ? "Lifetime Member" : "Membership";
+}
+
 export function paymentLabelFromInvoiceLine(line: PaymentHistoryLine): string {
   const isSubscriptionLine = line.parent?.type === "subscription_item_details";
 
   if (!isSubscriptionLine) {
-    // One-off charge (e.g. Lifetime) or a manually added invoice item — never
-    // attach a recurring membership plan name to either. Lifetime is a fixed,
-    // known amount (see app/api/checkout/route.ts), so it can still be named
-    // specifically without guessing at any other one-off amount.
-    return line.amount === 500000 ? "Lifetime Member" : "Membership";
+    return nonSubscriptionPaymentLabel(line.amount);
   }
 
   // Defensive: CSL's plan-change routes all use proration_behavior: "none",
@@ -179,6 +186,126 @@ export function paymentLabelFromInvoiceLine(line: PaymentHistoryLine): string {
   if (unitAmount === 1000) return "Monthly 10";
   if (unitAmount === 2500) return "Monthly 25";
   return `Monthly ${amountPounds}`;
+}
+
+// A single row for either display surface — built from an Invoice (the
+// normal case) or from a raw Charge that never got an invoice (only
+// possible for a one-off payment made before invoice_creation was enabled
+// on the Lifetime Checkout session; every subscription charge always has
+// an invoice). Both sources converge on this shape so callers can merge
+// and sort them without caring which Stripe object a row came from.
+export type PaymentHistoryRow = {
+  id: string;
+  amount_pence: number;
+  plan_name: string;
+  paid_at: string;
+  url: string | null;
+};
+
+export function paymentHistoryRowFromCharge(charge: {
+  id: string;
+  amount: number;
+  created: number;
+  receipt_url?: string | null;
+}): PaymentHistoryRow {
+  return {
+    id: charge.id,
+    amount_pence: charge.amount,
+    plan_name: nonSubscriptionPaymentLabel(charge.amount),
+    paid_at: new Date(charge.created * 1000).toISOString(),
+    url: charge.receipt_url ?? null,
+  };
+}
+
+// Full payment history for a customer, from both Stripe sources — used by
+// the member portal and admin Member Support. Two sources, not one:
+//   - invoices.list() covers every subscription charge, always (a
+//     subscription charge always produces an invoice). Filtered to genuinely
+//     paid, non-£0 invoices — see the inline comments below.
+//   - charges.list() catches the one case invoices can't: a one-off payment
+//     made before invoice_creation was enabled on the Lifetime Checkout
+//     session (see app/api/checkout/route.ts) has a Charge but no Invoice.
+//     The 2026-05-27 "dahlia" API version's Charge object has no `invoice`
+//     field at all (confirmed — grepped the SDK types), so invoice-backed
+//     charges are excluded by cross-referencing payment_intent against the
+//     invoices already fetched above, rather than by a direct field.
+// Fetches up to 100 of each (Stripe's per-page max) in one call each, no
+// pagination — CSL's real member volumes make a second page unreachable in
+// practice; if that ever changes, has_more on either response is the signal
+// to add real pagination, not a reason to build it pre-emptively today.
+export async function fetchPaymentHistory(customerId: string): Promise<PaymentHistoryRow[]> {
+  const stripe = getStripe();
+
+  const [invoicesResult, chargesResult] = await Promise.allSettled([
+    stripe.invoices.list({
+      customer: customerId,
+      status: "paid",
+      limit: 100,
+      // "data.payments" (not "data.payment_intent" — no such top-level field
+      // exists on Invoice in this API version, confirmed live 2026-08-02) is
+      // how an invoice's payment_intent is reached: invoice.payment_intent
+      // was replaced by invoice.payments, a list of InvoicePayment objects
+      // each carrying .payment.payment_intent. Stripe caps expand at 4
+      // levels, so this is expanded one level (giving the payment_intent as
+      // a plain string ID, confirmed live — no need to expand further) and
+      // "data.lines.data.pricing.price_details.price" is a second, separate
+      // expand entry for the label logic.
+      expand: ["data.lines.data.pricing.price_details.price", "data.payments"],
+    }),
+    stripe.charges.list({ customer: customerId, limit: 100 }),
+  ]);
+
+  // Every invoice's own payment_intent, so invoice-backed charges can be
+  // excluded from the charges pass below without a direct invoice field.
+  const invoicePaymentIntentIds = new Set<string>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawInvoices: any[] = invoicesResult.status === "fulfilled" ? (invoicesResult.value.data as any[]) : [];
+  for (const invoice of rawInvoices) {
+    const pi = invoice.payments?.data?.[0]?.payment?.payment_intent;
+    const piId = typeof pi === "string" ? pi : pi?.id;
+    if (piId) invoicePaymentIntentIds.add(piId);
+  }
+
+  const invoiceRows: PaymentHistoryRow[] = rawInvoices
+    // A trial-period invoice with nothing due is marked "paid" by Stripe
+    // (trivially satisfied), same as the annual-switch trial start
+    // (checkout.session.completed's subscription_data.trial_end).
+    // Showing a £0 row as a "payment" is the same credibility problem
+    // this history was fixed for — the invoice.paid webhook handler
+    // already skips these for the same reason.
+    .filter((invoice) => (invoice.amount_paid as number) > 0)
+    .map((invoice) => {
+      const line = invoice.lines?.data?.[0];
+      return {
+        id: invoice.id as string,
+        amount_pence: invoice.amount_paid as number,
+        plan_name: line ? paymentLabelFromInvoiceLine(line) : "Membership",
+        paid_at: new Date(
+          ((invoice.status_transitions?.paid_at as number) ?? (invoice.created as number)) * 1000
+        ).toISOString(),
+        url: (invoice.hosted_invoice_url as string | null) ?? null,
+      };
+    });
+  if (invoicesResult.status === "rejected") {
+    console.error("[payment-history] Stripe invoices fetch error:", invoicesResult.reason);
+  }
+
+  const chargeRows: PaymentHistoryRow[] = chargesResult.status === "fulfilled"
+    ? chargesResult.value.data
+        .filter((charge) => {
+          const piId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+          const isInvoiceBacked = !!piId && invoicePaymentIntentIds.has(piId);
+          return !isInvoiceBacked && charge.paid && charge.amount > 0;
+        })
+        .map(paymentHistoryRowFromCharge)
+    : [];
+  if (chargesResult.status === "rejected") {
+    console.error("[payment-history] Stripe charges fetch error:", chargesResult.reason);
+  }
+
+  return [...invoiceRows, ...chargeRows].sort(
+    (a, b) => new Date(b.paid_at).getTime() - new Date(a.paid_at).getTime()
+  );
 }
 
 // Plan identifiers used across client and server
