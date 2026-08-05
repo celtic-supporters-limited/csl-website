@@ -1,7 +1,7 @@
 # CSL Database Backup — Recovery Runbook
 
 **Audience:** Volunteer IT Lead and directors
-**Last updated:** July 2026
+**Last updated:** August 2026
 
 ---
 
@@ -77,9 +77,34 @@ Restoring `auth.users` is more complex than restoring other tables and cannot be
 
 ---
 
+## Special note: AGM instruments
+
+Five tables hold AGM data. Two of them carry legal weight and have recovery rules of their own.
+
+| File | What it holds |
+|------|---------------|
+| `agm_resolution_versions-backup-...csv` | The exact resolution wording, one row per version |
+| `agm_signatures-backup-...csv` | Who signed the resolution, with address and Computershare SRN |
+| `agm_proxies-backup-...csv` | AGM proxy appointments — the instruments CSL lodges to cast votes |
+| `agm_supporters-backup-...csv` | Non-shareholder supporters |
+| `agm_change_log-backup-...csv` | Audit trail of every admin edit to the four tables above |
+
+**Restore `agm_resolution_versions` before `agm_signatures`.** A signature row records that a named person agreed to *specific wording*. If signatures are restored without the matching resolution version, you have a list of signatories and no provable text behind it — the signatures become unusable as evidence. The two must go back together, resolution versions first.
+
+**`agm_proxies` is not the same thing as the proxy enquiries in `shareholder_cases`.** The `/proxy` page on the public site writes an enquiry to `shareholder_cases` with `case_type = 'Proxy Assignment'` — that is an expression of interest. `agm_proxies` holds the completed appointment instruments. A lost `agm_proxies` row is a vote CSL cannot cast at the meeting. If proxy data loss is suspected close to an AGM, escalate immediately rather than waiting for a scheduled recovery window.
+
+**`agm_change_log` can only be restored once.** The table grants `INSERT` and `SELECT` to the service role and nothing else — there is no `UPDATE` or `DELETE` for any role, by design. It imports cleanly into an empty table, but if you import the wrong file you cannot correct it. Confirm the filename and date with Gary Phinn before importing this one.
+
+---
+
 ## If the row count looks wrong
 
 If the row count in a backup email is significantly lower than expected (for example, the members count drops from 500 to 50 with no explanation), **do not restore from that backup**.
+
+Check these counts in particular:
+- `members` — compare against the member count shown on the Operations page
+- `agm_signatures` — compare against the signature count on the Resolution admin page
+- `agm_proxies` — this number should never go down between backups; proxies are added, not removed
 
 A low row count means either:
 - The backup captured a partially-completed migration or bulk delete
@@ -118,7 +143,9 @@ The priority order for recovery is:
 1. `members` — active membership records
 2. `auth.users` — login credentials (must be restored alongside `members`)
 3. `shareholder_cases` — share tracing and proxy enquiries
-4. All other tables
+4. `agm_resolution_versions` then `agm_signatures` — in that order, see the AGM instruments section above
+5. `agm_proxies` — move this to the top of the list if an AGM is imminent
+6. All other tables
 
 ---
 

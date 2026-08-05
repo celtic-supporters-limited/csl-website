@@ -6,6 +6,11 @@ import { Resend } from "resend";
 // Excluded: payments, events (confirmed obsolete).
 // Excluded: email_log, email_bounces (operational metrics only — RLS blocks service_role
 //   SELECT; not needed for member data recovery; operations page re-populates from live sends).
+//
+// AGM ordering matters: agm_resolution_versions is listed before agm_signatures
+// because a signature row is only meaningful alongside the wording it was given
+// against. Restoring signatures without the matching resolution version leaves
+// signatories with no provable text. See docs/backup-recovery-runbook.md.
 const BACKUP_TABLES = [
   "members",
   "shareholder_cases",
@@ -14,6 +19,11 @@ const BACKUP_TABLES = [
   "site_config",
   "member_events",
   "membership_snapshots",
+  "agm_resolution_versions",
+  "agm_signatures",
+  "agm_proxies",
+  "agm_supporters",
+  "agm_change_log",
 ] as const;
 
 export type TableBackup = {
