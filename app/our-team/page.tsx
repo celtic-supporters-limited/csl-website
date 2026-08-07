@@ -32,6 +32,12 @@ const directors = [
     role: "Director",
     bio: "I have over 25 years of leadership experience in financial services, I bring a strategic insight and a deep commitment to ensuring supporters and small shareholders have a credible, professional voice in the future of Celtic Football Club.",
   },
+  {
+    initials: "MK",
+    name: "Martin Kenny",
+    role: "Company Secretary",
+    bio: "My career has been in commercial and operational management, including several years as a contract and finance manager for global contracts where I learned that trust is built through consistency, not empty promises. That's the same discipline I bring to CSL: every enquiry, every proxy appointment, every AGM resolution handled properly and on record, so that when we tell 28,000 shareholders we can be trusted with their voice, we've already proven it.",
+  },
 ];
 
 export default function OurTeamPage() {
@@ -62,7 +68,7 @@ export default function OurTeamPage() {
         <Container>
           <div className="flex justify-center gap-16 flex-wrap">
             {[
-              { number: "4", label: "Directors" },
+              { number: "5", label: "Directors" },
               { number: "100%", label: "Volunteer-led" },
               { number: "0", label: "Salaries Paid" },
             ].map(({ number, label }) => (
